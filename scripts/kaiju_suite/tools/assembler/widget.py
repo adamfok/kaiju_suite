@@ -32,6 +32,12 @@ class _AssemblerTree(QtWidgets.QTreeWidget):
         super().__init__()
         self.window = window
         self.setHeaderHidden(True)
+        # Column 0: name without extension. Column 1: product type.
+        self.setColumnCount(2)
+        header = self.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -177,8 +183,9 @@ class AssemblerWindow(ToolWindow):
 
     def _add_entries(self, parent, entries, inside_disabled=False):
         for entry in entries:
-            item = QtWidgets.QTreeWidgetItem(parent, [entry.name])
+            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, entry.type_label])
             item.setData(0, PATH_ROLE, entry.path)
+            item.setToolTip(1, entry.name)
             product = entry.product
             icon = self._icon(product.icon) if product else None
             if icon:
@@ -193,8 +200,6 @@ class AssemblerWindow(ToolWindow):
             elif inside_disabled:
                 item.setForeground(0, DISABLED_COLOR)
                 item.setToolTip(0, "In a disabled folder: skipped by Run All")
-            elif not entry.is_dir and product and product.color_for(entry.path):
-                item.setForeground(0, QtGui.QColor(*product.color_for(entry.path)))
             if entry.is_dir:
                 self._add_entries(item, entry.children, inside_disabled or bool(disabled))
 
@@ -220,6 +225,7 @@ class AssemblerWindow(ToolWindow):
         item = QtWidgets.QTreeWidgetItem(self.tree, [text])
         item.setForeground(0, QtGui.QColor(120, 120, 120))
         item.setFlags(QtCore.Qt.ItemFlag.NoItemFlags)
+        item.setFirstColumnSpanned(True)
 
     def _apply_filter(self, text):
         def visit(item):
@@ -319,7 +325,8 @@ class AssemblerWindow(ToolWindow):
 
         if path:
             menu.addSeparator()
-            menu.addAction("Remove", lambda: self._remove(path))
+            menu.addAction("Rename...", lambda: self._rename(path))
+            menu.addAction("Delete", lambda: self._delete(path))
 
         menu.exec(self.tree.mapToGlobal(pos))
 
@@ -372,7 +379,20 @@ class AssemblerWindow(ToolWindow):
         except Exception as e:
             _warn(f"Failed to create: {e}")
 
-    def _remove(self, path):
+    def _rename(self, path):
+        current = os.path.basename(path)
+        if os.path.isfile(path):
+            current = os.path.splitext(current)[0]
+        name, ok = QtWidgets.QInputDialog.getText(self, "Rename", "Name:", text=current)
+        if not ok or not name:
+            return
+        try:
+            logic.rename_path(path, name)
+        except Exception as e:
+            _warn(f"Failed to rename: {e}")
+        self.populate()
+
+    def _delete(self, path):
         product = products.product_for(path)
         kind = product.name.lower() if product else "item"
         if os.path.isdir(path):

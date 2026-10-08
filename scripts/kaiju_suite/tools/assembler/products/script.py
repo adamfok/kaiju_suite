@@ -9,8 +9,6 @@ from kaiju_suite.tools.assembler.products import Creator, Product, new_path
 
 EXTENSIONS = (".py", ".mel")
 
-_MEL_COLOR = (255, 200, 128)
-
 
 def _ext(path):
     return os.path.splitext(path)[1].lower()
@@ -97,15 +95,11 @@ def open_in_script_editor(path):
 class ScriptProduct(Product):
     name = "Script"
     extensions = EXTENSIONS
-    color = (128, 200, 255)
     order = 10
     runnable = True
     creators = (
         Creator("Script", create_script, [("Python (.py)", ".py"), ("MEL (.mel)", ".mel")], open_after=True),
     )
-
-    def color_for(self, path):
-        return _MEL_COLOR if _ext(path) == ".mel" else self.color
 
     def run(self, path):
         run_script(path)

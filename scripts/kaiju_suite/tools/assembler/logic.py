@@ -37,6 +37,17 @@ class Entry:
     def ext(self):
         return "" if self.is_dir else os.path.splitext(self.name)[1].lower()
 
+    @property
+    def label(self):
+        """Name shown in the tree: files lose their extension."""
+        return self.name if self.is_dir else os.path.splitext(self.name)[0]
+
+    @property
+    def type_label(self):
+        """Product and extension shown next to the label, e.g. ``Script(.py)``;
+        blank for folders."""
+        return "" if self.is_dir or self.product is None else f"{self.product.name}({self.ext})"
+
 
 def ext_of(path):
     return os.path.splitext(path)[1].lower()
@@ -163,6 +174,40 @@ def delete_path(path):
     else:
         raise FileNotFoundError(path)
     _forget(path)
+
+
+def rename_path(path, name):
+    """Rename an item or folder in place and return its new path.
+
+    Files keep their extension, which is added unless ``name`` already ends
+    with it. The item keeps its place in the folder's order and its disabled
+    state. A case-only change is allowed.
+    """
+    path = os.path.normpath(path)
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    directory, old = os.path.split(path)
+    name = name.strip()
+    if not name:
+        raise ValueError("Please provide a name.")
+    if "/" in name or "\\" in name:
+        raise ValueError("Name can't contain path separators.")
+    ext = "" if os.path.isdir(path) else os.path.splitext(old)[1]
+    if ext and not name.lower().endswith(ext.lower()):
+        name += ext
+    if name == old:
+        return path
+    new = os.path.join(directory, name)
+    if os.path.exists(new) and name.lower() != old.lower():
+        raise FileExistsError(f"Already exists: {name}")
+    os.rename(path, new)
+
+    meta = _load_meta(directory)
+    if old in meta["order"] or old in meta["disabled"]:
+        for key in meta:
+            meta[key] = [name if n == old else n for n in meta[key]]
+        _save_meta(directory, meta)
+    return new
 
 
 def _check_move(src, target_dir):

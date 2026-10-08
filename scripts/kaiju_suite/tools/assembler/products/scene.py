@@ -67,7 +67,6 @@ def export_into(path):
 class SceneProduct(Product):
     name = "Scene"
     extensions = EXTENSIONS
-    color = (255, 230, 100)
     order = 30
     runnable = True
     creators = (Creator("Scene", create_scene, [("Maya Binary (.mb)", ".mb"), ("Maya Ascii (.ma)", ".ma")]),)

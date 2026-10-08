@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- Assembler: right-click **Rename...** renames an item or folder. Files keep their extension, and the item keeps its place in the order and its disabled state
+- Assembler: **Remove** on the right-click menu is now **Delete**
+- Assembler: the tree hides file extensions and shows each item's type and extension, e.g. `Script(.py)` or `Scene(.mb)`, in a column on the right; folders show none. The search box matches the name without its extension
+- Assembler: names are no longer color-coded by type (scripts blue, MEL orange, scenes yellow). Disabled items are still greyed out
 - Assembler: folders can be disabled and enabled from the right-click menu. **Run All** skips a disabled folder and everything in it, including nested folders. Disabled folders are crossed out and their contents greyed. **Run All in** a disabled folder itself still runs it, like running a disabled script directly
 - Assembler: scripts, scenes and folders are now separate "products", one module each under `tools/assembler/products/`. New item types can be added by dropping in a module (see README)
 - Assembler: **Run All** now runs a full build. Scenes are imported in their place in the tree, between scripts. A build that imports a scene can't be undone as one step, because Maya clears undo on import

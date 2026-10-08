@@ -3,10 +3,10 @@
 A product is any module in this package that defines ``PRODUCT``, an
 instance of a :class:`Product` subclass. Adding a product means adding a
 module here; the Assembler's logic and window ask products for everything
-type-specific (which files to list, how to run, menus, colors).
+type-specific (which files to list, how to run, menus).
 
-No Qt here: colors are RGB tuples and icons are ``QStyle.StandardPixmap``
-names; the widget turns them into Qt objects.
+No Qt here: icons are ``QStyle.StandardPixmap`` names; the widget turns
+them into Qt objects.
 """
 
 import importlib
@@ -49,7 +49,6 @@ class Creator:
 class Product:
     name = ""
     extensions = ()  # lower case, with the dot
-    color = None  # (r, g, b)
     icon = None  # QStyle.StandardPixmap name, e.g. "SP_DirIcon"
     order = 100  # menu order; the lower one wins an extension clash
     runnable = False  # joins Run All
@@ -62,10 +61,6 @@ class Product:
 
     def claims(self, path):
         return os.path.isfile(path) and os.path.splitext(path)[1].lower() in self.extensions
-
-    def color_for(self, path):
-        """Text color for ``path`` in the tree; override to vary it per file."""
-        return self.color
 
     def run(self, path):
         """One step of a build. Only called on runnable products."""
