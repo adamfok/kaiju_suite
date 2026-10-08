@@ -275,6 +275,12 @@ def place(paths, directory, index):
     return new_paths
 
 
+# Step statuses passed to run_steps(on_status=...).
+RUNNING = "running"
+SUCCESS = "success"
+ERROR = "error"
+
+
 class StepError(RuntimeError):
     """A step in a build failed; ``path`` says which one."""
 
@@ -300,24 +306,32 @@ def collect_steps(folder):
     return paths
 
 
-def run_steps(paths):
+def run_steps(paths, on_status=None):
     """Run items in order as one undo step, whether enabled or not.
 
     Each item is run by its product (scripts execute, scenes import). Stops
     at the first failure and raises :class:`StepError`; steps that already
     ran stay applied. One undo reverts them, unless a scene was imported:
     Maya flushes undo on import. Returns ``paths``.
+
+    ``on_status(path, status)``, if given, is called with :data:`RUNNING`
+    before each step and :data:`SUCCESS` or :data:`ERROR` after it. Steps
+    after a failure get no call.
     """
     paths = list(paths)
+    report = on_status or (lambda path, status: None)
     with undo_chunk("Assembler"):
         for path in paths:
+            report(path, RUNNING)
             try:
                 product = product_for(path)
                 if product is None or not product.runnable:
                     raise ValueError("Not something the Assembler can run.")
                 product.run(path)
             except Exception as e:
+                report(path, ERROR)
                 raise StepError(path, e) from e
+            report(path, SUCCESS)
     return paths
 
 

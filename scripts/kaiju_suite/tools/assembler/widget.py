@@ -14,6 +14,12 @@ SETTINGS_KEY = "assembler"
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
+# Name color for the last run of each step; see logic.run_steps.
+STATUS_COLORS = {
+    logic.RUNNING: QtGui.QColor(230, 200, 60),
+    logic.SUCCESS: QtGui.QColor(95, 190, 95),
+    logic.ERROR: QtGui.QColor(225, 85, 85),
+}
 
 
 def _warn(message):
@@ -125,8 +131,8 @@ class AssemblerWindow(ToolWindow):
         refresh_btn = QtWidgets.QPushButton()
         refresh_btn.setFixedSize(28, 28)
         refresh_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_BrowserReload))
-        refresh_btn.setToolTip("Refresh file list")
-        refresh_btn.clicked.connect(self.populate)
+        refresh_btn.setToolTip("Refresh file list and clear run colors")
+        refresh_btn.clicked.connect(self._refresh)
         self.browse_btn = QtWidgets.QPushButton()
         self.browse_btn.setFixedSize(28, 28)
         self.browse_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
@@ -136,6 +142,8 @@ class AssemblerWindow(ToolWindow):
         top.addWidget(self.browse_btn)
         self.layout.addLayout(top)
         self._root = ""
+        # Path -> status from the latest run; cleared by refresh and by a new run.
+        self._status = {}
 
         self.tree = _AssemblerTree(self)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
@@ -200,8 +208,36 @@ class AssemblerWindow(ToolWindow):
             elif inside_disabled:
                 item.setForeground(0, DISABLED_COLOR)
                 item.setToolTip(0, "In a disabled folder: skipped by Run All")
+            self._show_status(item)
             if entry.is_dir:
                 self._add_entries(item, entry.children, inside_disabled or bool(disabled))
+
+    def _show_status(self, item):
+        color = STATUS_COLORS.get(self._status.get(item.data(0, PATH_ROLE)))
+        if color:
+            item.setForeground(0, color)
+
+    def _find_item(self, path):
+        def visit(item):
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child.data(0, PATH_ROLE) == path:
+                    return child
+                found = visit(child)
+                if found:
+                    return found
+            return None
+
+        return visit(self.tree.invisibleRootItem())
+
+    def _set_status(self, path, status):
+        self._status[path] = status
+        item = self._find_item(path)
+        if item:
+            self._show_status(item)
+            # The run blocks the UI thread; paint now so "running" shows.
+            # repaint() rather than processEvents() so clicks can't land mid-run.
+            self.tree.viewport().repaint()
 
     def selected_paths(self):
         """Paths of the visible selected items, in tree order."""
@@ -330,9 +366,14 @@ class AssemblerWindow(ToolWindow):
 
         menu.exec(self.tree.mapToGlobal(pos))
 
+    def _refresh(self):
+        self._status.clear()
+        self.populate()
+
     def _run(self, paths):
+        self._refresh()
         try:
-            logic.run_steps(paths)
+            logic.run_steps(paths, on_status=self._set_status)
         except logic.StepError as e:
             log.exception("Step %s failed", e.path)
             done = paths.index(e.path)

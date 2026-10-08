@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Assembler: while a run is going, each step's name turns yellow as it runs, then green if it succeeded or red if it failed. Colors clear when a new run starts or when you click the refresh button
 - Assembler: right-click **Rename** renames an item or folder. Files keep their extension, and the item keeps its place in the order and its disabled state
 - Assembler: **Remove** on the right-click menu is now **Delete**
 - Assembler: the tree hides file extensions and shows each item's type and extension, e.g. `Script(.py)` or `Scene(.mb)`, in a column on the right; folders show none. The search box matches the name without its extension

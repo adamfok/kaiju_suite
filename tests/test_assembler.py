@@ -375,6 +375,43 @@ def test_run_steps_stops_at_first_failure(new_scene, tmp_path):
     assert cmds.objExists("n_a") and not cmds.objExists("n_c")
 
 
+def test_run_steps_reports_each_step_status(new_scene, tmp_path):
+    cmds.undoInfo(state=True)
+    paths = [_make_script(tmp_path / "a.py", "n_a"), _make_script(tmp_path / "b.py", "n_b")]
+    seen = []
+
+    def on_status(path, status):
+        # "running" is reported before the step's work happens.
+        node = "n_a" if path == paths[0] else "n_b"
+        seen.append((path, status, cmds.objExists(node)))
+
+    logic.run_steps(paths, on_status=on_status)
+
+    assert seen == [
+        (paths[0], logic.RUNNING, False),
+        (paths[0], logic.SUCCESS, True),
+        (paths[1], logic.RUNNING, False),
+        (paths[1], logic.SUCCESS, True),
+    ]
+    cmds.undo()
+    assert not cmds.objExists("n_a") and not cmds.objExists("n_b")
+
+
+def test_run_steps_reports_error_and_skips_the_rest(new_scene, tmp_path):
+    good = _make_script(tmp_path / "a.py", "n_a")
+    bad = _touch(tmp_path / "b.py", "raise RuntimeError('boom')\n")
+    never = _make_script(tmp_path / "c.py", "n_c")
+    seen = []
+    with pytest.raises(logic.StepError):
+        logic.run_steps([good, bad, never], on_status=lambda p, s: seen.append((p, s)))
+    assert seen == [
+        (good, logic.RUNNING),
+        (good, logic.SUCCESS),
+        (bad, logic.RUNNING),
+        (bad, logic.ERROR),
+    ]
+
+
 def test_run_folder_skips_disabled(new_scene, tmp_path):
     cmds.undoInfo(state=True)
     _make_script(tmp_path / "a.py", "n_a")
