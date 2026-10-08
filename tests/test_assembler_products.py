@@ -184,11 +184,37 @@ def test_empty_scene_is_skipped_by_a_build(new_scene, tmp_path):
     assert cmds.objExists("n_b")
 
 
+def test_no_panel_by_default():
+    assert products.Product().panel("x") is None
+    assert script.PRODUCT.panel("x.py") is None
+
+
+def test_scenes_have_no_right_click_actions(new_scene, tmp_path):
+    path = scene.create_scene(str(tmp_path), "hero", ".ma")
+    assert scene.PRODUCT.actions(path) == []
+
+
+def _export_action(path):
+    (action,) = scene.PRODUCT.panel(path).actions
+    assert action.label == "Export Selected"
+    return action
+
+
+def test_scene_panel_says_when_a_scene_is_empty(new_scene, tmp_path):
+    path = scene.create_scene(str(tmp_path), "hero", ".ma")
+    assert "Empty" in " ".join(scene.PRODUCT.panel(path).info)
+
+    cmds.select(cmds.createNode("transform"))
+    _export_action(path).fn()
+    info = " ".join(scene.PRODUCT.panel(path).info)
+    assert "Empty" not in info
+    assert "KB" in info
+
+
 @pytest.mark.parametrize("ext", scene.EXTENSIONS)
 def test_export_selected_fills_a_scene_entry(new_scene, tmp_path, ext):
     path = scene.create_scene(str(tmp_path), "hero", ext)
-    (action,) = scene.PRODUCT.actions(path)
-    assert action.label == "Export Selected"
+    action = _export_action(path)
     assert action.confirm is None  # nothing to lose in an empty entry
 
     cmds.select(cmds.createNode("transform", name="hero"))
@@ -203,7 +229,7 @@ def test_export_selected_fills_a_scene_entry(new_scene, tmp_path, ext):
 def test_export_selected_asks_before_replacing_a_full_scene(new_scene, tmp_path):
     cmds.select(cmds.createNode("transform"))
     path = scene.export_selection(str(tmp_path / "full.ma"))
-    (action,) = scene.PRODUCT.actions(path)
+    action = _export_action(path)
     assert action.confirm and "full.ma" in action.confirm
 
 
@@ -211,11 +237,8 @@ def test_export_selected_needs_a_selection(new_scene, tmp_path):
     path = scene.create_scene(str(tmp_path), "hero", ".ma")
     cmds.select(clear=True)
     with pytest.raises(RuntimeError):
-        scene.PRODUCT.actions(path)[0].fn()
+        _export_action(path).fn()
     assert os.path.getsize(path) == 0
-
-
-# -- general build ----------------------------------------------------------
 
 
 def test_collect_steps_includes_scenes_in_order_skipping_disabled(tmp_path):
