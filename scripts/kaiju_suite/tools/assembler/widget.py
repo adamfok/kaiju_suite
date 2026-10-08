@@ -119,6 +119,49 @@ class _NameDialog(QtWidgets.QDialog):
         self.accept()
 
 
+class _PanelDialog(QtWidgets.QDialog):
+    """Non-modal window for a product's :class:`products.Panel`.
+
+    Rebuilt after every button press so it shows the item's new state.
+    """
+
+    def __init__(self, window, product, path):
+        super().__init__(window)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowTitle(os.path.basename(path))
+        self.setMinimumWidth(320)
+        self._window = window
+        self._product = product
+        self._path = path
+        self._body = QtWidgets.QVBoxLayout(self)
+        self._build()
+
+    def _build(self):
+        while self._body.count():
+            widget = self._body.takeAt(0).widget()
+            if widget:
+                widget.deleteLater()
+        try:
+            panel = self._product.panel(self._path)
+        except Exception as e:
+            # The file was moved or deleted while the window was open.
+            _warn(str(e))
+            self.close()
+            return
+        for line in panel.info:
+            label = QtWidgets.QLabel(line)
+            label.setWordWrap(True)
+            self._body.addWidget(label)
+        for action in panel.actions:
+            btn = QtWidgets.QPushButton(action.label)
+            btn.clicked.connect(lambda _=False, a=action: self._press(a))
+            self._body.addWidget(btn)
+
+    def _press(self, action):
+        self._window._do(action.fn, action.confirm)
+        self._build()
+
+
 class AssemblerWindow(ToolWindow):
     TITLE = "Kaiju Assembler"
 
@@ -146,6 +189,8 @@ class AssemblerWindow(ToolWindow):
         self._status = {}
         # Paths picked by Copy; Paste copies them again from disk.
         self._clipboard = []
+        # Path -> open panel window, so a second double-click raises it.
+        self._panels = {}
 
         self.tree = _AssemblerTree(self)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
@@ -302,8 +347,18 @@ class AssemblerWindow(ToolWindow):
         if not path or not os.path.isfile(path):
             return
         product = products.product_for(path)
-        if product:
+        if not product:
+            return
+        if product.panel(path) is None:
             self._do(lambda: product.open(path))
+            return
+        dialog = self._panels.get(path)
+        if dialog is None:
+            dialog = self._panels[path] = _PanelDialog(self, product, path)
+            dialog.destroyed.connect(lambda _=None, p=path: self._panels.pop(p, None))
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
 
     def _do(self, fn, confirm=None):
         """Call a product action; warn on errors, show any message it returns.

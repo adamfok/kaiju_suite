@@ -1,11 +1,15 @@
-"""Scenes (.ma, .mb): imported as a build step, filled by exporting the selection."""
+"""Scenes (.ma, .mb): imported as a build step, filled by exporting the selection.
+
+Double-clicking a scene opens its panel, which holds Export Selected.
+"""
 
 import os
+import time
 
 from maya import cmds
 
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.tools.assembler.products import Action, Creator, Product, new_path
+from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, new_path
 
 EXTENSIONS = (".ma", ".mb")
 
@@ -76,9 +80,15 @@ class SceneProduct(Product):
         if not is_empty(path):
             import_scene(path)
 
-    def actions(self, path):
-        confirm = None if is_empty(path) else f"Replace {os.path.basename(path)} with the current selection?"
-        return [Action("Export Selected", lambda: export_into(path), confirm)]
+    def panel(self, path):
+        if is_empty(path):
+            info = ["Empty. Select something in Maya, then Export Selected.", "Run All skips it until then."]
+            confirm = None
+        else:
+            saved = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(path)))
+            info = [f"{os.path.getsize(path) / 1024:.1f} KB, saved {saved}"]
+            confirm = f"Replace {os.path.basename(path)} with the current selection?"
+        return Panel(info, [Action("Export Selected", lambda: export_into(path), confirm)])
 
 
 PRODUCT = SceneProduct()

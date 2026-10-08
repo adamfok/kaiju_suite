@@ -32,6 +32,17 @@ class Action:
 
 
 @dataclass
+class Panel:
+    """What a double-click window shows: ``info`` lines, then one button per action.
+
+    The window rebuilds it after every action, so it can reflect new state.
+    """
+
+    info: list
+    actions: list
+
+
+@dataclass
 class Creator:
     """An "Add..." entry. ``fn(directory, name, ext)`` returns the new path.
 
@@ -72,6 +83,10 @@ class Product:
 
     def open(self, path):
         """Double-click. Does nothing unless overridden; may return a message."""
+        return None
+
+    def panel(self, path):
+        """A :class:`Panel` to show in a window on double-click instead of :meth:`open`."""
         return None
 
 
