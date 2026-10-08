@@ -144,11 +144,20 @@ class AssemblerWindow(ToolWindow):
         self._root = ""
         # Path -> status from the latest run; cleared by refresh and by a new run.
         self._status = {}
+        # Paths picked by Copy; Paste copies them again from disk.
+        self._clipboard = []
 
         self.tree = _AssemblerTree(self)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
         self.tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
+        for keys, fn in (
+            (QtGui.QKeySequence.StandardKey.Copy, self._copy),
+            (QtGui.QKeySequence.StandardKey.Paste, lambda: self._paste(self.tree.currentItem())),
+        ):
+            shortcut = QtGui.QShortcut(keys, self.tree)
+            shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(fn)
         self.layout.addWidget(self.tree)
 
         root = settings.get(SETTINGS_KEY, "root_dir", "")
@@ -359,6 +368,12 @@ class AssemblerWindow(ToolWindow):
             for creator in owner.creators:
                 new_menu.addAction(creator.label, lambda o=owner, c=creator: self._create(o, c, directory))
 
+        menu.addSeparator()
+        if self.selected_paths():
+            menu.addAction("Copy", self._copy)
+        if self._clipboard:
+            menu.addAction("Paste", lambda: self._paste(item))
+
         if path:
             menu.addSeparator()
             menu.addAction("Rename", lambda: self._rename(path))
@@ -419,6 +434,36 @@ class AssemblerWindow(ToolWindow):
             create(name, None)
         except Exception as e:
             _warn(f"Failed to create: {e}")
+
+    def _copy(self):
+        paths = self.selected_paths()
+        if paths:
+            self._clipboard = paths
+
+    def _paste(self, item):
+        """Paste into the folder ``item`` is, or below the file ``item`` is;
+        at the end of the snippets folder when ``item`` is ``None``."""
+        if not self._clipboard:
+            return
+        target = item.data(0, PATH_ROLE) if item else None
+        if target and os.path.isdir(target):
+            directory, index = target, None
+        elif target:
+            parent = item.parent()
+            directory = parent.data(0, PATH_ROLE) if parent else self.root_dir()
+            index = (parent or self.tree.invisibleRootItem()).indexOfChild(item) + 1
+        else:
+            directory, index = self.root_dir(), None
+        if not directory or not os.path.isdir(directory):
+            return
+        try:
+            new = logic.paste_paths(self._clipboard, directory, index)
+        except Exception as e:
+            _warn(f"Failed to paste: {e}")
+            return
+        finally:
+            self.populate()
+        _notify(f"Pasted {os.path.basename(new[0])}" if len(new) == 1 else f"Pasted {len(new)} items")
 
     def _rename(self, path):
         current = os.path.basename(path)

@@ -239,8 +239,7 @@ def place(paths, directory, index):
     anything moves. Returns the new paths.
     """
     directory = os.path.normpath(directory)
-    srcs = list(dict.fromkeys(os.path.normpath(p) for p in paths))
-    srcs = [p for p in srcs if not any(p.startswith(o + os.sep) for o in srcs)]
+    srcs = _top_level(paths)
 
     names = [os.path.basename(p) for p in srcs]
     if len(set(names)) != len(names):
@@ -251,10 +250,7 @@ def place(paths, directory, index):
         _check_move(src, directory)
 
     current = _ordered_names(directory)
-    moving = set(names)
-    anchor = None
-    if index is not None:
-        anchor = next((n for n in current[index:] if n not in moving), None)
+    anchor = _anchor(current, index, set(names))
 
     new_paths = []
     for src in srcs:
@@ -266,13 +262,85 @@ def place(paths, directory, index):
                 set_enabled(new, False)
         new_paths.append(new)
 
+    _insert_order(directory, current, names, anchor)
+    return new_paths
+
+
+def paste_paths(paths, directory, index):
+    """Copy ``paths`` into ``directory`` and put the copies at ``index``.
+
+    Works like :func:`place` but leaves the originals alone. A copy whose
+    name is taken gets ``_copy`` (then ``_copy2``, ...) before its extension.
+    Copies keep their disabled state, and a copied folder keeps its contents'
+    order and disabled states. Everything is checked before anything is
+    copied. Returns the new paths.
+    """
+    directory = os.path.normpath(directory)
+    srcs = _top_level(paths)
+    for src in srcs:
+        if not os.path.exists(src):
+            raise FileNotFoundError(src)
+        if os.path.isdir(src) and (directory == src or directory.startswith(src + os.sep)):
+            raise ValueError("Cannot paste a folder into itself.")
+
+    current = _ordered_names(directory)
+    anchor = _anchor(current, index, set())
+
+    names, taken = [], {n.lower() for n in os.listdir(directory)}
+    for src in srcs:
+        name = _free_name(os.path.basename(src), taken)
+        taken.add(name.lower())
+        names.append(name)
+
+    new_paths = []
+    for src, name in zip(srcs, names):
+        new = os.path.join(directory, name)
+        if os.path.isdir(src):
+            shutil.copytree(src, new)
+        else:
+            shutil.copy2(src, new)
+        if not is_enabled(src):
+            set_enabled(new, False)
+        new_paths.append(new)
+
+    _insert_order(directory, current, names, anchor)
+    return new_paths
+
+
+def _top_level(paths):
+    """Normalized, de-duplicated ``paths`` minus any inside another of them."""
+    srcs = list(dict.fromkeys(os.path.normpath(p) for p in paths))
+    return [p for p in srcs if not any(p.startswith(o + os.sep) for o in srcs)]
+
+
+def _free_name(name, taken):
+    """``name``, or ``name_copy``, ``name_copy2``... if it's in ``taken`` (lowercase)."""
+    if name.lower() not in taken:
+        return name
+    stem, ext = os.path.splitext(name)
+    candidate, n = f"{stem}_copy{ext}", 2
+    while candidate.lower() in taken:
+        candidate, n = f"{stem}_copy{n}{ext}", n + 1
+    return candidate
+
+
+def _anchor(current, index, moving):
+    """The first name at or after ``index`` in ``current`` that isn't moving;
+    new items go before it. ``None`` means the end."""
+    if index is None:
+        return None
+    return next((n for n in current[index:] if n not in moving), None)
+
+
+def _insert_order(directory, current, names, anchor):
+    """Save ``directory``'s order as ``current`` with ``names`` before ``anchor``."""
+    moving = set(names)
     order = [n for n in current if n not in moving]
     at = order.index(anchor) if anchor is not None else len(order)
     order[at:at] = names
     meta = _load_meta(directory)
     meta["order"] = order
     _save_meta(directory, meta)
-    return new_paths
 
 
 # Step statuses passed to run_steps(on_status=...).

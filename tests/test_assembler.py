@@ -597,3 +597,92 @@ def test_rename_rejects_bad_names(tmp_path):
     with pytest.raises(FileNotFoundError):
         logic.rename_path(str(tmp_path / "missing.py"), "c")
     assert os.path.isfile(path)
+
+
+# -- copy / paste -----------------------------------------------------------
+
+
+def test_paste_copies_into_another_folder_at_index(tmp_path):
+    root = _order_fixture(tmp_path)
+    _touch(tmp_path / "a.py", "print('a')")
+    _touch(tmp_path / "sub" / "x.py")
+    _touch(tmp_path / "sub" / "y.py")
+
+    new = logic.paste_paths([os.path.join(root, "a.py")], os.path.join(root, "sub"), 1)
+
+    assert new == [os.path.join(root, "sub", "a.py")]
+    # The original stays where it was.
+    assert os.path.isfile(os.path.join(root, "a.py"))
+    with open(new[0], encoding="utf-8") as f:
+        assert f.read() == "print('a')"
+    assert _names(logic.scan(os.path.join(root, "sub"))) == ["x.py", "a.py", "y.py"]
+
+
+def test_paste_into_same_folder_adds_copy_suffix(tmp_path):
+    root = _order_fixture(tmp_path)
+    a = os.path.join(root, "a.py")
+
+    first = logic.paste_paths([a], root, 2)
+    second = logic.paste_paths([a], root, None)
+
+    assert first == [os.path.join(root, "a_copy.py")]
+    assert second == [os.path.join(root, "a_copy2.py")]
+    assert _names(logic.scan(root)) == ["sub", "a.py", "a_copy.py", "b.py", "c.py", "a_copy2.py"]
+
+
+def test_paste_folder_copies_contents_order_and_disabled_state(tmp_path):
+    root = _order_fixture(tmp_path)
+    _touch(tmp_path / "sub" / "x.py")
+    _touch(tmp_path / "sub" / "y.py")
+    sub = os.path.join(root, "sub")
+    logic.place([os.path.join(sub, "y.py")], sub, 0)
+    logic.set_enabled(os.path.join(sub, "x.py"), False)
+    logic.set_enabled(sub, False)
+
+    new = logic.paste_paths([sub], root, None)
+
+    assert new == [os.path.join(root, "sub_copy")]
+    copy = logic.scan(root)[-1]
+    assert copy.name == "sub_copy" and not copy.enabled
+    assert _names(copy.children) == ["y.py", "x.py"]
+    assert not copy.children[1].enabled
+    # The source is untouched.
+    assert _names(logic.scan(sub)) == ["y.py", "x.py"]
+
+
+def test_paste_keeps_order_of_several_and_skips_items_inside_a_copied_folder(tmp_path):
+    root = _order_fixture(tmp_path)
+    inner = _touch(tmp_path / "sub" / "x.py")
+    (tmp_path / "dest").mkdir()
+    dest = os.path.join(root, "dest")
+
+    new = logic.paste_paths([os.path.join(root, "c.py"), os.path.join(root, "sub"), inner], dest, None)
+
+    assert new == [os.path.join(dest, "c.py"), os.path.join(dest, "sub")]
+    assert _names(logic.scan(dest)) == ["c.py", "sub"]
+    assert os.listdir(os.path.join(dest, "sub")) == ["x.py"]
+
+
+def test_paste_two_items_with_the_same_name_renames_the_second(tmp_path):
+    root = _order_fixture(tmp_path)
+    other = _touch(tmp_path / "sub" / "a.py")
+    (tmp_path / "dest").mkdir()
+    dest = os.path.join(root, "dest")
+
+    new = logic.paste_paths([os.path.join(root, "a.py"), other], dest, None)
+
+    assert new == [os.path.join(dest, "a.py"), os.path.join(dest, "a_copy.py")]
+
+
+def test_paste_validates_everything_before_copying(tmp_path):
+    root = _order_fixture(tmp_path)
+    (tmp_path / "dest").mkdir()
+    dest = os.path.join(root, "dest")
+    with pytest.raises(FileNotFoundError):
+        logic.paste_paths([os.path.join(root, "a.py"), os.path.join(root, "gone.py")], dest, None)
+    assert os.listdir(dest) == []
+    sub = os.path.join(root, "sub")
+    with pytest.raises(ValueError):
+        logic.paste_paths([sub], sub, None)
+    with pytest.raises(ValueError):
+        logic.paste_paths([root], sub, None)
