@@ -30,3 +30,27 @@ Run the suite after every change. It takes about 5s.
 - The version lives in `scripts/kaiju_suite/__init__.py` (`__version__`). The installer reads it from there; `kaiju_suite.mod` has its own copy, so keep both in sync when bumping.
 - Add user-visible changes to CHANGELOG.md.
 - You can't check the real Maya UI from here (menus, docking, widgets). If a change needs that, say so; don't claim it works.
+
+## Worktrees
+
+When starting any new feature or fix, begin by creating a separate git worktree from the base
+branch and do all work inside it, so parallel agents never overwrite each other's changes.
+After the work is merged, clean up by removing the worktree. For the next task, create a fresh
+worktree from the latest base branch — don't reuse old trees.
+
+## TDD is mandatory
+
+Every change follows **failing test first → implement → verify**:
+1. Write the test(s) that capture the desired behavior and watch them **fail** (red).
+2. Implement the minimum to make them pass.
+3. Run the mayapy test suite (see "Running tests") and confirm green.
+
+Don't write implementation before a failing test exists. When fixing a bug, reproduce it with a
+failing test first.
+
+## Verify before claiming "done"
+
+Never report something as working without running it. "Done" means the mayapy test suite is
+green. The Maya UI (menus, docking, widgets, dialogs) can't be exercised from here, so for any
+change that touches it, list the exact steps I need to check by hand in Maya instead of claiming
+it works. If tests fail or a step was skipped, say so plainly with the output.
