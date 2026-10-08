@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Assembler: right-click **Copy** and **Paste** (or Ctrl+C / Ctrl+V in the tree) duplicate items and folders on disk. Paste goes into the folder you right-click, or just below the item you right-click. A name that's already taken gets `_copy` added (then `_copy2`, ...). Copies keep their disabled state, and a copied folder keeps its order and disabled items
 - Assembler: while a run is going, each step's name turns yellow as it runs, then green if it succeeded or red if it failed. Colors clear when a new run starts or when you click the refresh button
 - Assembler: right-click **Rename** renames an item or folder. Files keep their extension, and the item keeps its place in the order and its disabled state
 - Assembler: **Remove** on the right-click menu is now **Delete**
