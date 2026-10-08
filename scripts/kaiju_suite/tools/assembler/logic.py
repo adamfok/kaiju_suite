@@ -1,5 +1,7 @@
-"""Assembler logic: browse a folder of script and scene snippets.
+"""Assembler logic: browse, order, and build a folder of products.
 
+Everything type-specific (which files are listed, how each one runs) lives
+in :mod:`.products`; this module only deals with the tree and the build.
 No Qt here, so it can be scripted and tested headless. Functions raise on
 bad input instead of warning; the widget decides how to tell the user.
 """
@@ -9,22 +11,17 @@ import os
 import shutil
 from dataclasses import dataclass, field
 
-from maya import cmds, mel
-
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.core.undo import undo_chunk, undoable
+from kaiju_suite.core.undo import undo_chunk
+from kaiju_suite.tools.assembler.products import product_for
 
 log = get_logger(__name__)
 
-SCRIPT_EXTS = (".py", ".mel")
-SCENE_EXTS = (".ma", ".mb")
 SKIP_DIRS = ("__pycache__",)
 
 # Hidden file in each snippet folder holding the custom order and the
-# disabled scripts, by name. It travels with the folder; scan() skips it.
+# disabled items, by name. It travels with the folder; scan() skips it.
 META_FILE = ".assembler.json"
-
-_SCENE_TYPES = {".ma": "mayaAscii", ".mb": "mayaBinary"}
 
 
 @dataclass
@@ -34,6 +31,7 @@ class Entry:
     is_dir: bool
     children: list = field(default_factory=list)
     enabled: bool = True
+    product: object = None
 
     @property
     def ext(self):
@@ -45,22 +43,23 @@ def ext_of(path):
 
 
 def scan(root):
-    """Return the snippet tree under ``root`` as a list of :class:`Entry`.
+    """Return the product tree under ``root`` as a list of :class:`Entry`.
 
     Entries follow the folder's saved order; anything not in it comes after,
     folders first, then files, each sorted by name. Hidden entries and
-    ``__pycache__`` are skipped; empty folders are kept so items can be
-    dropped into them.
+    ``__pycache__`` are skipped, and so are files no product claims; empty
+    folders are kept so items can be dropped into them.
     """
     meta = _load_meta(root)
     disabled = set(meta["disabled"])
     entries = []
     for name in _ordered_names(root, meta):
         path = os.path.join(root, name)
+        product = product_for(path)
         if os.path.isdir(path):
-            entries.append(Entry(name, path, True, scan(path)))
+            entries.append(Entry(name, path, True, scan(path), product=product))
         else:
-            entries.append(Entry(name, path, False, enabled=name not in disabled))
+            entries.append(Entry(name, path, False, enabled=name not in disabled, product=product))
     return entries
 
 
@@ -80,7 +79,7 @@ def _listed_names(root):
         if os.path.isdir(path):
             if name not in SKIP_DIRS:
                 dirs.append(name)
-        elif ext_of(name) in SCRIPT_EXTS + SCENE_EXTS:
+        elif product_for(path) is not None:
             files.append(name)
     return dirs + files
 
@@ -141,7 +140,7 @@ def is_enabled(path):
 
 
 def set_enabled(path, enabled):
-    """Enable or disable a script. :func:`run_folder` skips disabled ones."""
+    """Enable or disable an item. :func:`run_folder` skips disabled ones."""
     directory, name = os.path.split(os.path.normpath(path))
     meta = _load_meta(directory)
     meta["disabled"] = [n for n in meta["disabled"] if n != name]
@@ -153,48 +152,6 @@ def set_enabled(path, enabled):
 def matches(name, text):
     """Case-insensitive search rule used by the filter box."""
     return text.lower() in name.lower()
-
-
-def _file_path(directory, name, ext):
-    name = name.strip()
-    if not name:
-        raise ValueError("Please provide a name.")
-    if "/" in name or "\\" in name:
-        raise ValueError("Name can't contain path separators.")
-    if not name.lower().endswith(ext):
-        name += ext
-    path = os.path.join(directory, name)
-    if os.path.exists(path):
-        raise FileExistsError(f"Already exists: {name}")
-    return path
-
-
-def create_script(directory, name, ext):
-    """Create an empty ``.py`` or ``.mel`` file and return its path."""
-    if ext not in SCRIPT_EXTS:
-        raise ValueError(f"Not a script extension: {ext}")
-    path = _file_path(directory, name, ext)
-    with open(path, "w", encoding="utf-8"):
-        pass
-    return path
-
-
-def create_scene(directory, name, ext):
-    """Export the selection to a new ``.ma``/``.mb`` file and return its path."""
-    if ext not in SCENE_EXTS:
-        raise ValueError(f"Not a scene extension: {ext}")
-    return export_selection(_file_path(directory, name, ext))
-
-
-def create_folder(directory, name):
-    name = name.strip()
-    if not name:
-        raise ValueError("Please provide a name.")
-    path = os.path.join(directory, name)
-    if os.path.exists(path):
-        raise FileExistsError(f"Already exists: {name}")
-    os.makedirs(path)
-    return path
 
 
 def delete_path(path):
@@ -272,24 +229,8 @@ def place(paths, directory, index):
     return new_paths
 
 
-def run_script(path):
-    """Execute a ``.py`` (in ``__main__``) or ``.mel`` file as one undo step."""
-    ext = ext_of(path)
-    if ext not in SCRIPT_EXTS:
-        raise ValueError(f"Not a script: {os.path.basename(path)}")
-    with open(path, encoding="utf-8") as f:
-        code = f.read()
-    with undo_chunk(os.path.basename(path)):
-        if ext == ".py":
-            import __main__
-
-            exec(compile(code, path, "exec"), __main__.__dict__)
-        else:
-            mel.eval(code)
-
-
-class ScriptRunError(RuntimeError):
-    """A script in a batch failed; ``path`` says which one."""
+class StepError(RuntimeError):
+    """A step in a build failed; ``path`` says which one."""
 
     def __init__(self, path, error):
         super().__init__(f"{os.path.basename(path)}: {error}")
@@ -297,110 +238,38 @@ class ScriptRunError(RuntimeError):
         self.error = error
 
 
-def collect_scripts(folder):
-    """Enabled scripts under ``folder``, recursively, in display order."""
+def collect_steps(folder):
+    """Enabled runnable items under ``folder``, recursively, in display order."""
     paths = []
     for entry in scan(folder):
         if entry.is_dir:
-            paths.extend(collect_scripts(entry.path))
-        elif entry.enabled and entry.ext in SCRIPT_EXTS:
+            paths.extend(collect_steps(entry.path))
+        elif entry.enabled and entry.product is not None and entry.product.runnable:
             paths.append(entry.path)
     return paths
 
 
-def run_scripts(paths):
-    """Run scripts in order as one undo step, whether enabled or not.
+def run_steps(paths):
+    """Run items in order as one undo step, whether enabled or not.
 
-    Stops at the first failure and raises :class:`ScriptRunError`; scripts
-    that already ran stay applied (one undo reverts them). Returns ``paths``.
+    Each item is run by its product (scripts execute, scenes import). Stops
+    at the first failure and raises :class:`StepError`; steps that already
+    ran stay applied. One undo reverts them, unless a scene was imported:
+    Maya flushes undo on import. Returns ``paths``.
     """
     paths = list(paths)
     with undo_chunk("Assembler"):
         for path in paths:
             try:
-                run_script(path)
+                product = product_for(path)
+                if product is None or not product.runnable:
+                    raise ValueError("Not something the Assembler can run.")
+                product.run(path)
             except Exception as e:
-                raise ScriptRunError(path, e) from e
+                raise StepError(path, e) from e
     return paths
 
 
 def run_folder(folder):
-    """Run every enabled script under ``folder``; see :func:`run_scripts`."""
-    return run_scripts(collect_scripts(folder))
-
-
-@undoable
-def import_scene(path):
-    """Import a scene into the current one, merging namespaces on clash.
-
-    Maya flushes the undo queue on file import, so this can't be undone;
-    the chunk still keeps the undo state consistent afterwards.
-    """
-    if ext_of(path) not in SCENE_EXTS:
-        raise ValueError(f"Not a scene: {os.path.basename(path)}")
-    return cmds.file(path, i=True, mergeNamespacesOnClash=True, namespace=":", returnNewNodes=True)
-
-
-def export_selection(path, overwrite=False):
-    """Export the current selection to ``path``; type comes from the extension."""
-    file_type = _SCENE_TYPES.get(ext_of(path))
-    if file_type is None:
-        raise ValueError(f"Not a scene: {os.path.basename(path)}")
-    if not cmds.ls(selection=True):
-        raise RuntimeError("Nothing selected to export.")
-    if os.path.exists(path) and not overwrite:
-        raise FileExistsError(f"Already exists: {os.path.basename(path)}")
-    cmds.file(path, exportSelected=True, type=file_type, force=True)
-    return path
-
-
-# Opens a file in a new Script Editor tab, or focuses its tab if already open.
-# Needs the Script Editor UI, so it can't run in standalone.
-_OPEN_IN_EDITOR_MEL = """
-{
-    global string $gCommandExecuterTabs;
-    global string $gLastFocusedCommandExecuter;
-
-    if (size($gCommandExecuterTabs) == 0 || !`tabLayout -exists $gCommandExecuterTabs`) {
-        ScriptEditor;
-    }
-
-    string $loadFile = "%s";
-
-    if (!selectExecuterTabByName($loadFile)) {
-        string $ext = fileExtension($loadFile);
-
-        int $sel = 1;
-        if ($ext == "py") {
-            buildNewExecuterTab(-1, "Python", "python", 0);
-        } else if ($ext == "mel") {
-            buildNewExecuterTab(-1, "MEL", "mel", 0);
-        } else {
-            $sel = 0;
-            addNewExecuterTab("", 0);
-        }
-
-        if ($sel) {
-            tabLayout -e -selectTabIndex `tabLayout -q -numberOfChildren $gCommandExecuterTabs` $gCommandExecuterTabs;
-            selectCurrentExecuterControl();
-        }
-
-        delegateCommandToFocusedExecuterWindow("-e -loadFile \\"" + $loadFile + "\\"", 0);
-
-        string $filename = `cmdScrollFieldExecuter -query -filename $gLastFocusedCommandExecuter`;
-        if (size($filename) > 0) {
-            renameCurrentExecuterTab($filename, 0);
-            delegateCommandToFocusedExecuterWindow "-e -modificationChangedCommand executerTabModificationChanged" 0;
-            delegateCommandToFocusedExecuterWindow "-e -fileChangedCommand executerTabFileChanged" 0;
-        }
-    }
-}
-"""
-
-
-def open_in_script_editor(path):
-    """Load a script into its own Script Editor tab (GUI Maya only)."""
-    if ext_of(path) not in SCRIPT_EXTS:
-        raise ValueError(f"Not a script: {os.path.basename(path)}")
-    safe = path.replace("\\", "/").replace('"', '\\"')
-    mel.eval(_OPEN_IN_EDITOR_MEL % safe)
+    """Run every enabled item under ``folder``; see :func:`run_steps`."""
+    return run_steps(collect_steps(folder))
