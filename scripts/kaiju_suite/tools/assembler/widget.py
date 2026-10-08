@@ -5,7 +5,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import logic
+from kaiju_suite.tools.assembler import logic, products
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -13,12 +13,6 @@ log = get_logger(__name__)
 SETTINGS_KEY = "assembler"
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
 
-COLORS = {
-    ".py": QtGui.QColor(128, 200, 255),
-    ".mel": QtGui.QColor(255, 200, 128),
-    ".ma": QtGui.QColor(255, 230, 100),
-    ".mb": QtGui.QColor(255, 230, 100),
-}
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
 
 
@@ -120,7 +114,7 @@ class AssemblerWindow(ToolWindow):
         style = self.style()
 
         top = QtWidgets.QHBoxLayout()
-        self.search = QtWidgets.QLineEdit(placeholderText="Search scripts...")
+        self.search = QtWidgets.QLineEdit(placeholderText="Search...")
         self.search.textChanged.connect(self._apply_filter)
         refresh_btn = QtWidgets.QPushButton()
         refresh_btn.setFixedSize(28, 28)
@@ -171,28 +165,34 @@ class AssemblerWindow(ToolWindow):
         self.tree.clear()
         entries = logic.scan(root)
         if not entries:
-            self._placeholder("No .py, .mel, .ma, or .mb files found")
+            self._placeholder(f"No {', '.join(products.extensions())} files found")
             return
         self._add_entries(self.tree.invisibleRootItem(), entries)
         self.tree.expandAll()
         self._apply_filter(self.search.text())
 
+    def _icon(self, name):
+        pixmap = getattr(QtWidgets.QStyle.StandardPixmap, name, None) if name else None
+        return self.style().standardIcon(pixmap) if pixmap is not None else None
+
     def _add_entries(self, parent, entries):
-        dir_icon = self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon)
         for entry in entries:
             item = QtWidgets.QTreeWidgetItem(parent, [entry.name])
             item.setData(0, PATH_ROLE, entry.path)
+            product = entry.product
+            icon = self._icon(product.icon) if product else None
+            if icon:
+                item.setIcon(0, icon)
             if entry.is_dir:
-                item.setIcon(0, dir_icon)
                 self._add_entries(item, entry.children)
-            elif not entry.enabled and entry.ext in logic.SCRIPT_EXTS:
+            elif not entry.enabled and product and product.runnable:
                 font = item.font(0)
                 font.setStrikeOut(True)
                 item.setFont(0, font)
                 item.setForeground(0, DISABLED_COLOR)
                 item.setToolTip(0, "Disabled: skipped by Run All")
-            elif entry.ext in COLORS:
-                item.setForeground(0, COLORS[entry.ext])
+            elif product and product.color_for(entry.path):
+                item.setForeground(0, QtGui.QColor(*product.color_for(entry.path)))
 
     def selected_paths(self):
         """Paths of the visible selected items, in tree order."""
@@ -246,10 +246,28 @@ class AssemblerWindow(ToolWindow):
         path = item.data(0, PATH_ROLE)
         if not path or not os.path.isfile(path):
             return
-        if logic.ext_of(path) in logic.SCENE_EXTS:
-            self._import_scene(path)
-        else:
-            self._open_script(path)
+        product = products.product_for(path)
+        if product:
+            self._do(lambda: product.open(path))
+
+    def _do(self, fn, confirm=None):
+        """Call a product action; warn on errors, show any message it returns.
+
+        With ``confirm``, ask it as a yes/no question first.
+        """
+        if confirm:
+            Button = QtWidgets.QMessageBox.StandardButton
+            answer = QtWidgets.QMessageBox.question(self, "Confirm", confirm, Button.Yes | Button.No, Button.No)
+            if answer != Button.Yes:
+                return
+        try:
+            message = fn()
+        except Exception as e:
+            log.exception("Assembler action failed")
+            _warn(str(e))
+            return
+        if message:
+            _notify(message)
 
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)
@@ -263,32 +281,34 @@ class AssemblerWindow(ToolWindow):
                 return
             is_file = False
 
-        scripts = [p for p in self.selected_paths() if logic.ext_of(p) in logic.SCRIPT_EXTS and os.path.isfile(p)]
+        steps = []
+        for selected in self.selected_paths():
+            owner = products.product_for(selected)
+            if owner and owner.runnable and os.path.isfile(selected):
+                steps.append(selected)
 
         menu = QtWidgets.QMenu(self)
-        if is_file:
-            ext = logic.ext_of(path)
-            if ext in logic.SCRIPT_EXTS:
-                menu.addAction("Open in Script Editor", lambda: self._open_script(path))
-            else:
-                menu.addAction("Import Scene", lambda: self._import_scene(path))
-        if scripts:
-            label = "Run Script" if len(scripts) == 1 else f"Run {len(scripts)} Selected Scripts"
-            menu.addAction(label, lambda: self._run(scripts))
-            enabled = [logic.is_enabled(p) for p in scripts]
+        product = products.product_for(path) if path else None
+        if product:
+            for action in product.actions(path):
+                menu.addAction(action.label, lambda a=action: self._do(a.fn, a.confirm))
+        if steps:
+            label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
+            menu.addAction(label, lambda: self._run(steps))
+            enabled = [logic.is_enabled(p) for p in steps]
             if any(enabled):
-                menu.addAction("Disable", lambda: self._set_enabled(scripts, False))
+                menu.addAction("Disable", lambda: self._set_enabled(steps, False))
             if not all(enabled):
-                menu.addAction("Enable", lambda: self._set_enabled(scripts, True))
+                menu.addAction("Enable", lambda: self._set_enabled(steps, True))
         if not is_file:
-            label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All Scripts"
+            label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All"
             menu.addAction(label, lambda: self._run_folder(directory))
         menu.addSeparator()
 
-        menu.addAction("Add Script...", lambda: self._add_script(directory))
-        menu.addAction("Export Selected...", lambda: self._export_selected(directory))
-        menu.addSeparator()
-        menu.addAction("Add Folder...", lambda: self._add_folder(directory))
+        new_menu = menu.addMenu("New")
+        for owner in products.all_products():
+            for creator in owner.creators:
+                new_menu.addAction(creator.label, lambda o=owner, c=creator: self._create(o, c, directory))
 
         if path:
             menu.addSeparator()
@@ -296,28 +316,22 @@ class AssemblerWindow(ToolWindow):
 
         menu.exec(self.tree.mapToGlobal(pos))
 
-    def _open_script(self, path):
-        try:
-            logic.open_in_script_editor(path)
-        except Exception as e:
-            _warn(f"Failed to open script: {e}")
-
     def _run(self, paths):
         try:
-            logic.run_scripts(paths)
-        except logic.ScriptRunError as e:
-            log.exception("Script %s failed", e.path)
+            logic.run_steps(paths)
+        except logic.StepError as e:
+            log.exception("Step %s failed", e.path)
             done = paths.index(e.path)
-            ran = f" ({done} ran before it; one undo reverts them)" if done else ""
+            ran = f" ({done} ran before it and stay applied)" if done else ""
             _warn(f"Failed to run {e}{ran}")
             return
         if len(paths) > 1:
-            _notify(f"Ran {len(paths)} scripts")
+            _notify(f"Ran {len(paths)} steps")
 
     def _run_folder(self, folder):
-        paths = logic.collect_scripts(folder)
+        paths = logic.collect_steps(folder)
         if not paths:
-            _warn("No enabled scripts to run in this folder.")
+            _warn("Nothing enabled to run in this folder.")
             return
         self._run(paths)
 
@@ -329,49 +343,33 @@ class AssemblerWindow(ToolWindow):
             _warn(f"Failed to update: {e}")
         self.populate()
 
-    def _import_scene(self, path):
-        try:
-            logic.import_scene(path)
-        except Exception as e:
-            _warn(f"Failed to import scene: {e}")
+    def _create(self, product, creator, directory):
+        title = f"New {creator.label}"
+
+        def create(name, ext):
+            path = creator.fn(directory, name, ext)
+            self.populate()
+            if creator.open_after:
+                self._do(lambda: product.open(path))
+            elif os.path.isfile(path):
+                _notify(f"Added {os.path.basename(path)}")
+
+        if creator.choices:
+            _NameDialog(self, title, creator.choices, create).exec()
             return
-        _notify(f"Imported {os.path.basename(path)}")
-
-    def _add_script(self, directory):
-        def create(name, ext):
-            path = logic.create_script(directory, name, ext)
-            self.populate()
-            self._open_script(path)
-
-        _NameDialog(self, "Add New Script", [("Python (.py)", ".py"), ("MEL (.mel)", ".mel")], create).exec()
-
-    def _export_selected(self, directory):
-        def create(name, ext):
-            path = logic.create_scene(directory, name, ext)
-            self.populate()
-            _notify(f"Added selection as {os.path.basename(path)}")
-
-        choices = [("Maya Binary (.mb)", ".mb"), ("Maya Ascii (.ma)", ".ma")]
-        _NameDialog(self, "Export Selected", choices, create).exec()
-
-    def _add_folder(self, directory):
-        name, ok = QtWidgets.QInputDialog.getText(self, "New Folder", "Folder Name:")
+        name, ok = QtWidgets.QInputDialog.getText(self, title, "Name:")
         if not ok or not name:
             return
         try:
-            logic.create_folder(directory, name)
+            create(name, None)
         except Exception as e:
-            _warn(f"Failed to create folder: {e}")
-            return
-        self.populate()
+            _warn(f"Failed to create: {e}")
 
     def _remove(self, path):
+        product = products.product_for(path)
+        kind = product.name.lower() if product else "item"
         if os.path.isdir(path):
-            kind = "folder and everything in it"
-        elif logic.ext_of(path) in logic.SCENE_EXTS:
-            kind = "scene"
-        else:
-            kind = "script"
+            kind += " and everything in it"
         answer = QtWidgets.QMessageBox.question(
             self,
             "Confirm Delete",

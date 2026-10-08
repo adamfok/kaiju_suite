@@ -4,6 +4,7 @@ import pytest
 from maya import cmds
 
 from kaiju_suite.tools.assembler import logic
+from kaiju_suite.tools.assembler.products import folder, scene, script
 
 
 def _touch(path, text=""):
@@ -52,30 +53,30 @@ def test_matches_is_case_insensitive():
 
 
 def test_create_script_adds_extension(tmp_path):
-    path = logic.create_script(str(tmp_path), "hello", ".py")
+    path = script.create_script(str(tmp_path), "hello", ".py")
     assert path == str(tmp_path / "hello.py") and os.path.isfile(path)
-    assert logic.create_script(str(tmp_path), "x.mel", ".mel").endswith("x.mel")
+    assert script.create_script(str(tmp_path), "x.mel", ".mel").endswith("x.mel")
 
 
 def test_create_script_refuses_overwrite_and_bad_names(tmp_path):
-    logic.create_script(str(tmp_path), "hello", ".py")
+    script.create_script(str(tmp_path), "hello", ".py")
     with pytest.raises(FileExistsError):
-        logic.create_script(str(tmp_path), "hello", ".py")
+        script.create_script(str(tmp_path), "hello", ".py")
     with pytest.raises(ValueError):
-        logic.create_script(str(tmp_path), "  ", ".py")
+        script.create_script(str(tmp_path), "  ", ".py")
     with pytest.raises(ValueError):
-        logic.create_script(str(tmp_path), "sub/hello", ".py")
+        script.create_script(str(tmp_path), "sub/hello", ".py")
     with pytest.raises(ValueError):
-        logic.create_script(str(tmp_path), "hello", ".ma")
+        script.create_script(str(tmp_path), "hello", ".ma")
 
 
 def test_create_and_delete_folder(tmp_path):
-    folder = logic.create_folder(str(tmp_path), "stuff")
-    _touch(os.path.join(folder, "a.py"))
+    path = folder.create_folder(str(tmp_path), "stuff")
+    _touch(os.path.join(path, "a.py"))
     with pytest.raises(FileExistsError):
-        logic.create_folder(str(tmp_path), "stuff")
-    logic.delete_path(folder)
-    assert not os.path.exists(folder)
+        folder.create_folder(str(tmp_path), "stuff")
+    logic.delete_path(path)
+    assert not os.path.exists(path)
 
 
 def test_delete_file(tmp_path):
@@ -139,7 +140,7 @@ def test_run_python_script_is_one_undo_step(new_scene, tmp_path):
         "from maya import cmds\ncmds.createNode('transform', name='py_a')\n"
         "cmds.createNode('transform', name='py_b')\n",
     )
-    logic.run_script(path)
+    script.run_script(path)
     assert cmds.objExists("py_a") and cmds.objExists("py_b")
     cmds.undo()
     assert not cmds.objExists("py_a") and not cmds.objExists("py_b")
@@ -147,52 +148,52 @@ def test_run_python_script_is_one_undo_step(new_scene, tmp_path):
 
 def test_run_mel_script(new_scene, tmp_path):
     path = _touch(tmp_path / "make.mel", 'createNode transform -name "mel_a";\n')
-    logic.run_script(path)
+    script.run_script(path)
     assert cmds.objExists("mel_a")
 
 
 def test_run_rejects_scene(tmp_path):
     with pytest.raises(ValueError):
-        logic.run_script(_touch(tmp_path / "a.ma"))
+        script.run_script(_touch(tmp_path / "a.ma"))
 
 
 # -- scenes -----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("ext", logic.SCENE_EXTS)
+@pytest.mark.parametrize("ext", scene.EXTENSIONS)
 def test_export_import_round_trip(new_scene, tmp_path, ext):
     cmds.select(cmds.createNode("transform", name="hero"))
-    path = logic.create_scene(str(tmp_path), "hero", ext)
-    assert path.endswith(ext) and os.path.isfile(path)
+    path = scene.export_selection(str(tmp_path / f"hero{ext}"))
+    assert os.path.isfile(path)
 
     cmds.file(new=True, force=True)
-    logic.import_scene(path)
+    scene.import_scene(path)
     assert cmds.objExists("hero")
 
 
 def test_export_requires_selection(new_scene, tmp_path):
     cmds.select(clear=True)
     with pytest.raises(RuntimeError):
-        logic.export_selection(str(tmp_path / "a.ma"))
+        scene.export_selection(str(tmp_path / "a.ma"))
 
 
 def test_export_overwrite_guard(new_scene, tmp_path):
     cmds.select(cmds.createNode("transform"))
-    path = logic.export_selection(str(tmp_path / "a.mb"))
+    path = scene.export_selection(str(tmp_path / "a.mb"))
     with pytest.raises(FileExistsError):
-        logic.export_selection(path)
-    assert logic.export_selection(path, overwrite=True) == path
+        scene.export_selection(path)
+    assert scene.export_selection(path, overwrite=True) == path
 
 
 def test_import_flushes_undo_but_leaves_it_usable(new_scene, tmp_path):
     # Maya can't undo a file import (it flushes the queue); make sure our
     # undo chunk doesn't leave undo broken for whatever comes next.
     cmds.select([cmds.createNode("transform", name=n) for n in ("one", "two")])
-    path = logic.export_selection(str(tmp_path / "pair.ma"))
+    path = scene.export_selection(str(tmp_path / "pair.ma"))
     cmds.file(new=True, force=True)
     cmds.undoInfo(state=True)
 
-    logic.import_scene(path)
+    scene.import_scene(path)
     assert cmds.objExists("one") and cmds.objExists("two")
 
     cmds.createNode("transform", name="after")
@@ -334,41 +335,41 @@ def _make_script(path, node):
     return _touch(path, f"from maya import cmds\ncmds.createNode('transform', name='{node}')\n")
 
 
-def test_collect_scripts_in_display_order_skipping_disabled(tmp_path):
+def test_collect_steps_in_display_order_skipping_disabled(tmp_path):
     root = str(tmp_path)
     a = _make_script(tmp_path / "a.py", "a")
     b = _make_script(tmp_path / "b.py", "b")
-    _touch(tmp_path / "scene.ma")
+    m = _touch(tmp_path / "scene.ma")
     s1 = _touch(tmp_path / "sub" / "s1.mel")
     s2 = _make_script(tmp_path / "sub" / "s2.py", "s2")
     logic.place([b], root, 0)
     logic.set_enabled(s2, False)
 
-    assert logic.collect_scripts(root) == [b, s1, a]
+    assert logic.collect_steps(root) == [b, s1, a, m]
 
 
-def test_run_scripts_is_one_undo_step(new_scene, tmp_path):
+def test_run_steps_is_one_undo_step(new_scene, tmp_path):
     cmds.undoInfo(state=True)
     paths = [_make_script(tmp_path / "a.py", "n_a"), _make_script(tmp_path / "b.py", "n_b")]
-    assert logic.run_scripts(paths) == paths
+    assert logic.run_steps(paths) == paths
     assert cmds.objExists("n_a") and cmds.objExists("n_b")
     cmds.undo()
     assert not cmds.objExists("n_a") and not cmds.objExists("n_b")
 
 
-def test_run_scripts_runs_disabled_ones_when_asked(new_scene, tmp_path):
+def test_run_steps_runs_disabled_ones_when_asked(new_scene, tmp_path):
     path = _make_script(tmp_path / "a.py", "n_a")
     logic.set_enabled(path, False)
-    logic.run_scripts([path])
+    logic.run_steps([path])
     assert cmds.objExists("n_a")
 
 
-def test_run_scripts_stops_at_first_failure(new_scene, tmp_path):
+def test_run_steps_stops_at_first_failure(new_scene, tmp_path):
     good = _make_script(tmp_path / "a.py", "n_a")
     bad = _touch(tmp_path / "b.py", "raise RuntimeError('boom')\n")
     never = _make_script(tmp_path / "c.py", "n_c")
-    with pytest.raises(logic.ScriptRunError) as info:
-        logic.run_scripts([good, bad, never])
+    with pytest.raises(logic.StepError) as info:
+        logic.run_steps([good, bad, never])
     assert info.value.path == bad
     assert "boom" in str(info.value)
     assert cmds.objExists("n_a") and not cmds.objExists("n_c")
