@@ -127,27 +127,15 @@ class AssemblerWindow(ToolWindow):
         refresh_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_BrowserReload))
         refresh_btn.setToolTip("Refresh file list")
         refresh_btn.clicked.connect(self.populate)
-        folder_btn = QtWidgets.QPushButton()
-        folder_btn.setFixedSize(28, 28)
-        folder_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
-        folder_btn.setToolTip("Show or hide the folder setting")
-        folder_btn.clicked.connect(lambda: self.dir_row.setVisible(not self.dir_row.isVisible()))
+        self.browse_btn = QtWidgets.QPushButton()
+        self.browse_btn.setFixedSize(28, 28)
+        self.browse_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
+        self.browse_btn.clicked.connect(self._browse)
         top.addWidget(self.search)
         top.addWidget(refresh_btn)
-        top.addWidget(folder_btn)
+        top.addWidget(self.browse_btn)
         self.layout.addLayout(top)
-
-        self.dir_row = QtWidgets.QWidget()
-        dir_layout = QtWidgets.QHBoxLayout(self.dir_row)
-        dir_layout.setContentsMargins(0, 0, 0, 0)
-        self.dir_edit = QtWidgets.QLineEdit(placeholderText="Select snippets folder...")
-        self.dir_edit.editingFinished.connect(self.populate)
-        browse_btn = QtWidgets.QPushButton("Browse")
-        browse_btn.clicked.connect(self._browse)
-        dir_layout.addWidget(self.dir_edit)
-        dir_layout.addWidget(browse_btn)
-        self.dir_row.setVisible(False)
-        self.layout.addWidget(self.dir_row)
+        self._root = ""
 
         self.tree = _AssemblerTree(self)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
@@ -156,17 +144,22 @@ class AssemblerWindow(ToolWindow):
         self.layout.addWidget(self.tree)
 
         root = settings.get(SETTINGS_KEY, "root_dir", "")
-        if root and os.path.isdir(root):
-            self.dir_edit.setText(root)
+        self._set_root(root if root and os.path.isdir(root) else "")
+        if self._root:
             self.populate()
         else:
-            self.dir_row.setVisible(True)
-            self._placeholder("Click 'Browse' to select a folder")
+            self._placeholder("Click the folder button to select a snippets folder")
 
     # -- tree -------------------------------------------------------------
 
     def root_dir(self):
-        return self.dir_edit.text().strip()
+        return self._root
+
+    def _set_root(self, root):
+        self._root = root
+        self.browse_btn.setToolTip(
+            f"Change snippets folder\n{root}" if root else "Select snippets folder"
+        )
 
     def populate(self):
         root = self.root_dir()
@@ -244,7 +237,7 @@ class AssemblerWindow(ToolWindow):
             self, "Select Snippets Folder", self.root_dir() or os.path.expanduser("~")
         )
         if folder:
-            self.dir_edit.setText(os.path.normpath(folder))
+            self._set_root(os.path.normpath(folder))
             self.populate()
 
     # -- actions ----------------------------------------------------------
