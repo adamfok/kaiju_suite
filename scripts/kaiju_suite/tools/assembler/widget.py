@@ -325,7 +325,7 @@ class AssemblerWindow(ToolWindow):
 
         if path:
             menu.addSeparator()
-            menu.addAction("Rename...", lambda: self._rename(path))
+            menu.addAction("Rename", lambda: self._rename(path))
             menu.addAction("Delete", lambda: self._delete(path))
 
         menu.exec(self.tree.mapToGlobal(pos))
