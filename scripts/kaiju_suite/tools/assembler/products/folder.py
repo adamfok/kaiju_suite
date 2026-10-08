@@ -14,8 +14,8 @@ def create_folder(directory, name):
 class FolderProduct(Product):
     name = "Folder"
     icon = "SP_DirIcon"
-    order = 0
-    creators = (Creator("Add Folder...", lambda directory, name, _ext: create_folder(directory, name)),)
+    order = 20
+    creators = (Creator("Folder", lambda directory, name, _ext: create_folder(directory, name)),)
 
     def claims(self, path):
         return os.path.isdir(path)

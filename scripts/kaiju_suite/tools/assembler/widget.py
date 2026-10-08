@@ -250,8 +250,16 @@ class AssemblerWindow(ToolWindow):
         if product:
             self._do(lambda: product.open(path))
 
-    def _do(self, fn):
-        """Call a product action; warn on errors, show any message it returns."""
+    def _do(self, fn, confirm=None):
+        """Call a product action; warn on errors, show any message it returns.
+
+        With ``confirm``, ask it as a yes/no question first.
+        """
+        if confirm:
+            Button = QtWidgets.QMessageBox.StandardButton
+            answer = QtWidgets.QMessageBox.question(self, "Confirm", confirm, Button.Yes | Button.No, Button.No)
+            if answer != Button.Yes:
+                return
         try:
             message = fn()
         except Exception as e:
@@ -283,7 +291,7 @@ class AssemblerWindow(ToolWindow):
         product = products.product_for(path) if path else None
         if product:
             for action in product.actions(path):
-                menu.addAction(action.label, lambda fn=action.fn: self._do(fn))
+                menu.addAction(action.label, lambda a=action: self._do(a.fn, a.confirm))
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
@@ -297,9 +305,10 @@ class AssemblerWindow(ToolWindow):
             menu.addAction(label, lambda: self._run_folder(directory))
         menu.addSeparator()
 
+        new_menu = menu.addMenu("New")
         for owner in products.all_products():
             for creator in owner.creators:
-                menu.addAction(creator.label, lambda o=owner, c=creator: self._create(o, c, directory))
+                new_menu.addAction(creator.label, lambda o=owner, c=creator: self._create(o, c, directory))
 
         if path:
             menu.addSeparator()
@@ -335,7 +344,7 @@ class AssemblerWindow(ToolWindow):
         self.populate()
 
     def _create(self, product, creator, directory):
-        title = creator.label.rstrip(".")
+        title = f"New {creator.label}"
 
         def create(name, ext):
             path = creator.fn(directory, name, ext)

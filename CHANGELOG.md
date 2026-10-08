@@ -4,6 +4,9 @@
 - Assembler: scripts, scenes and folders are now separate "products", one module each under `tools/assembler/products/`. New item types can be added by dropping in a module (see README)
 - Assembler: **Run All** now runs a full build. Scenes are imported in their place in the tree, between scripts. A build that imports a scene can't be undone as one step, because Maya clears undo on import
 - Assembler: scenes can be disabled and enabled like scripts, and can be included in **Run N Selected**
+- Assembler: right-click **New ▸ Script / Folder / Scene** replaces Add Script…, Add Folder… and Export Selected…. **New ▸ Scene** creates an empty scene entry without needing a selection; a build skips empty scenes
+- Assembler: **Export Selected** is now on a scene's right-click menu and writes the selection into that scene. It asks first if the scene already has content
+- Assembler: double-clicking a scene no longer imports it (use **Run**), and **Open in Script Editor** / **Import Scene** are gone from the right-click menu. Double-clicking a script still opens it
 - Assembler: disable or enable scripts from the right-click menu; disabled scripts are shown crossed out
 - Assembler: select several scripts (Ctrl/Shift-click) and run them together in tree order, including disabled ones, as one undo step; stops at the first failing script
 - Assembler: **Run All** on a folder (or on empty space for the whole snippets folder) runs every enabled script under it, top to bottom, as one undo step

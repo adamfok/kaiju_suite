@@ -5,7 +5,7 @@ import os
 from maya import mel
 
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.assembler.products import Action, Creator, Product, new_path
+from kaiju_suite.tools.assembler.products import Creator, Product, new_path
 
 EXTENSIONS = (".py", ".mel")
 
@@ -101,7 +101,7 @@ class ScriptProduct(Product):
     order = 10
     runnable = True
     creators = (
-        Creator("Add Script...", create_script, [("Python (.py)", ".py"), ("MEL (.mel)", ".mel")], open_after=True),
+        Creator("Script", create_script, [("Python (.py)", ".py"), ("MEL (.mel)", ".mel")], open_after=True),
     )
 
     def color_for(self, path):
@@ -110,8 +110,8 @@ class ScriptProduct(Product):
     def run(self, path):
         run_script(path)
 
-    def actions(self, path):
-        return [Action("Open in Script Editor", lambda: open_in_script_editor(path))]
+    def open(self, path):
+        open_in_script_editor(path)
 
 
 PRODUCT = ScriptProduct()

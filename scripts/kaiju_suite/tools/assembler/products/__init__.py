@@ -21,10 +21,14 @@ log = get_logger(__name__)
 
 @dataclass
 class Action:
-    """A right-click entry. ``fn()`` may return a message to show the user."""
+    """A right-click entry. ``fn()`` may return a message to show the user.
+
+    If ``confirm`` is set, the widget asks it as a yes/no question first.
+    """
 
     label: str
     fn: object
+    confirm: str = None
 
 
 @dataclass
@@ -63,13 +67,12 @@ class Product:
         raise NotImplementedError(f"{self.name} can't be run")
 
     def actions(self, path):
-        """Right-click entries for ``path``; the first one is the double-click."""
+        """Extra right-click entries for ``path``, as :class:`Action`s."""
         return []
 
     def open(self, path):
-        """Double-click: runs the first action. Returns its message, if any."""
-        actions = self.actions(path)
-        return actions[0].fn() if actions else None
+        """Double-click. Does nothing unless overridden; may return a message."""
+        return None
 
 
 def new_path(directory, name, ext):

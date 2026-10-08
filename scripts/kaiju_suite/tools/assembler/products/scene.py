@@ -1,4 +1,4 @@
-"""Scenes (.ma, .mb): imported as a build step, made by exporting the selection."""
+"""Scenes (.ma, .mb): imported as a build step, filled by exporting the selection."""
 
 import os
 
@@ -42,30 +42,44 @@ def export_selection(path, overwrite=False):
 
 
 def create_scene(directory, name, ext):
-    """Export the selection to a new ``.ma``/``.mb`` file and return its path."""
+    """Create an empty ``.ma``/``.mb`` entry and return its path.
+
+    Fill it later with :func:`export_into`; until then a build skips it.
+    """
     if ext not in EXTENSIONS:
         raise ValueError(f"Not a scene extension: {ext}")
-    return export_selection(new_path(directory, name, ext))
+    path = new_path(directory, name, ext)
+    with open(path, "wb"):
+        pass
+    return path
 
 
-def _import(path):
-    import_scene(path)
-    return f"Imported {os.path.basename(path)}"
+def is_empty(path):
+    return os.path.getsize(path) == 0
+
+
+def export_into(path):
+    """Replace the scene at ``path`` with the current selection."""
+    export_selection(path, overwrite=True)
+    return f"Exported selection to {os.path.basename(path)}"
 
 
 class SceneProduct(Product):
     name = "Scene"
     extensions = EXTENSIONS
     color = (255, 230, 100)
-    order = 20
+    order = 30
     runnable = True
-    creators = (Creator("Export Selected...", create_scene, [("Maya Binary (.mb)", ".mb"), ("Maya Ascii (.ma)", ".ma")]),)
+    creators = (Creator("Scene", create_scene, [("Maya Binary (.mb)", ".mb"), ("Maya Ascii (.ma)", ".ma")]),)
 
     def run(self, path):
-        import_scene(path)
+        # An empty entry hasn't been exported into yet: nothing to import.
+        if not is_empty(path):
+            import_scene(path)
 
     def actions(self, path):
-        return [Action("Import Scene", lambda: _import(path))]
+        confirm = None if is_empty(path) else f"Replace {os.path.basename(path)} with the current selection?"
+        return [Action("Export Selected", lambda: export_into(path), confirm)]
 
 
 PRODUCT = SceneProduct()

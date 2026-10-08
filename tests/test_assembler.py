@@ -163,8 +163,8 @@ def test_run_rejects_scene(tmp_path):
 @pytest.mark.parametrize("ext", scene.EXTENSIONS)
 def test_export_import_round_trip(new_scene, tmp_path, ext):
     cmds.select(cmds.createNode("transform", name="hero"))
-    path = scene.create_scene(str(tmp_path), "hero", ext)
-    assert path.endswith(ext) and os.path.isfile(path)
+    path = scene.export_selection(str(tmp_path / f"hero{ext}"))
+    assert os.path.isfile(path)
 
     cmds.file(new=True, force=True)
     scene.import_scene(path)

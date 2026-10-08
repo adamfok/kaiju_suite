@@ -46,8 +46,8 @@ def with_json(monkeypatch):
 
 def test_discover_finds_builtin_products_in_order():
     found = products.discover()
-    assert [p.name for p in found] == ["Folder", "Script", "Scene"]
-    assert found[0] is folder.PRODUCT
+    assert [p.name for p in found] == ["Script", "Folder", "Scene"]
+    assert found[1] is folder.PRODUCT
 
 
 def test_product_for_maps_paths(tmp_path):
@@ -90,20 +90,33 @@ def test_broken_product_module_is_skipped(monkeypatch, tmp_path):
     _touch(tmp_path / "broken_product.py", "raise ImportError('nope')\n")
     monkeypatch.setattr(products, "__path__", list(products.__path__) + [str(tmp_path)])
     try:
-        assert [p.name for p in products.discover()] == ["Folder", "Script", "Scene"]
+        assert [p.name for p in products.discover()] == ["Script", "Folder", "Scene"]
     finally:
         sys.modules.pop(f"{products.__name__}.broken_product", None)
 
 
-def test_open_runs_the_first_action(tmp_path):
-    calls = []
+def test_open_does_nothing_by_default():
+    assert products.Product().open("x") is None
 
-    class Thing(products.Product):
-        def actions(self, path):
-            return [products.Action("First", lambda: calls.append(path)), products.Action("Second", None)]
 
-    Thing().open("x")
-    assert calls == ["x"]
+def test_double_click_opens_scripts_without_a_menu_entry(monkeypatch, tmp_path):
+    opened = []
+    monkeypatch.setattr(script, "open_in_script_editor", opened.append)
+    path = _touch(tmp_path / "a.py")
+
+    script.PRODUCT.open(path)
+
+    assert opened == [path]
+    assert script.PRODUCT.actions(path) == []
+
+
+def test_double_click_does_not_import_scenes(new_scene, tmp_path):
+    cmds.select(cmds.createNode("transform", name="hero"))
+    path = scene.export_selection(str(tmp_path / "hero.ma"))
+    cmds.file(new=True, force=True)
+
+    assert scene.PRODUCT.open(path) is None
+    assert not cmds.objExists("hero")
 
 
 # -- a new product only needs its own module -------------------------------
@@ -140,15 +153,65 @@ def test_new_path_validates_names(tmp_path):
         products.new_path(str(tmp_path), "a\\b", None)
 
 
-def test_every_product_offers_a_creator():
+def test_new_menu_lists_script_folder_scene():
     labels = [c.label for p in products.discover() for c in p.creators]
-    assert labels == ["Add Folder...", "Add Script...", "Export Selected..."]
+    assert labels == ["Script", "Folder", "Scene"]
     assert folder.PRODUCT.creators[0].choices is None
 
 
 def test_script_creator_opens_the_new_file():
     assert script.PRODUCT.creators[0].open_after
     assert not scene.PRODUCT.creators[0].open_after
+
+
+@pytest.mark.parametrize("ext", scene.EXTENSIONS)
+def test_new_scene_is_an_empty_entry_needing_no_selection(new_scene, tmp_path, ext):
+    cmds.select(clear=True)
+    path = scene.create_scene(str(tmp_path), "hero", ext)
+    assert path == str(tmp_path / f"hero{ext}")
+    assert os.path.getsize(path) == 0
+    with pytest.raises(FileExistsError):
+        scene.create_scene(str(tmp_path), "hero", ext)
+    with pytest.raises(ValueError):
+        scene.create_scene(str(tmp_path), "x", ".py")
+
+
+def test_empty_scene_is_skipped_by_a_build(new_scene, tmp_path):
+    empty = scene.create_scene(str(tmp_path), "later", ".mb")
+    after = _make_script(tmp_path / "b.py", "n_b")
+    assert logic.run_steps([empty, after]) == [empty, after]
+    assert cmds.objExists("n_b")
+
+
+@pytest.mark.parametrize("ext", scene.EXTENSIONS)
+def test_export_selected_fills_a_scene_entry(new_scene, tmp_path, ext):
+    path = scene.create_scene(str(tmp_path), "hero", ext)
+    (action,) = scene.PRODUCT.actions(path)
+    assert action.label == "Export Selected"
+    assert action.confirm is None  # nothing to lose in an empty entry
+
+    cmds.select(cmds.createNode("transform", name="hero"))
+    assert "hero" in action.fn()
+    assert os.path.getsize(path) > 0
+
+    cmds.file(new=True, force=True)
+    logic.run_steps([path])
+    assert cmds.objExists("hero")
+
+
+def test_export_selected_asks_before_replacing_a_full_scene(new_scene, tmp_path):
+    cmds.select(cmds.createNode("transform"))
+    path = scene.export_selection(str(tmp_path / "full.ma"))
+    (action,) = scene.PRODUCT.actions(path)
+    assert action.confirm and "full.ma" in action.confirm
+
+
+def test_export_selected_needs_a_selection(new_scene, tmp_path):
+    path = scene.create_scene(str(tmp_path), "hero", ".ma")
+    cmds.select(clear=True)
+    with pytest.raises(RuntimeError):
+        scene.PRODUCT.actions(path)[0].fn()
+    assert os.path.getsize(path) == 0
 
 
 # -- general build ----------------------------------------------------------

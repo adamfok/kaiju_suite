@@ -36,7 +36,7 @@ See `tools/renamer/` for a working example.
 The Assembler lists, runs and creates "products": scripts, scenes and folders today. Each one is a module in `tools/assembler/products/`.
 1. Add `tools/assembler/products/<my_product>.py`. Don't import Qt there.
 2. Subclass `Product` and set `name`, `extensions`, `color` (an RGB tuple) and `order`. Set `runnable = True` and implement `run(path)` if it should take part in **Run All**.
-3. Optionally return right-click `Action`s from `actions(path)` (the first one is the double-click), and list `Creator`s for its **Add...** menu entries.
+3. Optionally override `open(path)` for double-click, return right-click `Action`s from `actions(path)`, and list `Creator`s for its entries in the **New** submenu.
 4. End the module with `PRODUCT = MyProduct()`.
 
 Nothing else needs registering. See `products/scene.py` for a working example.
