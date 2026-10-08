@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Assembler: folders can be disabled and enabled from the right-click menu. **Run All** skips a disabled folder and everything in it, including nested folders. Disabled folders are crossed out and their contents greyed. **Run All in** a disabled folder itself still runs it, like running a disabled script directly
 - Assembler: scripts, scenes and folders are now separate "products", one module each under `tools/assembler/products/`. New item types can be added by dropping in a module (see README)
 - Assembler: **Run All** now runs a full build. Scenes are imported in their place in the tree, between scripts. A build that imports a scene can't be undone as one step, because Maya clears undo on import
 - Assembler: scenes can be disabled and enabled like scripts, and can be included in **Run N Selected**

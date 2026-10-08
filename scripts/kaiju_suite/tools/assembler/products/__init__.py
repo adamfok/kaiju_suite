@@ -52,8 +52,13 @@ class Product:
     color = None  # (r, g, b)
     icon = None  # QStyle.StandardPixmap name, e.g. "SP_DirIcon"
     order = 100  # menu order; the lower one wins an extension clash
-    runnable = False  # joins Run All and can be disabled
+    runnable = False  # joins Run All
     creators = ()
+
+    @property
+    def can_disable(self):
+        """Whether items can be switched off so Run All skips them."""
+        return self.runnable
 
     def claims(self, path):
         return os.path.isfile(path) and os.path.splitext(path)[1].lower() in self.extensions
