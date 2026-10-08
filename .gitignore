@@ -3,3 +3,8 @@ __pycache__/
 .pytest_cache/
 .vscode/
 .idea/
+CLAUDE.local.md
+.claude/settings.local.json
+
+# Local data (e.g. Assembler snippets), never committed
+/data/

@@ -1,5 +1,6 @@
 """Base class for tool windows: dockable, one instance per tool."""
 
+from maya import cmds
 from maya.app.general.mayaMixin import MayaQWidgetDockableMixin
 from PySide6 import QtWidgets
 
@@ -16,13 +17,27 @@ class ToolWindow(MayaQWidgetDockableMixin, QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent=parent)
-        self.setObjectName(f"kaiju_{type(self).__name__}")
+        self.setObjectName(self.object_name())
         self.setWindowTitle(self.TITLE)
         self.layout = QtWidgets.QVBoxLayout(self)
         self.build_ui()
 
     def build_ui(self):
         raise NotImplementedError
+
+    @classmethod
+    def object_name(cls):
+        return f"kaiju_{cls.__name__}"
+
+    @classmethod
+    def _delete_leftover_ui(cls):
+        # After a reload the Python instance cache is empty, but Maya still
+        # holds the old window's workspace control under the same name.
+        control = f"{cls.object_name()}WorkspaceControl"
+        if cmds.workspaceControl(control, exists=True):
+            cmds.deleteUI(control)
+        if cmds.window(cls.object_name(), exists=True):
+            cmds.deleteUI(cls.object_name())
 
     @classmethod
     def show_window(cls):
@@ -35,6 +50,7 @@ class ToolWindow(MayaQWidgetDockableMixin, QtWidgets.QWidget):
             except RuntimeError:
                 # The underlying Qt object was deleted (e.g. Maya closed it).
                 pass
+        cls._delete_leftover_ui()
         window = cls()
         cls._instances[cls] = window
         window.show(dockable=True)
