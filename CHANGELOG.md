@@ -5,6 +5,7 @@
 - Assembler: select several scripts (Ctrl/Shift-click) and run them together in tree order, including disabled ones, as one undo step; stops at the first failing script
 - Assembler: **Run All** on a folder (or on empty space for the whole snippets folder) runs every enabled script under it, top to bottom, as one undo step
 - Assembler: drag items between others to reorder them; the order and disabled state are saved in a hidden `.assembler.json` in each folder, so they survive reopening and travel with the folder. New files appear at the bottom
+- Assembler: the folder path field is gone; the folder button now opens the folder picker directly, starting in the current snippets folder (hover it to see the path)
 
 ## 0.2.0
 - Assembler tool (ported from afk_tools Snippets Tool): browse a folder of `.py`/`.mel`/`.ma`/`.mb` snippets; open scripts in a Script Editor tab, run them as one undo step, import scenes, export the selection to a new scene, and add, move (drag and drop), or remove files and folders
