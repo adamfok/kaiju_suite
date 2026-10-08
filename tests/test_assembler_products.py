@@ -65,10 +65,11 @@ def test_only_scripts_and_scenes_are_runnable():
     assert not folder.PRODUCT.runnable
 
 
-def test_script_colors_differ_by_language():
-    assert script.PRODUCT.color_for("a.py") == (128, 200, 255)
-    assert script.PRODUCT.color_for("a.mel") == (255, 200, 128)
-    assert scene.PRODUCT.color_for("a.ma") == scene.PRODUCT.color_for("a.mb")
+def test_products_have_no_colors():
+    # The tree shows the type in its own column instead of color-coding names.
+    for product in (script.PRODUCT, scene.PRODUCT, folder.PRODUCT):
+        assert not hasattr(product, "color")
+        assert not hasattr(product, "color_for")
 
 
 def test_extensions_lists_every_file_extension():

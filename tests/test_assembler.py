@@ -480,3 +480,83 @@ def test_run_folder_skips_disabled_subfolder_as_one_undo_step(new_scene, tmp_pat
     assert cmds.objExists("n_a") and not cmds.objExists("n_b")
     cmds.undo()
     assert not cmds.objExists("n_a")
+
+
+# -- rename / display -------------------------------------------------------
+
+
+def test_entry_label_hides_extension_and_type_label_names_product(tmp_path):
+    _touch(tmp_path / "rig.py")
+    _touch(tmp_path / "Build.MEL")
+    _touch(tmp_path / "body.mb")
+    (tmp_path / "parts.v2").mkdir()
+    by_name = {e.name: e for e in logic.scan(str(tmp_path))}
+    assert by_name["rig.py"].label == "rig"
+    assert by_name["body.mb"].label == "body"
+    # Folders keep their full name, dots included, and show no type.
+    assert by_name["parts.v2"].label == "parts.v2"
+    assert by_name["rig.py"].type_label == "Script(.py)"
+    assert by_name["Build.MEL"].type_label == "Script(.mel)"
+    assert by_name["body.mb"].type_label == "Scene(.mb)"
+    assert by_name["parts.v2"].type_label == ""
+
+
+def test_rename_keeps_extension(tmp_path):
+    path = _touch(tmp_path / "a.mel")
+    new = logic.rename_path(path, "build")
+    assert new == os.path.join(str(tmp_path), "build.mel")
+    assert os.path.isfile(new) and not os.path.exists(path)
+
+
+def test_rename_does_not_double_a_typed_extension(tmp_path):
+    path = _touch(tmp_path / "a.py")
+    assert logic.rename_path(path, "b.py") == os.path.join(str(tmp_path), "b.py")
+
+
+def test_rename_folder_keeps_contents(tmp_path):
+    _touch(tmp_path / "sub" / "x.py")
+    new = logic.rename_path(str(tmp_path / "sub"), "rig")
+    assert os.path.isfile(os.path.join(new, "x.py"))
+    assert _names(logic.scan(str(tmp_path))) == ["rig"]
+
+
+def test_rename_keeps_place_in_order(tmp_path):
+    root = _order_fixture(tmp_path)
+    logic.place([os.path.join(root, "c.py")], root, 0)
+    logic.rename_path(os.path.join(root, "c.py"), "z")
+    assert _names(logic.scan(root)) == ["z.py", "sub", "a.py", "b.py"]
+
+
+def test_rename_keeps_disabled_state(tmp_path):
+    path = _touch(tmp_path / "a.py")
+    logic.set_enabled(path, False)
+    new = logic.rename_path(path, "b")
+    assert not logic.is_enabled(new)
+    # A new file reusing the old name starts enabled.
+    assert logic.is_enabled(_touch(tmp_path / "a.py"))
+
+
+def test_rename_to_same_name_is_noop(tmp_path):
+    path = _touch(tmp_path / "a.py")
+    assert logic.rename_path(path, "  a ") == path
+
+
+def test_rename_changes_case_only(tmp_path):
+    path = _touch(tmp_path / "rig.py")
+    new = logic.rename_path(path, "Rig")
+    assert os.listdir(str(tmp_path)) == ["Rig.py"]
+    assert new == os.path.join(str(tmp_path), "Rig.py")
+
+
+def test_rename_rejects_bad_names(tmp_path):
+    path = _touch(tmp_path / "a.py")
+    _touch(tmp_path / "b.py")
+    with pytest.raises(FileExistsError):
+        logic.rename_path(path, "b")
+    with pytest.raises(ValueError):
+        logic.rename_path(path, "   ")
+    with pytest.raises(ValueError):
+        logic.rename_path(path, "x/y")
+    with pytest.raises(FileNotFoundError):
+        logic.rename_path(str(tmp_path / "missing.py"), "c")
+    assert os.path.isfile(path)
