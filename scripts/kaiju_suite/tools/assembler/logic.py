@@ -4,6 +4,7 @@ No Qt here, so it can be scripted and tested headless. Functions raise on
 bad input instead of warning; the widget decides how to tell the user.
 """
 
+import json
 import os
 import shutil
 from dataclasses import dataclass, field
@@ -19,6 +20,10 @@ SCRIPT_EXTS = (".py", ".mel")
 SCENE_EXTS = (".ma", ".mb")
 SKIP_DIRS = ("__pycache__",)
 
+# Hidden file in each snippet folder holding the custom order and the
+# disabled scripts, by name. It travels with the folder; scan() skips it.
+META_FILE = ".assembler.json"
+
 _SCENE_TYPES = {".ma": "mayaAscii", ".mb": "mayaBinary"}
 
 
@@ -28,6 +33,7 @@ class Entry:
     path: str
     is_dir: bool
     children: list = field(default_factory=list)
+    enabled: bool = True
 
     @property
     def ext(self):
@@ -41,16 +47,30 @@ def ext_of(path):
 def scan(root):
     """Return the snippet tree under ``root`` as a list of :class:`Entry`.
 
-    Folders come first, then files, each sorted by name. Hidden entries and
+    Entries follow the folder's saved order; anything not in it comes after,
+    folders first, then files, each sorted by name. Hidden entries and
     ``__pycache__`` are skipped; empty folders are kept so items can be
     dropped into them.
     """
+    meta = _load_meta(root)
+    disabled = set(meta["disabled"])
     entries = []
+    for name in _ordered_names(root, meta):
+        path = os.path.join(root, name)
+        if os.path.isdir(path):
+            entries.append(Entry(name, path, True, scan(path)))
+        else:
+            entries.append(Entry(name, path, False, enabled=name not in disabled))
+    return entries
+
+
+def _listed_names(root):
+    """Names scan() shows in ``root``, in the default order."""
     try:
         names = os.listdir(root)
     except OSError:
         log.exception("Cannot list %s", root)
-        return entries
+        return []
 
     dirs, files = [], []
     for name in sorted(names, key=str.lower):
@@ -59,10 +79,75 @@ def scan(root):
         path = os.path.join(root, name)
         if os.path.isdir(path):
             if name not in SKIP_DIRS:
-                dirs.append(Entry(name, path, True, scan(path)))
+                dirs.append(name)
         elif ext_of(name) in SCRIPT_EXTS + SCENE_EXTS:
-            files.append(Entry(name, path, False))
+            files.append(name)
     return dirs + files
+
+
+def _ordered_names(root, meta=None):
+    names = _listed_names(root)
+    present = set(names)
+    ordered = [n for n in (meta or _load_meta(root))["order"] if n in present]
+    seen = set(ordered)
+    return ordered + [n for n in names if n not in seen]
+
+
+# -- folder metadata --------------------------------------------------------
+
+
+def _load_meta(directory):
+    meta = {"order": [], "disabled": []}
+    path = os.path.join(directory, META_FILE)
+    if not os.path.isfile(path):
+        return meta
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        for key in meta:
+            value = data.get(key, [])
+            if isinstance(value, list):
+                meta[key] = [str(v) for v in value]
+    except (OSError, ValueError, AttributeError):
+        log.warning("Ignoring unreadable %s", path)
+    return meta
+
+
+def _save_meta(directory, meta):
+    path = os.path.join(directory, META_FILE)
+    if not meta["order"] and not meta["disabled"]:
+        if os.path.isfile(path):
+            os.remove(path)
+        return
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+
+
+def _forget(path):
+    """Drop ``path`` from its folder's metadata. Returns whether it was disabled."""
+    directory, name = os.path.split(os.path.normpath(path))
+    meta = _load_meta(directory)
+    was_disabled = name in meta["disabled"]
+    if was_disabled or name in meta["order"]:
+        meta["order"] = [n for n in meta["order"] if n != name]
+        meta["disabled"] = [n for n in meta["disabled"] if n != name]
+        _save_meta(directory, meta)
+    return was_disabled
+
+
+def is_enabled(path):
+    directory, name = os.path.split(os.path.normpath(path))
+    return name not in _load_meta(directory)["disabled"]
+
+
+def set_enabled(path, enabled):
+    """Enable or disable a script. :func:`run_folder` skips disabled ones."""
+    directory, name = os.path.split(os.path.normpath(path))
+    meta = _load_meta(directory)
+    meta["disabled"] = [n for n in meta["disabled"] if n != name]
+    if not enabled:
+        meta["disabled"].append(name)
+    _save_meta(directory, meta)
 
 
 def matches(name, text):
@@ -119,6 +204,14 @@ def delete_path(path):
         shutil.rmtree(path)
     else:
         raise FileNotFoundError(path)
+    _forget(path)
+
+
+def _check_move(src, target_dir):
+    if target_dir == src or target_dir.startswith(src + os.sep):
+        raise ValueError("Cannot move a folder into itself.")
+    if os.path.dirname(src) != target_dir and os.path.exists(os.path.join(target_dir, os.path.basename(src))):
+        raise FileExistsError(f"Already exists at destination: {os.path.basename(src)}")
 
 
 def move_path(src, target):
@@ -128,15 +221,55 @@ def move_path(src, target):
     """
     src = os.path.normpath(src)
     target_dir = os.path.normpath(target if os.path.isdir(target) else os.path.dirname(target))
-    if target_dir == src or target_dir.startswith(src + os.sep):
-        raise ValueError("Cannot move a folder into itself.")
+    _check_move(src, target_dir)
     if os.path.dirname(src) == target_dir:
         return src
-    new_path = os.path.join(target_dir, os.path.basename(src))
-    if os.path.exists(new_path):
-        raise FileExistsError(f"Already exists at destination: {os.path.basename(src)}")
-    shutil.move(src, new_path)
-    return new_path
+    return place([src], target_dir, None)[0]
+
+
+def place(paths, directory, index):
+    """Move ``paths`` into ``directory`` and put them at ``index``, in the given order.
+
+    ``index`` is a position in the folder's current order, counted before the
+    move (so "below the 3rd item" is 3); ``None`` means the end. Items inside
+    another moved folder ride along with it. Everything is checked before
+    anything moves. Returns the new paths.
+    """
+    directory = os.path.normpath(directory)
+    srcs = list(dict.fromkeys(os.path.normpath(p) for p in paths))
+    srcs = [p for p in srcs if not any(p.startswith(o + os.sep) for o in srcs)]
+
+    names = [os.path.basename(p) for p in srcs]
+    if len(set(names)) != len(names):
+        raise FileExistsError("Can't move two items with the same name into one folder.")
+    for src in srcs:
+        if not os.path.exists(src):
+            raise FileNotFoundError(src)
+        _check_move(src, directory)
+
+    current = _ordered_names(directory)
+    moving = set(names)
+    anchor = None
+    if index is not None:
+        anchor = next((n for n in current[index:] if n not in moving), None)
+
+    new_paths = []
+    for src in srcs:
+        new = os.path.join(directory, os.path.basename(src))
+        if new != src:
+            was_disabled = _forget(src)
+            shutil.move(src, new)
+            if was_disabled:
+                set_enabled(new, False)
+        new_paths.append(new)
+
+    order = [n for n in current if n not in moving]
+    at = order.index(anchor) if anchor is not None else len(order)
+    order[at:at] = names
+    meta = _load_meta(directory)
+    meta["order"] = order
+    _save_meta(directory, meta)
+    return new_paths
 
 
 def run_script(path):
@@ -153,6 +286,47 @@ def run_script(path):
             exec(compile(code, path, "exec"), __main__.__dict__)
         else:
             mel.eval(code)
+
+
+class ScriptRunError(RuntimeError):
+    """A script in a batch failed; ``path`` says which one."""
+
+    def __init__(self, path, error):
+        super().__init__(f"{os.path.basename(path)}: {error}")
+        self.path = path
+        self.error = error
+
+
+def collect_scripts(folder):
+    """Enabled scripts under ``folder``, recursively, in display order."""
+    paths = []
+    for entry in scan(folder):
+        if entry.is_dir:
+            paths.extend(collect_scripts(entry.path))
+        elif entry.enabled and entry.ext in SCRIPT_EXTS:
+            paths.append(entry.path)
+    return paths
+
+
+def run_scripts(paths):
+    """Run scripts in order as one undo step, whether enabled or not.
+
+    Stops at the first failure and raises :class:`ScriptRunError`; scripts
+    that already ran stay applied (one undo reverts them). Returns ``paths``.
+    """
+    paths = list(paths)
+    with undo_chunk("Assembler"):
+        for path in paths:
+            try:
+                run_script(path)
+            except Exception as e:
+                raise ScriptRunError(path, e) from e
+    return paths
+
+
+def run_folder(folder):
+    """Run every enabled script under ``folder``; see :func:`run_scripts`."""
+    return run_scripts(collect_scripts(folder))
 
 
 @undoable

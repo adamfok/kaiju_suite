@@ -19,6 +19,7 @@ COLORS = {
     ".ma": QtGui.QColor(255, 230, 100),
     ".mb": QtGui.QColor(255, 230, 100),
 }
+DISABLED_COLOR = QtGui.QColor(115, 115, 115)
 
 
 def _warn(message):
@@ -31,12 +32,13 @@ def _notify(message):
 
 
 class _AssemblerTree(QtWidgets.QTreeWidget):
-    """Tree whose drag/drop moves files on disk, then refreshes."""
+    """Tree whose drag/drop moves and reorders files on disk, then refreshes."""
 
     def __init__(self, window):
         super().__init__()
         self.window = window
         self.setHeaderHidden(True)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -44,16 +46,29 @@ class _AssemblerTree(QtWidgets.QTreeWidget):
 
     def dropEvent(self, event):
         # Don't call super: the tree is rebuilt from disk instead.
-        source = self.currentItem()
-        src = source.data(0, PATH_ROLE) if source else None
-        if not src:
+        srcs = self.window.selected_paths()
+        if not srcs:
             return
+        Indicator = QtWidgets.QAbstractItemView.DropIndicatorPosition
+        position = self.dropIndicatorPosition()
         target_item = self.itemAt(event.position().toPoint())
-        target = target_item.data(0, PATH_ROLE) if target_item else self.window.root_dir()
-        if not target:
+        target = target_item.data(0, PATH_ROLE) if target_item else None
+
+        if not target or position == Indicator.OnViewport:
+            directory, index = self.window.root_dir(), None
+        elif position == Indicator.OnItem and os.path.isdir(target):
+            directory, index = target, None
+        else:
+            # Above or below an item (or onto a file): its folder, next to it.
+            parent = target_item.parent()
+            directory = parent.data(0, PATH_ROLE) if parent else self.window.root_dir()
+            index = (parent or self.invisibleRootItem()).indexOfChild(target_item)
+            if position != Indicator.AboveItem:
+                index += 1
+        if not directory:
             return
         try:
-            logic.move_path(src, target)
+            logic.place(srcs, directory, index)
         except Exception as e:
             _warn(str(e))
         self.window.populate()
@@ -177,8 +192,31 @@ class AssemblerWindow(ToolWindow):
             if entry.is_dir:
                 item.setIcon(0, dir_icon)
                 self._add_entries(item, entry.children)
+            elif not entry.enabled and entry.ext in logic.SCRIPT_EXTS:
+                font = item.font(0)
+                font.setStrikeOut(True)
+                item.setFont(0, font)
+                item.setForeground(0, DISABLED_COLOR)
+                item.setToolTip(0, "Disabled: skipped by Run All")
             elif entry.ext in COLORS:
                 item.setForeground(0, COLORS[entry.ext])
+
+    def selected_paths(self):
+        """Paths of the visible selected items, in tree order."""
+        paths = []
+
+        def visit(item):
+            for i in range(item.childCount()):
+                child = item.child(i)
+                if child.isHidden():
+                    continue
+                path = child.data(0, PATH_ROLE)
+                if path and child.isSelected():
+                    paths.append(path)
+                visit(child)
+
+        visit(self.tree.invisibleRootItem())
+        return paths
 
     def _placeholder(self, text):
         self.tree.clear()
@@ -232,15 +270,27 @@ class AssemblerWindow(ToolWindow):
                 return
             is_file = False
 
+        scripts = [p for p in self.selected_paths() if logic.ext_of(p) in logic.SCRIPT_EXTS and os.path.isfile(p)]
+
         menu = QtWidgets.QMenu(self)
         if is_file:
             ext = logic.ext_of(path)
             if ext in logic.SCRIPT_EXTS:
                 menu.addAction("Open in Script Editor", lambda: self._open_script(path))
-                menu.addAction("Run Script", lambda: self._run_script(path))
             else:
                 menu.addAction("Import Scene", lambda: self._import_scene(path))
-            menu.addSeparator()
+        if scripts:
+            label = "Run Script" if len(scripts) == 1 else f"Run {len(scripts)} Selected Scripts"
+            menu.addAction(label, lambda: self._run(scripts))
+            enabled = [logic.is_enabled(p) for p in scripts]
+            if any(enabled):
+                menu.addAction("Disable", lambda: self._set_enabled(scripts, False))
+            if not all(enabled):
+                menu.addAction("Enable", lambda: self._set_enabled(scripts, True))
+        if not is_file:
+            label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All Scripts"
+            menu.addAction(label, lambda: self._run_folder(directory))
+        menu.addSeparator()
 
         menu.addAction("Add Script...", lambda: self._add_script(directory))
         menu.addAction("Export Selected...", lambda: self._export_selected(directory))
@@ -259,12 +309,32 @@ class AssemblerWindow(ToolWindow):
         except Exception as e:
             _warn(f"Failed to open script: {e}")
 
-    def _run_script(self, path):
+    def _run(self, paths):
         try:
-            logic.run_script(path)
+            logic.run_scripts(paths)
+        except logic.ScriptRunError as e:
+            log.exception("Script %s failed", e.path)
+            done = paths.index(e.path)
+            ran = f" ({done} ran before it; one undo reverts them)" if done else ""
+            _warn(f"Failed to run {e}{ran}")
+            return
+        if len(paths) > 1:
+            _notify(f"Ran {len(paths)} scripts")
+
+    def _run_folder(self, folder):
+        paths = logic.collect_scripts(folder)
+        if not paths:
+            _warn("No enabled scripts to run in this folder.")
+            return
+        self._run(paths)
+
+    def _set_enabled(self, paths, enabled):
+        try:
+            for path in paths:
+                logic.set_enabled(path, enabled)
         except Exception as e:
-            log.exception("Script %s failed", path)
-            _warn(f"Failed to run {os.path.basename(path)}: {e}")
+            _warn(f"Failed to update: {e}")
+        self.populate()
 
     def _import_scene(self, path):
         try:
