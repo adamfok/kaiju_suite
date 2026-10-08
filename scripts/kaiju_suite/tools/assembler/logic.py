@@ -57,7 +57,7 @@ def scan(root):
         path = os.path.join(root, name)
         product = product_for(path)
         if os.path.isdir(path):
-            entries.append(Entry(name, path, True, scan(path), product=product))
+            entries.append(Entry(name, path, True, scan(path), enabled=name not in disabled, product=product))
         else:
             entries.append(Entry(name, path, False, enabled=name not in disabled, product=product))
     return entries
@@ -140,7 +140,8 @@ def is_enabled(path):
 
 
 def set_enabled(path, enabled):
-    """Enable or disable an item. :func:`run_folder` skips disabled ones."""
+    """Enable or disable an item or folder. :func:`run_folder` skips disabled
+    ones, and everything inside a disabled folder."""
     directory, name = os.path.split(os.path.normpath(path))
     meta = _load_meta(directory)
     meta["disabled"] = [n for n in meta["disabled"] if n != name]
@@ -239,11 +240,16 @@ class StepError(RuntimeError):
 
 
 def collect_steps(folder):
-    """Enabled runnable items under ``folder``, recursively, in display order."""
+    """Enabled runnable items under ``folder``, recursively, in display order.
+
+    Disabled subfolders are skipped with everything in them. ``folder``
+    itself is collected even if disabled, since it was asked for directly.
+    """
     paths = []
     for entry in scan(folder):
         if entry.is_dir:
-            paths.extend(collect_steps(entry.path))
+            if entry.enabled:
+                paths.extend(collect_steps(entry.path))
         elif entry.enabled and entry.product is not None and entry.product.runnable:
             paths.append(entry.path)
     return paths

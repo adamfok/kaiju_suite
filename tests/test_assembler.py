@@ -388,3 +388,95 @@ def test_run_folder_skips_disabled(new_scene, tmp_path):
     assert cmds.objExists("n_a") and cmds.objExists("n_c") and not cmds.objExists("n_b")
     cmds.undo()
     assert not cmds.objExists("n_a") and not cmds.objExists("n_c")
+
+
+# -- nested folders ---------------------------------------------------------
+
+
+def test_nested_folders_scan_create_and_collect(tmp_path):
+    root = str(tmp_path)
+    outer = folder.create_folder(root, "outer")
+    inner = folder.create_folder(outer, "inner")
+    deep = folder.create_folder(inner, "deep")
+    a = _touch(os.path.join(outer, "a.py"))
+    b = _touch(os.path.join(deep, "b.py"))
+
+    entries = logic.scan(root)
+    assert _names(entries) == ["outer"]
+    assert _names(entries[0].children) == ["inner", "a.py"]
+    assert _names(entries[0].children[0].children[0].children) == ["b.py"]
+    assert logic.collect_steps(root) == [b, a]
+
+
+def test_move_folder_into_another_folder_keeps_contents(tmp_path):
+    root = str(tmp_path)
+    inner = _touch(tmp_path / "inner" / "x.py")
+    (tmp_path / "outer").mkdir()
+    new = logic.place([os.path.dirname(inner)], os.path.join(root, "outer"), None)[0]
+    assert new == os.path.join(root, "outer", "inner")
+    assert os.path.isfile(os.path.join(new, "x.py"))
+
+
+# -- enable / disable folders -----------------------------------------------
+
+
+def test_disable_folder_persists(tmp_path):
+    sub = str(tmp_path / "sub")
+    os.makedirs(sub)
+    assert logic.scan(str(tmp_path))[0].enabled
+    logic.set_enabled(sub, False)
+    assert not logic.is_enabled(sub)
+    assert not logic.scan(str(tmp_path))[0].enabled
+    logic.set_enabled(sub, True)
+    assert logic.scan(str(tmp_path))[0].enabled
+
+
+def test_folder_product_can_be_disabled():
+    assert folder.PRODUCT.can_disable
+    assert script.PRODUCT.can_disable and scene.PRODUCT.can_disable
+
+
+def test_collect_steps_skips_everything_in_a_disabled_folder(tmp_path):
+    root = str(tmp_path)
+    a = _touch(tmp_path / "a.py")
+    _touch(tmp_path / "off" / "b.py")
+    _touch(tmp_path / "off" / "deeper" / "c.py")
+    d = _touch(tmp_path / "on" / "d.py")
+    _touch(tmp_path / "on" / "off2" / "e.py")
+    logic.set_enabled(os.path.join(root, "off"), False)
+    logic.set_enabled(os.path.join(root, "on", "off2"), False)
+
+    assert logic.collect_steps(root) == [d, a]
+
+
+def test_run_all_on_a_disabled_folder_itself_still_runs_it(tmp_path):
+    # Like running a disabled script directly: asking for it explicitly runs it.
+    off = str(tmp_path / "off")
+    b = _touch(tmp_path / "off" / "b.py")
+    _touch(tmp_path / "off" / "inner" / "c.py")
+    logic.set_enabled(off, False)
+    logic.set_enabled(str(tmp_path / "off" / "inner"), False)
+    assert logic.collect_steps(off) == [b]
+
+
+def test_disabled_folder_state_follows_a_move(tmp_path):
+    root = str(tmp_path)
+    off = str(tmp_path / "off")
+    _touch(tmp_path / "off" / "b.py")
+    (tmp_path / "dest").mkdir()
+    logic.set_enabled(off, False)
+    new = logic.place([off], os.path.join(root, "dest"), None)[0]
+    assert not logic.is_enabled(new)
+    assert logic.collect_steps(root) == []
+
+
+def test_run_folder_skips_disabled_subfolder_as_one_undo_step(new_scene, tmp_path):
+    cmds.undoInfo(state=True)
+    _make_script(tmp_path / "a.py", "n_a")
+    _make_script(tmp_path / "off" / "b.py", "n_b")
+    logic.set_enabled(str(tmp_path / "off"), False)
+
+    assert len(logic.run_folder(str(tmp_path))) == 1
+    assert cmds.objExists("n_a") and not cmds.objExists("n_b")
+    cmds.undo()
+    assert not cmds.objExists("n_a")

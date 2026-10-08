@@ -175,7 +175,7 @@ class AssemblerWindow(ToolWindow):
         pixmap = getattr(QtWidgets.QStyle.StandardPixmap, name, None) if name else None
         return self.style().standardIcon(pixmap) if pixmap is not None else None
 
-    def _add_entries(self, parent, entries):
+    def _add_entries(self, parent, entries, inside_disabled=False):
         for entry in entries:
             item = QtWidgets.QTreeWidgetItem(parent, [entry.name])
             item.setData(0, PATH_ROLE, entry.path)
@@ -183,16 +183,20 @@ class AssemblerWindow(ToolWindow):
             icon = self._icon(product.icon) if product else None
             if icon:
                 item.setIcon(0, icon)
-            if entry.is_dir:
-                self._add_entries(item, entry.children)
-            elif not entry.enabled and product and product.runnable:
+            disabled = not entry.enabled and product and product.can_disable
+            if disabled:
                 font = item.font(0)
                 font.setStrikeOut(True)
                 item.setFont(0, font)
                 item.setForeground(0, DISABLED_COLOR)
                 item.setToolTip(0, "Disabled: skipped by Run All")
-            elif product and product.color_for(entry.path):
+            elif inside_disabled:
+                item.setForeground(0, DISABLED_COLOR)
+                item.setToolTip(0, "In a disabled folder: skipped by Run All")
+            elif not entry.is_dir and product and product.color_for(entry.path):
                 item.setForeground(0, QtGui.QColor(*product.color_for(entry.path)))
+            if entry.is_dir:
+                self._add_entries(item, entry.children, inside_disabled or bool(disabled))
 
     def selected_paths(self):
         """Paths of the visible selected items, in tree order."""
@@ -281,11 +285,13 @@ class AssemblerWindow(ToolWindow):
                 return
             is_file = False
 
-        steps = []
+        steps, toggles = [], []
         for selected in self.selected_paths():
             owner = products.product_for(selected)
             if owner and owner.runnable and os.path.isfile(selected):
                 steps.append(selected)
+            if owner and owner.can_disable:
+                toggles.append(selected)
 
         menu = QtWidgets.QMenu(self)
         product = products.product_for(path) if path else None
@@ -295,14 +301,15 @@ class AssemblerWindow(ToolWindow):
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
-            enabled = [logic.is_enabled(p) for p in steps]
-            if any(enabled):
-                menu.addAction("Disable", lambda: self._set_enabled(steps, False))
-            if not all(enabled):
-                menu.addAction("Enable", lambda: self._set_enabled(steps, True))
         if not is_file:
             label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All"
             menu.addAction(label, lambda: self._run_folder(directory))
+        if toggles:
+            enabled = [logic.is_enabled(p) for p in toggles]
+            if any(enabled):
+                menu.addAction("Disable", lambda: self._set_enabled(toggles, False))
+            if not all(enabled):
+                menu.addAction("Enable", lambda: self._set_enabled(toggles, True))
         menu.addSeparator()
 
         new_menu = menu.addMenu("New")
