@@ -54,12 +54,12 @@ def test_each_product_opens_its_utility(product_name, utility):
     assert callable(tool["launch"])
 
 
-@pytest.mark.parametrize("product_name", ["Script", "Folder"])
-def test_scripts_and_folders_have_no_utility(product_name):
+@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator"])
+def test_scripts_folders_and_separators_have_no_utility(product_name):
     assert logic.utility_for(_product(product_name)) is None
 
 
 def test_every_other_product_has_a_utility():
-    names = {p.name for p in products.all_products()} - {"Script", "Folder"}
+    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator"}
 
     assert names == set(UTILITIES)

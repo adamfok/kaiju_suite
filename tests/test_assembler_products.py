@@ -5,7 +5,7 @@ import pytest
 from maya import cmds
 
 from kaiju_suite.tools.assembler import logic, products, versions
-from kaiju_suite.tools.assembler.products import folder, scene, script
+from kaiju_suite.tools.assembler.products import folder, mesh, scene, script
 
 
 def _touch(path, text=""):
@@ -26,6 +26,7 @@ class _JsonProduct(products.Product):
     extensions = (".json",)
     order = 500  # after every real product
     runnable = True
+    creators = (products.Creator("Preset", None),)
 
     def __init__(self):
         self.ran = []
@@ -48,7 +49,7 @@ def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
         "Script", "Folder", "Scene", "Joints", "Mesh", "SkinCluster",
-        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "ControlShape",
+        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "ControlShape", "Separator",
     ]
     exts = [ext for p in found for ext in p.extensions]
     assert len(exts) == len(set(exts)), "two products claim the same extension"
@@ -171,10 +172,33 @@ def test_new_path_validates_names(tmp_path):
         products.new_path(str(tmp_path), "a\\b", None)
 
 
-def test_new_menu_lists_script_folder_scene():
-    labels = [c.label for p in products.discover() for c in p.creators]
-    assert labels[:3] == ["Script", "Folder", "Scene"]
+def _menu_labels():
+    return [None if entry is None else entry[1].label for entry in products.new_menu()]
+
+
+def test_new_menu_groups_products_with_dividers():
+    assert _menu_labels() == [
+        "Script",
+        None,
+        "Folder", "Separator",
+        None,
+        "Mesh", "Joints", "ControlShape",
+        None,
+        "SkinCluster", "DeltaMush", "BlendShapes",
+        None,
+        "Pose", "Animation",
+    ]
     assert folder.PRODUCT.creators[0].choices is None
+
+
+def test_new_menu_puts_a_product_without_a_slot_last(with_json):
+    labels = _menu_labels()
+    assert labels[-2:] == [None, "Preset"]
+
+
+def test_new_menu_leaves_out_products_with_no_slot(monkeypatch):
+    monkeypatch.setattr(mesh.PRODUCT, "menu_slot", None)
+    assert "Mesh" not in _menu_labels()
 
 
 def test_script_creator_opens_the_new_file():

@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Assembler: the right-click **New** menu is regrouped, with dividers: Script / Folder, Separator / Mesh, Joints, ControlShape / SkinCluster, DeltaMush, BlendShapes / Pose, Animation. **Scene** and **Material** are no longer in it
+- Assembler: new **Separator** item type (`.sep`), for dividing the tree into sections. **New ▸ Separator** asks for a name and creates an empty file. Its Version and Type columns show `=====`. Separators have no Publish or Versions, are skipped by Run All and can't be disabled. Like any item, they can be dragged, renamed, copied and deleted
 - New utility tools, one per Assembler item type except Script and Folder: **Scene Tool**, **Joint Tool**, **Mesh Tool**, **SkinCluster Tool**, **DeltaMush Tool**, **BlendShape Tool**, **Material Tool**, **Pose Tool**, **Animation Tool** and **ControlShape Tool**. They're under **Kaiju ▸ Utilities**, and double-clicking an item of that type in the Assembler opens its tool. The windows are empty for now
 - Assembler: the info window that double-click used to open (e.g. how many meshes a file holds) is now right-click **Info**. Scenes, whose window was empty, have no Info entry
 - Menu: **Assembler** and **Renamer** are now directly in the **Kaiju** menu instead of under **Kaiju ▸ Utilities**

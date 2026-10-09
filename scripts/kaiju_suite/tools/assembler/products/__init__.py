@@ -19,6 +19,9 @@ from kaiju_suite.core.log import get_logger
 log = get_logger(__name__)
 
 
+LAST_GROUP = 99
+
+
 @dataclass
 class Action:
     """A right-click entry. ``fn()`` may return a message to show the user.
@@ -61,10 +64,15 @@ class Product:
     name = ""
     extensions = ()  # lower case, with the dot
     icon = None  # QStyle.StandardPixmap name, e.g. "SP_DirIcon"
-    order = 100  # menu order; the lower one wins an extension clash
+    order = 100  # the lower one wins an extension clash
+    # Place in the New menu, as (group, position); a divider separates groups.
+    # A product without one goes in a last group, by ``order``. ``None``
+    # leaves it out of the menu.
+    menu_slot = (LAST_GROUP, 0)
     runnable = False  # joins Run All
     versioned = False  # gets Publish and the Versions submenu (see ..versions)
     utility = None  # name of the Kaiju tool double-click opens, e.g. "Mesh Tool"
+    columns_text = None  # fixed text for the Version and Type columns, e.g. a separator's "====="
     creators = ()
 
     @property
@@ -181,6 +189,20 @@ def all_products():
 def product_for(path):
     """The product that owns ``path``, or ``None`` if nothing does."""
     return next((p for p in all_products() if p.claims(path)), None)
+
+
+def new_menu():
+    """The New menu: ``(product, creator)`` pairs grouped by ``menu_slot``,
+    with ``None`` for the divider between groups."""
+    slotted = [p for p in all_products() if p.creators and p.menu_slot is not None]
+    slotted.sort(key=lambda p: (p.menu_slot, p.order))
+    entries, group = [], None
+    for product in slotted:
+        if group is not None and product.menu_slot[0] != group:
+            entries.append(None)
+        group = product.menu_slot[0]
+        entries.extend((product, creator) for creator in product.creators)
+    return entries
 
 
 def extensions():

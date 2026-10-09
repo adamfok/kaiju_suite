@@ -71,6 +71,7 @@ class JointsProduct(data.DataProduct):
     kind = "joints"
     extension = ".jnt"
     order = 40
+    menu_slot = (2, 1)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True)

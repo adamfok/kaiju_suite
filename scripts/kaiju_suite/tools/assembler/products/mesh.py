@@ -118,6 +118,7 @@ class MeshProduct(data.DataProduct):
     kind = "mesh"
     extension = ".mesh"
     order = 50
+    menu_slot = (2, 0)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True)

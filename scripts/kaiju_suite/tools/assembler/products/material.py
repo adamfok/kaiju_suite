@@ -340,6 +340,7 @@ class MaterialProduct(data.DataProduct):
     kind = "material"
     extension = ".mat"
     order = 90
+    menu_slot = None  # not in the New menu for now
 
     def selection_problems(self):
         if not cmds.ls(selection=True):

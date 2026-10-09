@@ -72,6 +72,7 @@ class SceneProduct(Product):
     utility = "Scene Tool"
     extensions = EXTENSIONS
     order = 30
+    menu_slot = None  # not in the New menu for now
     runnable = True
     versioned = True
     creators = (Creator("Scene", create_scene, [("Maya Binary (.mb)", ".mb"), ("Maya Ascii (.ma)", ".ma")]),)

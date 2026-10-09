@@ -49,12 +49,22 @@ class Entry:
     def type_label(self):
         """Product shown next to the label. The extension is added only when
         the product has several, e.g. ``Script(.py)`` but ``Mesh``; blank for
-        folders."""
+        folders. A product with ``columns_text`` shows that instead."""
         if self.is_dir or self.product is None:
             return ""
+        if self.product.columns_text is not None:
+            return self.product.columns_text
         if len(self.product.extensions) > 1:
             return f"{self.product.name}({self.ext})"
         return self.product.name
+
+    @property
+    def version_label(self):
+        """Fixed text for the Version column, or ``None`` to leave it to the
+        version history (see ``versions.tree_label``)."""
+        if self.is_dir or self.product is None:
+            return None
+        return self.product.columns_text
 
 
 def scan(root):
