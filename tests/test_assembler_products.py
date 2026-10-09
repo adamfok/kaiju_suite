@@ -44,8 +44,17 @@ def with_json(monkeypatch):
 # -- discovery --------------------------------------------------------------
 
 
+def test_discover_finds_every_product_in_order():
+    found = products.discover()
+    assert [p.name for p in found] == [
+        "Script", "Folder", "Scene", "Joints", "Mesh", "SkinCluster",
+        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation",
+    ]
+    exts = [ext for p in found for ext in p.extensions]
+    assert len(exts) == len(set(exts)), "two products claim the same extension"
+
+
 def test_discover_finds_builtin_products_in_order():
-    # Other products are added in parallel; each one's own test checks it's found.
     found = products.discover()
     names = [p.name for p in found]
     assert {"Script", "Folder", "Scene"} <= set(names)
