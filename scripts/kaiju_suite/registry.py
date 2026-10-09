@@ -4,7 +4,8 @@ A tool is any sub-package whose ``__init__.py`` defines a ``TOOL`` dict:
 
     TOOL = {
         "name": "Renamer",          # menu label
-        "category": "Utilities",    # sub-menu
+        "category": "Rigging",      # optional sub-menu; leave out to sit
+                                    # directly under the Kaiju menu
         "launch": show,             # callable run from the menu
         "icon": "renamer.png",      # optional, looked up in icons/
         "description": "...",       # optional, used as the menu tooltip
@@ -21,11 +22,14 @@ from kaiju_suite.core.log import get_logger
 
 log = get_logger(__name__)
 
-REQUIRED_KEYS = ("name", "category", "launch")
+REQUIRED_KEYS = ("name", "launch")
 
 
 def discover():
-    """Return a list of valid TOOL dicts, sorted by category then name."""
+    """Return a list of valid TOOL dicts, sorted by category then name.
+
+    Tools without a category come first.
+    """
     found = []
     for info in pkgutil.iter_modules(tools.__path__):
         if not info.ispkg:
@@ -46,4 +50,4 @@ def discover():
             continue
         found.append(tool)
 
-    return sorted(found, key=lambda t: (t["category"], t["name"]))
+    return sorted(found, key=lambda t: (t.get("category", ""), t["name"]))

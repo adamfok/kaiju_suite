@@ -7,7 +7,6 @@ def show():
 
 TOOL = {
     "name": "Assembler",
-    "category": "Utilities",
     "launch": show,
     "description": "Browse, run, and import script and scene snippets from a folder.",
 }

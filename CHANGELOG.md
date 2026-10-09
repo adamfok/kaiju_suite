@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Menu: **Assembler** and **Renamer** are now directly in the **Kaiju** menu instead of under **Kaiju ▸ Utilities**
 - Assembler: the step that's running now shows in light blue instead of yellow
 - Assembler: the **Type** column only shows the file extension for Scene and Script items, which can be either of two kinds (e.g. `Scene(.mb)`, `Script(.py)`). Other types show just their name, e.g. `Mesh` instead of `Mesh(.mesh)`
 - Assembler: a new **Warning** run status, in yellow. A step that runs but logs a warning (a skipped missing node, a `cmds.warning` in a script, ...) turns yellow instead of green, and the build goes on. After a run with warnings, a Maya warning names the steps that had them. Hovering an yellow or red step says to check its log

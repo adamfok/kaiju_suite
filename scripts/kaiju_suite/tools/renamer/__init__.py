@@ -7,7 +7,6 @@ def show():
 
 TOOL = {
     "name": "Renamer",
-    "category": "Utilities",
     "launch": show,
     "description": "Rename, number, and search/replace selected nodes.",
 }

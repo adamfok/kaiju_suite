@@ -28,7 +28,7 @@ Imports only flow one way: `tools` → `ui` → `core`. Tools never import each 
    ```python
    TOOL = {"name": "My Tool", "category": "Rigging", "launch": show}
    ```
-5. Click **Kaiju → Reload Kaiju Suite**. The tool shows up under its category.
+5. Click **Kaiju → Reload Kaiju Suite**. The tool shows up under its category, or directly in the Kaiju menu if it has none (`category` is optional).
 
 See `tools/renamer/` for a working example.
 

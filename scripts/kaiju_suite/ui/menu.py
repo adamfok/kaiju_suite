@@ -28,14 +28,14 @@ def build():
 
     submenus = {}
     for tool in registry.discover():
-        category = tool["category"]
-        if category not in submenus:
+        category = tool.get("category")
+        if category and category not in submenus:
             submenus[category] = cmds.menuItem(
                 label=category, subMenu=True, tearOff=True, parent=root
             )
         kwargs = {
             "label": tool["name"],
-            "parent": submenus[category],
+            "parent": submenus[category] if category else root,
             "command": _runner(tool),
             "annotation": tool.get("description", ""),
         }
