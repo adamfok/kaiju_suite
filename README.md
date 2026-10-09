@@ -45,6 +45,8 @@ The Assembler lists, runs and creates "products": scripts, scenes, folders, join
 
 Each run of a step is logged and saved in a hidden `.logs/<file name>.log` next to the item (right-click **Show Log** opens it). The log gets anything `run` returns as a message, Maya's output during the step (`cmds.warning`, MEL `print`, errors) and, on failure, the traceback. Call `runlog.info(message)` to log what the step did, and `runlog.warning(message)` for things it skipped: a step with warnings ends orange (Warning) instead of green, and the build goes on.
 
+After **Run All**, a Build Report window lists each step's status (OK / Warning / Error / Skipped), its time and a button to open its log. The report data is Qt-free in `tools/assembler/report.py`: pass a `report.Recorder(paths)` as `on_status` to `logic.run_steps`, then read `recorder.results` (or `report.summary(results)` for plain text); the window is `report_widget.py`.
+
 Nothing else needs registering. See `products/scene.py` for a working example.
 
 ### Rig-data products (`DataProduct`)

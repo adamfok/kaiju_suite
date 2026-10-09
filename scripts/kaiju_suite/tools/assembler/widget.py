@@ -5,7 +5,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import logic, plan, products, runlog, versions
+from kaiju_suite.tools.assembler import logic, plan, products, report, runlog, versions
+from kaiju_suite.tools.assembler.report_widget import ReportDialog
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -634,10 +635,12 @@ class AssemblerWindow(ToolWindow):
         self._status.clear()
         self.populate()
 
-    def _run(self, paths):
+    def _run(self, paths, report_title=None):
+        """Run ``paths``; with ``report_title``, show a build report after."""
         self._refresh()
+        recorder = report.Recorder(paths, forward=self._set_status)
         try:
-            logic.run_steps(paths, on_status=self._set_status)
+            logic.run_steps(paths, on_status=recorder)
         except logic.StepError as e:
             log.exception("Step %s failed", e.path)
             done = paths.index(e.path)
@@ -646,6 +649,8 @@ class AssemblerWindow(ToolWindow):
             return
         finally:
             self._reload_logs(paths)
+            if report_title:
+                self._show_report(report_title, recorder.results)
         warned = [p for p in paths if self._status.get(p) == logic.WARNING]
         if warned:
             names = ", ".join(os.path.basename(p) for p in warned)
@@ -658,7 +663,19 @@ class AssemblerWindow(ToolWindow):
         if not paths:
             _warn("Nothing enabled to run in this folder.")
             return
-        self._run(paths)
+        self._run(paths, report_title=f"Build Report: {os.path.basename(folder) or 'Run All'}")
+
+    def _show_report(self, title, results):
+        """Show the build report, replacing the one from the last run."""
+        old = getattr(self, "_report", None)
+        if old is not None:
+            try:
+                old.close()
+            except RuntimeError:  # already closed and deleted
+                pass
+        self._report = ReportDialog(self, title, results, self._show_log)
+        self._report.show()
+        self._report.raise_()
 
     def _set_enabled(self, paths, enabled):
         try:
