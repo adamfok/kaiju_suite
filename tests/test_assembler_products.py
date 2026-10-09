@@ -49,7 +49,7 @@ def with_json(monkeypatch):
 def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
-        "Script", "Folder", "Scene", "Joints", "Mesh", "SkinCluster",
+        "Script", "Folder", "Scene", "Joints", "Mesh", "Curves", "SkinCluster",
         "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "ControlShape", "Separator",
         "Rig Module",
     ]
@@ -175,7 +175,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "Scene", "Folder", "Separator",
         None,
-        "Mesh", "Joints", "ControlShape",
+        "Mesh", "Joints", "ControlShape", "Curves",
         None,
         "SkinCluster", "DeltaMush", "BlendShapes",
         None,
