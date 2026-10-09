@@ -247,7 +247,11 @@ class AssemblerWindow(ToolWindow):
         self.browse_btn.setFixedSize(28, 28)
         self.browse_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
         self.browse_btn.clicked.connect(self._browse)
+        rebuild_btn = QtWidgets.QPushButton("Rebuild")
+        rebuild_btn.setToolTip("New scene, then Run All")
+        rebuild_btn.clicked.connect(lambda: self._rebuild(self.root_dir()))
         top.addWidget(self.search)
+        top.addWidget(rebuild_btn)
         top.addWidget(refresh_btn)
         top.addWidget(self.browse_btn)
         self.layout.addLayout(top)
@@ -540,6 +544,9 @@ class AssemblerWindow(ToolWindow):
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
+        if path and (not is_file or (product and product.runnable)):
+            menu.addAction("Run up to Here (New Scene)", lambda: self._run_up_to(path))
+            menu.addAction("Run from Here", lambda: self._run_from(path))
         if product and product.runnable and is_file:
             show_log = menu.addAction("Show Log", lambda: self._show_log(path))
             if not runlog.exists(path):
@@ -548,6 +555,8 @@ class AssemblerWindow(ToolWindow):
         if not is_file:
             label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All"
             menu.addAction(label, lambda: self._run_folder(directory))
+            if not path:
+                menu.addAction("Rebuild (New Scene + Run All)", lambda: self._rebuild(directory))
             plan_menu = menu.addMenu("Build Plan")
             plan_menu.addAction("Export...", lambda: self._export_plan(directory))
             plan_menu.addAction("Import...", lambda: self._import_plan(directory))
@@ -634,10 +643,10 @@ class AssemblerWindow(ToolWindow):
         self._status.clear()
         self.populate()
 
-    def _run(self, paths):
+    def _run(self, paths, run=logic.run_steps):
         self._refresh()
         try:
-            logic.run_steps(paths, on_status=self._set_status)
+            run(paths, on_status=self._set_status)
         except logic.StepError as e:
             log.exception("Step %s failed", e.path)
             done = paths.index(e.path)
@@ -657,6 +666,56 @@ class AssemblerWindow(ToolWindow):
         paths = logic.collect_steps(folder)
         if not paths:
             _warn("Nothing enabled to run in this folder.")
+            return
+        self._run(paths)
+
+    def _confirm_new_scene(self):
+        """Whether a new scene may replace this one: asks first if it has
+        unsaved changes."""
+        if not cmds.file(query=True, modified=True):
+            return True
+        Button = QtWidgets.QMessageBox.StandardButton
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Discard Changes?",
+            "The scene has unsaved changes. Discard them and start a new scene?",
+            Button.Yes | Button.No,
+            Button.No,
+        )
+        return answer == Button.Yes
+
+    def _run_in_new_scene(self, paths):
+        if not paths:
+            _warn("Nothing enabled to run.")
+            return
+        if not self._confirm_new_scene():
+            return
+        self._run(paths, run=lambda p, on_status: logic.rebuild(p, discard_changes=True, on_status=on_status))
+
+    def _rebuild(self, root):
+        if not root or not os.path.isdir(root):
+            _warn("Select a snippets folder first.")
+            return
+        self._run_in_new_scene(logic.collect_steps(root))
+
+    def _steps(self, pick, path):
+        try:
+            return pick(self.root_dir(), path)
+        except ValueError as e:
+            _warn(str(e))
+            return None
+
+    def _run_up_to(self, path):
+        paths = self._steps(logic.steps_up_to, path)
+        if paths is not None:
+            self._run_in_new_scene(paths)
+
+    def _run_from(self, path):
+        paths = self._steps(logic.steps_from, path)
+        if paths is None:
+            return
+        if not paths:
+            _warn("Nothing enabled to run.")
             return
         self._run(paths)
 
