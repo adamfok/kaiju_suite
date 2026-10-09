@@ -10,6 +10,7 @@ import filecmp
 import os
 import re
 import shutil
+import tempfile
 import time
 from dataclasses import dataclass
 
@@ -113,6 +114,32 @@ def published_message(path, version):
     product = product_for(path)
     kind = f"{product.name} " if product is not None else ""
     return f"Published {kind}{os.path.basename(path)} {version.tag}"
+
+
+def export_into(path, write_fn):
+    """Replace ``path`` with what ``write_fn`` writes and save it as its next
+    version. Returns a message, e.g. ``Published Joints spine.jnt v002``.
+
+    ``write_fn(target)`` writes the new content to ``target``, a temporary
+    file with the same name as ``path``. Only if it succeeds is ``path``
+    replaced, so a failure changes nothing and saves no version. Old content
+    not yet in the history is saved as a version first, so nothing is lost.
+    Content that matches a saved version adds none: it's then that one.
+    """
+    if not os.path.isfile(path):
+        raise FileNotFoundError(path)
+    folder = tempfile.mkdtemp(prefix="kaiju_export_")
+    try:
+        target = os.path.join(folder, os.path.basename(path))
+        write_fn(target)
+        if not os.path.isfile(target) or os.path.getsize(target) == 0:
+            raise RuntimeError(f"Nothing was written for {os.path.basename(path)}")
+        save_version(path)
+        shutil.copyfile(target, path)
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    version = save_version(path) or current_version(path)
+    return published_message(path, version)
 
 
 def publish(path):

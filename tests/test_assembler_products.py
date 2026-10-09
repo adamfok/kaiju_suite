@@ -24,7 +24,7 @@ class _JsonProduct(products.Product):
 
     name = "Preset"
     extensions = (".json",)
-    order = 50
+    order = 500  # after every real product
     runnable = True
 
     def __init__(self):
@@ -45,8 +45,12 @@ def with_json(monkeypatch):
 
 
 def test_discover_finds_builtin_products_in_order():
+    # Other products are added in parallel; each one's own test checks it's found.
     found = products.discover()
-    assert [p.name for p in found] == ["Script", "Folder", "Scene"]
+    names = [p.name for p in found]
+    assert {"Script", "Folder", "Scene"} <= set(names)
+    assert names[:3] == ["Script", "Folder", "Scene"]
+    assert found == sorted(found, key=lambda p: p.order)
     assert found[1] is folder.PRODUCT
 
 
@@ -73,7 +77,9 @@ def test_products_have_no_colors():
 
 
 def test_extensions_lists_every_file_extension():
-    assert products.extensions() == [".py", ".mel", ".ma", ".mb"]
+    found = products.extensions()
+    assert found[:4] == [".py", ".mel", ".ma", ".mb"]
+    assert len(found) == len(set(found))
 
 
 def test_conflicting_extension_goes_to_lower_order(monkeypatch, tmp_path):
@@ -91,7 +97,9 @@ def test_broken_product_module_is_skipped(monkeypatch, tmp_path):
     _touch(tmp_path / "broken_product.py", "raise ImportError('nope')\n")
     monkeypatch.setattr(products, "__path__", list(products.__path__) + [str(tmp_path)])
     try:
-        assert [p.name for p in products.discover()] == ["Script", "Folder", "Scene"]
+        names = [p.name for p in products.discover()]
+        assert names[:3] == ["Script", "Folder", "Scene"]
+        assert f"{products.__name__}.broken_product" not in sys.modules
     finally:
         sys.modules.pop(f"{products.__name__}.broken_product", None)
 
@@ -156,7 +164,7 @@ def test_new_path_validates_names(tmp_path):
 
 def test_new_menu_lists_script_folder_scene():
     labels = [c.label for p in products.discover() for c in p.creators]
-    assert labels == ["Script", "Folder", "Scene"]
+    assert labels[:3] == ["Script", "Folder", "Scene"]
     assert folder.PRODUCT.creators[0].choices is None
 
 
