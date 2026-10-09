@@ -50,6 +50,7 @@ def test_discover_finds_every_product_in_order():
     assert [p.name for p in found] == [
         "Script", "Folder", "Scene", "Joints", "Mesh", "SkinCluster",
         "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "ControlShape", "Separator",
+        "Rig Module",
     ]
     exts = [ext for p in found for ext in p.extensions]
     assert len(exts) == len(set(exts)), "two products claim the same extension"
@@ -178,6 +179,8 @@ def test_new_menu_groups_products_with_dividers():
         "SkinCluster", "DeltaMush", "BlendShapes",
         None,
         "Pose", "Animation",
+        None,
+        "Simple IK",
     ]
     assert folder.PRODUCT.creators[0].choices is None
 

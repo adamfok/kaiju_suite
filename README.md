@@ -11,6 +11,7 @@ kaiju_suite.mod          module definition
 plug-ins/                thin plug-in: builds and removes the menu
 scripts/kaiju_suite/
   core/                  shared internal API (no Qt, never imports tools)
+  rig/                   rig module algorithms (IK, ...); imports only core, no Qt
   ui/                    menu builder and ToolWindow base class
   registry.py            discovers tools
   tools/<tool>/          one folder per tool
@@ -18,7 +19,7 @@ icons/
 tests/
 install/
 ```
-Imports only flow one way: `tools` → `ui` → `core`. Tools never import each other.
+Imports only flow one way: `tools` → `ui` → `core`, and `tools` → `rig` → `core`. Tools never import each other.
 
 ## Adding a tool
 1. Create `scripts/kaiju_suite/tools/<my_tool>/`.
@@ -37,7 +38,7 @@ The Assembler lists, runs and creates "products": scripts, scenes, folders, join
 1. Add `tools/assembler/products/<my_product>.py`. Don't import Qt there.
 2. Subclass `Product` and set `name`, `extensions` and `order`. Set `runnable = True` and implement `run(path)` if it should take part in **Run All** (runnable items can also be disabled; override `can_disable` to change that). Set `menu_slot = (group, position)` to place its entry in the right-click **New** menu (dividers separate groups; leave it unset to go in a last group, or set `None` to leave it out).
 3. Set `versioned = True` to give its files **Publish** and a **Versions** submenu on the right-click menu. Versions are copies kept in a hidden `.versions/<file name>/` folder next to the item (`v001.py`, `v002.py`, ...); they follow the item when it's renamed or moved, and are deleted with it. Publish saves the file as it is; override `publish(path)` to return an `Action` that does something else (scenes open a file browser and save the picked Maya file's path as a new version). Return messages from `publish_problems(path)` to stop Publish before it runs; they're shown to the user in a dialog (meshes report an empty selection). Return messages from `publish_warnings(path)` for things that look wrong but shouldn't block; the user is asked whether to publish anyway (materials report missing texture files).
-4. Optionally override `open(path)` for double-click, or return a `Panel` (info lines plus `Action` buttons) from `panel(path)` to open a window on double-click instead. Set `utility` to a tool's name (e.g. `"Mesh Tool"`) to open that tool on double-click; the panel then moves to a right-click **Info** entry. Each product except Script and Folder has a utility tool, one folder per tool under `tools/` (e.g. `tools/mesh_tool/`), listed under **Kaiju ▸ Utilities**. The Assembler opens it through `registry.find(name)`, so it never imports the tool. Return right-click `Action`s from `actions(path)`, and list `Creator`s for its entries in the **New** submenu.
+4. Optionally override `open(path)` for double-click, or return a `Panel` (info lines plus `Action` buttons) from `panel(path)` to open a window on double-click instead. Set `utility` to a tool's name (e.g. `"Mesh Tool"`) to open that tool on double-click; the panel then moves to a right-click **Info** entry. Each product except Script and Folder has a utility tool, one folder per tool under `tools/` (e.g. `tools/mesh_tool/`), listed under **Kaiju ▸ Utilities**. The Assembler opens it through `registry.find(name)`, so it never imports the tool. A tool that edits the item itself adds `"open": fn(path)` to its `TOOL` dict; double-click then calls that with the item's path instead of `launch()` (the Rig Module Editor does this). Override `type_name(path)` to show something other than `name` for an item in the Type column, publish messages and run logs (Rig Modules show their module). Return right-click `Action`s from `actions(path)`, and list `Creator`s for its entries in the **New** submenu.
 5. End the module with `PRODUCT = MyProduct()`.
 
 Each run of a step is logged and saved in a hidden `.logs/<file name>.log` next to the item (right-click **Show Log** opens it). The log gets anything `run` returns as a message, Maya's output during the step (`cmds.warning`, MEL `print`, errors) and, on failure, the traceback. Call `runlog.info(message)` to log what the step did, and `runlog.warning(message)` for things it skipped: a step with warnings ends orange (Warning) instead of green, and the build goes on.
@@ -52,6 +53,17 @@ Products that save rig data from the scene and apply it back (Joints, Mesh, Skin
 4. In `apply`, skip what's missing and check the rest first, raising before changing anything. `data.skip_missing(names, "meshes")` returns the missing ones and logs one warning naming them (Pose, SkinCluster, DeltaMush, BlendShapes and ControlShape do this; Animation the same by hand); `data.require_nodes(names, "influences")` instead raises one error listing them, for products where a missing node must stop the run (Material). Create nodes with `data.create_node(type, name, parent)`, which picks a free name the way Maya does (`spine_jnt` becomes `spine_jnt1`) and returns a UUID; get the current path with `data.node_path(uuid)`.
 
 See `products/joints.py` for a working example.
+
+### Rig modules
+A rig module is an algorithm that builds part of a rig (an IK chain, ...) from parameters. The algorithm lives in `scripts/kaiju_suite/rig/modules/`, separate from the Assembler; the Assembler's **Rig Module** items (`.rig`) hold only the parameters, as `{"kaiju": "rigModule", "format": 1, "data": {"module": "simple_ik", "params": {...}}}` (`rig/spec.py` reads and writes them). Their Type column shows the module's name (e.g. `Simple IK`). **New** lists one entry per module and writes its defaults; **Run** builds the module as one undo step; **Publish** saves the parameters as the next version; double-click opens the **Rig Module Editor** on the file, with a form built from the module's parameters.
+
+To add a module:
+1. Add `rig/modules/<my_module>.py`. Don't import Qt, `ui` or `tools` there.
+2. Subclass `RigModule` from `rig/module.py`. Set `key` (saved in the files; never change it), `name` (shown in **New** and the editor) and `params`, a tuple of `Param(key, label, kind, default, ...)`. `kind` is `"string"`, `"node"` (a scene node's name; the editor has a pick-from-selection button), `"float"`, `"bool"` or `"choice"` (with `choices`). Set `required=True` for text that can't be blank and `tooltip` for the editor.
+3. Implement `check(params)`, which returns messages for what stops a build in the current scene (types and required values are already checked), and `create(params)`, which builds and returns what it made. `build(params)` runs the checks, raises listing every problem before changing anything, then calls `create` inside one undo chunk.
+4. End the module with `MODULE = MyModule()`.
+
+Nothing else needs registering. See `rig/modules/simple_ik.py` for a working example.
 
 ## Tests
 ```

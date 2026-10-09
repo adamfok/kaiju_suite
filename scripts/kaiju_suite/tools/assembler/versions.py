@@ -112,7 +112,7 @@ def published_message(path, version):
     """What to tell the user once ``path`` is published as ``version``,
     e.g. ``Published Scene ball.ma v003``."""
     product = product_for(path)
-    kind = f"{product.name} " if product is not None else ""
+    kind = f"{product.type_name(path)} " if product is not None else ""
     return f"Published {kind}{os.path.basename(path)} {version.tag}"
 
 

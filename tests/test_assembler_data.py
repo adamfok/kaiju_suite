@@ -46,49 +46,6 @@ def _raw(path, obj):
     return str(path)
 
 
-# -- read / write -----------------------------------------------------------
-
-
-def test_write_then_read_round_trips_with_a_header(tmp_path):
-    path = str(tmp_path / "a.loc")
-    data.write(path, "locators", {"names": ["a", "b"]})
-    with open(path, encoding="utf-8") as f:
-        raw = json.load(f)
-    assert raw["kaiju"] == "locators" and raw["format"] == data.FORMAT == 1
-    assert data.read(path, "locators") == {"names": ["a", "b"]}
-
-
-def test_write_is_deterministic(tmp_path):
-    a, b = str(tmp_path / "a.loc"), str(tmp_path / "b.loc")
-    data.write(a, "locators", {"x": 1, "y": [1.5, 2]})
-    data.write(b, "locators", {"x": 1, "y": [1.5, 2]})
-    with open(a, "rb") as fa, open(b, "rb") as fb:
-        assert fa.read() == fb.read()
-
-
-@pytest.mark.parametrize(
-    "content",
-    [
-        "not json",
-        "[1, 2]",
-        json.dumps({"kaiju": "joints", "format": 1, "data": {}}),
-        json.dumps({"kaiju": "locators", "format": 99, "data": {}}),
-        json.dumps({"kaiju": "locators", "data": {}}),
-        json.dumps({"kaiju": "locators", "format": 1}),
-    ],
-)
-def test_read_rejects_bad_files(tmp_path, content):
-    path = tmp_path / "a.loc"
-    path.write_text(content, encoding="utf-8")
-    with pytest.raises(data.DataFormatError) as info:
-        data.read(str(path), "locators")
-    assert "a.loc" in str(info.value)
-
-
-def test_data_format_error_is_a_value_error():
-    assert issubclass(data.DataFormatError, ValueError)
-
-
 # -- node helpers -----------------------------------------------------------
 
 

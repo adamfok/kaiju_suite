@@ -455,18 +455,12 @@ class AssemblerWindow(ToolWindow):
         if not product:
             return
         if product.utility:
-            self._do(lambda: self._open_utility(product))
+            self._do(lambda: logic.open_utility(product, path))
             return
         if product.panel(path) is None:
             self._do(lambda: product.open(path))
             return
         self._show_info(product, path)
-
-    def _open_utility(self, product):
-        tool = logic.utility_for(product)
-        if tool is None:
-            raise LookupError(f"{product.utility} isn't installed.")
-        tool["launch"]()
 
     def _show_info(self, product, path):
         self._show_panel(("product", path), os.path.basename(path), lambda: product.panel(path))
