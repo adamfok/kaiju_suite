@@ -38,17 +38,6 @@ from kaiju_suite.rig import helpers
 from kaiju_suite.rig.module import Param, RigModule
 
 
-def _pole_position(chain, distance):
-    """Where the pole vector goes: ``distance`` out from the middle joint, away
-    from the start-end line, on the chain's plane. ``None`` if the chain is straight."""
-    start, mid, end = (helpers.world(chain[i]) for i in (0, len(chain) // 2, -1))
-    line = end - start
-    out = (mid - start) - line * (((mid - start) * line) / (line * line))
-    if out.length() < 1e-4 * line.length():
-        return None
-    return mid + out.normal() * distance
-
-
 def _copy_chain(chain, name, side, parent):
     """Copies of the joints in ``chain``, named ``{name}_01_{side}_jnt``, ...,
     each under the one before and the first under ``parent``."""
@@ -93,7 +82,7 @@ class IkFkModule(RigModule):
         start, end = params["start_joint"].strip(), params["end_joint"].strip()
         chain_problems = helpers.chain_problems(start, end, 3)
         found.extend(chain_problems)
-        if not chain_problems and _pole_position(helpers.chain(start, end), 1.0) is None:
+        if not chain_problems and helpers.pole_position(helpers.chain(start, end), 1.0) is None:
             found.append("The chain is straight, so the pole vector has no side to go on. Bend the middle joint slightly.")
 
         if params["control_size"] <= 0:
@@ -108,7 +97,7 @@ class IkFkModule(RigModule):
         chain = [helpers.short(j) for j in helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())]
         size = float(params["control_size"])
         # Before anything is built, while the chain is as the user posed it.
-        pole = _pole_position(chain, float(params["pole_distance"]))
+        pole = helpers.pole_position(chain, float(params["pole_distance"]))
         away = (helpers.world(chain[len(chain) // 2]) - pole).normal()
         controls = []
 

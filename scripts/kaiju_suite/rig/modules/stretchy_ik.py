@@ -33,17 +33,6 @@ from kaiju_suite.rig import helpers
 from kaiju_suite.rig.module import Param, RigModule
 
 
-def _pole_position(chain, distance):
-    """Where the pole vector goes: ``distance`` out from the middle joint, away
-    from the start-end line, on the chain's plane. ``None`` if the chain is straight."""
-    start, mid, end = (helpers.world(chain[i]) for i in (0, len(chain) // 2, -1))
-    line = end - start
-    out = (mid - start) - line * (((mid - start) * line) / (line * line))
-    if out.length() < 1e-4 * line.length():
-        return None
-    return mid + out.normal() * distance
-
-
 def _translate_problems(joints):
     """Problems with stretch driving the translation of ``joints``: it can't
     be locked or already connected."""
@@ -97,7 +86,7 @@ class StretchyIkModule(RigModule):
         found.extend(chain_problems)
         if not chain_problems:
             chain = helpers.chain(start, end)
-            if _pole_position(chain, 1.0) is None:
+            if helpers.pole_position(chain, 1.0) is None:
                 found.append("The chain is straight, so the pole vector has no side to go on. Bend the middle joint slightly.")
             found.extend(_translate_problems(chain[1:]))
 
@@ -113,7 +102,7 @@ class StretchyIkModule(RigModule):
         chain = helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())
         size = float(params["control_size"])
         # Before the handle exists, while the chain is as the user posed it.
-        pole = _pole_position(chain, float(params["pole_distance"]))
+        pole = helpers.pole_position(chain, float(params["pole_distance"]))
         rest_translates = [cmds.getAttr(f"{joint}.translate")[0] for joint in chain[1:]]
 
         with helpers.kept_selection():

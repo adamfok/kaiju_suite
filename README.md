@@ -63,7 +63,7 @@ To add a module:
 3. Implement `check(params)`, which returns messages for what stops a build in the current scene (types and required values are already checked), and `create(params)`, which builds and returns what it made. `build(params)` runs the checks, raises listing every problem before changing anything, then calls `create` inside one undo chunk.
 4. End the module with `MODULE = MyModule()`.
 
-Nothing else needs registering. See `rig/modules/simple_ik.py` for a working example. `rig/helpers.py` has the shared pieces: checking a module's name, a node, a parent or a joint chain (`name_problems`, `node_problems`, `parent_problems`, `chain_problems`), and building groups, control curves (`circle`, `diamond`, `box`), their color (`set_color`) and keeping the selection (`kept_selection`).
+Nothing else needs registering. See `rig/modules/simple_ik.py` for a working example, and `rig/modules/root.py` for one that needs no joints. `rig/helpers.py` has the shared pieces: checking a module's name, a node, a parent or a joint chain (`name_problems`, `node_problems`, `parent_problems`, `chain_problems`), and building groups, control curves (`circle`, `diamond`, `box`), a pole vector's position (`pole_position`), their color (`set_color`) and keeping the selection (`kept_selection`).
 
 ## Tests
 ```

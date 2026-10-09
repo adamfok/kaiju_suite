@@ -150,3 +150,19 @@ def test_kept_selection_restores_the_selection(new_scene):
         cmds.select("b")
 
     assert cmds.ls(selection=True) == ["a"]
+
+
+def test_pole_position_is_out_from_the_middle_joint_on_the_bend_side(leg):
+    pole = helpers.pole_position(helpers.chain("hip", "ankle"), 3.0)
+
+    knee = helpers.world("knee")
+    assert abs((pole - knee).length() - 3.0) < 1e-6
+    assert abs(pole.x) < 1e-6 and pole.z > knee.z  # the knee bends toward +Z
+
+
+def test_pole_position_is_none_for_a_straight_chain(new_scene):
+    _joint("a")
+    _joint("b", "a", translate=(5, 0, 0))
+    _joint("c", "b", translate=(5, 0, 0))
+
+    assert helpers.pole_position(helpers.chain("a", "c"), 3.0) is None

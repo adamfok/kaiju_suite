@@ -81,6 +81,18 @@ def world(node):
     return om.MVector(cmds.xform(node, query=True, worldSpace=True, translation=True))
 
 
+def pole_position(chain, distance):
+    """Where a pole vector goes for ``chain`` (start to end): ``distance`` out
+    from the middle joint, away from the start-end line, on the chain's
+    plane. ``None`` if the chain is straight."""
+    start, mid, end = (world(chain[i]) for i in (0, len(chain) // 2, -1))
+    line = end - start
+    out = (mid - start) - line * (((mid - start) * line) / (line * line))
+    if out.length() < 1e-4 * line.length():
+        return None
+    return mid + out.normal() * distance
+
+
 def short(node):
     """The shortest unique name of ``node``."""
     return cmds.ls(node)[0]
