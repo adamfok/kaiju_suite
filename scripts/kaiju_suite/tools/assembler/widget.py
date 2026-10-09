@@ -527,16 +527,11 @@ class AssemblerWindow(ToolWindow):
         self.populate()
 
     def _publish(self, path):
-        def publish():
-            name = os.path.basename(path)
-            version = versions.save_version(path)
-            if version:
-                return f"Published {name} as {version.tag}"
-            current = versions.current_version(path)
-            return f"{name} is already published as {current.tag}" if current else f"{name} is empty: nothing to publish"
-
-        self._do(publish)
-        self.populate()
+        problems = versions.publish_problems(path)
+        if problems:
+            QtWidgets.QMessageBox.information(self, f"Can't Publish {os.path.basename(path)}", "\n".join(problems))
+            return
+        self._do_and_refresh(versions.publish_action(path))
 
     def _refresh(self):
         self._status.clear()

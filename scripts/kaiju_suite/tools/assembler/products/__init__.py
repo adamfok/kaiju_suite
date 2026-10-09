@@ -90,6 +90,17 @@ class Product:
         """A :class:`Panel` to show in a window on double-click instead of :meth:`open`."""
         return None
 
+    def publish(self, path):
+        """An :class:`Action` to run for right-click Publish on a versioned
+        product, or ``None`` to save the file as it is as its next version
+        (see ``versions.publish_action``)."""
+        return None
+
+    def publish_problems(self, path):
+        """Pre-publish check: why ``path`` can't be published right now, as
+        messages for the user. Publish doesn't run unless this is empty."""
+        return []
+
     def before_replace(self, path):
         """Called just before the Assembler overwrites ``path`` on disk, e.g.
         to restore a version. Does nothing unless overridden."""
