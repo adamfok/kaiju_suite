@@ -52,10 +52,6 @@ _FACE = re.compile(r"\.f\[(\d+)(?::(\d+))?\]$")
 _TOKEN = re.compile(r"<[^>]+>")
 
 
-def _plural(count, word, plural=None):
-    return f"{count} {word if count == 1 else plural or word + 's'}"
-
-
 # -- publish ----------------------------------------------------------------
 
 
@@ -397,7 +393,7 @@ class MaterialProduct(data.DataProduct):
                 if chosen:
                     cmds.sets(chosen, forceElement=names[sg])
 
-        message = f"Assigned {_plural(len(assignments), 'shading group')} to {_plural(len(meshes), 'mesh', 'meshes')}"
+        message = f"Assigned {data.plural(len(assignments), 'shading group')} to {data.plural(len(meshes), 'mesh', 'meshes')}"
         if reused:
             message += f" (used existing: {', '.join(reused)})"
         return message
@@ -406,9 +402,9 @@ class MaterialProduct(data.DataProduct):
         sgs = payload["shading_engines"]
         meshes = sorted({_mesh_of(m) for members in payload["assignments"].values() for m in members})
         return [
-            f"{_plural(len(sgs), 'shading group')}: {', '.join(sgs)}" if sgs else "0 shading groups",
-            f"{_plural(len(meshes), 'mesh', 'meshes')}: {', '.join(meshes)}",
-            _plural(len(payload["textures"]), "texture"),
+            f"{data.plural(len(sgs), 'shading group')}: {', '.join(sgs)}" if sgs else "0 shading groups",
+            f"{data.plural(len(meshes), 'mesh', 'meshes')}: {', '.join(meshes)}",
+            data.plural(len(payload["textures"]), "texture"),
         ]
 
 

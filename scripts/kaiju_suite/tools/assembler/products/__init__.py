@@ -72,7 +72,7 @@ class Product:
         return self.runnable
 
     def claims(self, path):
-        return os.path.isfile(path) and os.path.splitext(path)[1].lower() in self.extensions
+        return os.path.isfile(path) and ext_of(path) in self.extensions
 
     def run(self, path):
         """One step of a build. Only called on runnable products."""
@@ -129,6 +129,16 @@ def new_path(directory, name, ext):
     if os.path.exists(path):
         raise FileExistsError(f"Already exists: {name}")
     return path
+
+
+def ext_of(path):
+    """``path``'s extension, lower case, with the dot."""
+    return os.path.splitext(path)[1].lower()
+
+
+def is_empty(path):
+    """Whether ``path`` is an empty entry, created but not published into yet."""
+    return os.path.getsize(path) == 0
 
 
 def discover():

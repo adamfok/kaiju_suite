@@ -17,10 +17,6 @@ from maya import cmds
 from kaiju_suite.tools.assembler import data, runlog
 
 
-def _plural(count, word):
-    return f"{count} {word}{'s' if count != 1 else ''}"
-
-
 def _short_name(path):
     """The shortest name that still picks out only this node."""
     return cmds.ls(path)[0]
@@ -61,12 +57,6 @@ def _skip_reason(node, attr):
     return None
 
 
-def _require_unique(names):
-    ambiguous = [f"{name} ({', '.join(cmds.ls(name, long=True))})" for name in names if len(cmds.ls(name)) > 1]
-    if ambiguous:
-        raise RuntimeError(f"Several nodes have the same name, can't tell which to use: {'; '.join(ambiguous)}")
-
-
 class PoseProduct(data.DataProduct):
     name = "Pose"
     kind = "pose"
@@ -95,7 +85,7 @@ class PoseProduct(data.DataProduct):
         records = payload["nodes"]
         missing = data.skip_missing(record["name"] for record in records)
         records = [record for record in records if record["name"] not in missing]
-        _require_unique([record["name"] for record in records])
+        data.require_unique([record["name"] for record in records])
 
         set_count, skipped = 0, []
         for record in records:
@@ -108,12 +98,12 @@ class PoseProduct(data.DataProduct):
                     continue
                 cmds.setAttr(f"{node}.{attr}", value)
                 node_count += 1
-            runlog.info(f"{node}: set {_plural(node_count, 'attribute')}")
+            runlog.info(f"{node}: set {data.plural(node_count, 'attribute')}")
             set_count += node_count
 
-        message = f"Set {_plural(set_count, 'attribute')} on {_plural(len(records), 'node')}"
+        message = f"Set {data.plural(set_count, 'attribute')} on {data.plural(len(records), 'node')}"
         if skipped:
-            skipped = f"Skipped {_plural(len(skipped), 'attribute')}: {', '.join(skipped)}"
+            skipped = f"Skipped {data.plural(len(skipped), 'attribute')}: {', '.join(skipped)}"
             runlog.warning(skipped)
             message += f". {skipped}"
         return message
@@ -122,8 +112,8 @@ class PoseProduct(data.DataProduct):
         records = payload["nodes"]
         count = sum(len(record["attrs"]) for record in records)
         return [
-            _plural(len(records), "node"),
-            _plural(count, "attribute"),
+            data.plural(len(records), "node"),
+            data.plural(count, "attribute"),
             f"Nodes: {', '.join(record['name'] for record in records)}",
         ]
 

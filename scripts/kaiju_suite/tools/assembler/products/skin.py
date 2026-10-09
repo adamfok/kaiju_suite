@@ -30,10 +30,6 @@ _WEIGHT_BLENDED = 2
 _DECIMALS = 8
 
 
-def _plural(count, word, plural=None):
-    return f"{count} {word if count == 1 else (plural or word + 's')}"
-
-
 def _short(path):
     """The shortest unique name of ``path``, as Maya shows it."""
     return cmds.ls(path)[0]
@@ -230,19 +226,19 @@ class SkinProduct(data.DataProduct):
         for record in records:
             clusters.append(_apply_record(record))
             runlog.info(
-                f"{record['mesh']}: bound {clusters[-1]} to {_plural(len(record['influences']), 'influence')}"
+                f"{record['mesh']}: bound {clusters[-1]} to {data.plural(len(record['influences']), 'influence')}"
             )
-        message = f"Bound {_plural(len(clusters), 'mesh', 'meshes')}"
+        message = f"Bound {data.plural(len(clusters), 'mesh', 'meshes')}"
         return f"{message}: {', '.join(clusters)}" if clusters else message
 
     def describe(self, payload):
         records = payload["meshes"]
         influences = {name for r in records for name in r["influences"]}
-        lines = [f"{_plural(len(records), 'mesh', 'meshes')}, {_plural(len(influences), 'influence')}"]
+        lines = [f"{data.plural(len(records), 'mesh', 'meshes')}, {data.plural(len(influences), 'influence')}"]
         for r in records:
             lines.append(
-                f"{r['mesh']}: {r['skinCluster']}, {_plural(len(r['influences']), 'influence')}, "
-                f"{_plural(r['vertex_count'], 'vertex', 'vertices')}"
+                f"{r['mesh']}: {r['skinCluster']}, {data.plural(len(r['influences']), 'influence')}, "
+                f"{data.plural(r['vertex_count'], 'vertex', 'vertices')}"
             )
         return lines
 

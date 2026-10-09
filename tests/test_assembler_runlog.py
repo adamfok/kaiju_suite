@@ -185,7 +185,7 @@ def test_move_keeps_the_log(new_scene, tmp_path):
     item = _logged_item(tmp_path)
     sub = tmp_path / "sub"
     sub.mkdir()
-    new = logic.move_path(item, str(sub))
+    [new] = logic.place([item], str(sub), None)
     assert runlog.exists(new)
     assert not runlog.exists(item)
     assert not os.path.exists(os.path.join(str(tmp_path), runlog.LOG_DIR))

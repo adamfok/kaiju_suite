@@ -10,15 +10,11 @@ from maya import cmds
 
 from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.assembler import versions
-from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, new_path
+from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, ext_of, is_empty, new_path
 
 EXTENSIONS = (".ma", ".mb")
 
 _SCENE_TYPES = {".ma": "mayaAscii", ".mb": "mayaBinary"}
-
-
-def _ext(path):
-    return os.path.splitext(path)[1].lower()
 
 
 @undoable
@@ -28,14 +24,14 @@ def import_scene(path):
     Maya flushes the undo queue on file import, so this can't be undone;
     the chunk still keeps the undo state consistent afterwards.
     """
-    if _ext(path) not in EXTENSIONS:
+    if ext_of(path) not in EXTENSIONS:
         raise ValueError(f"Not a scene: {os.path.basename(path)}")
     return cmds.file(path, i=True, mergeNamespacesOnClash=True, namespace=":", returnNewNodes=True)
 
 
 def export_selection(path, overwrite=False):
     """Export the current selection to ``path``; type comes from the extension."""
-    file_type = _SCENE_TYPES.get(_ext(path))
+    file_type = _SCENE_TYPES.get(ext_of(path))
     if file_type is None:
         raise ValueError(f"Not a scene: {os.path.basename(path)}")
     if not cmds.ls(selection=True):
@@ -57,10 +53,6 @@ def create_scene(directory, name, ext):
     with open(path, "wb"):
         pass
     return path
-
-
-def is_empty(path):
-    return os.path.getsize(path) == 0
 
 
 def export_into(path):

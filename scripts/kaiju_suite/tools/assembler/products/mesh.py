@@ -16,18 +16,10 @@ removes the shape with it and one undo still reverts a whole Run.
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.tools.assembler import data
 
 _VECTORS = ("translate", "rotate", "scale")
-
-
-def _leaf(path):
-    return path.rsplit("|", 1)[-1]
-
-
-def _parent(path):
-    found = cmds.listRelatives(path, parent=True, fullPath=True)
-    return found[0] if found else None
 
 
 def _mesh_shape(transform):
@@ -45,7 +37,7 @@ def _split_selection(selection):
         if cmds.objectType(node, isAType="transform") and _mesh_shape(node):
             transforms.append(node)
         elif cmds.objectType(node) == "mesh" and not cmds.getAttr(f"{node}.intermediateObject"):
-            transforms.append(_parent(node))
+            transforms.append(data.parent_of(node))
         else:
             others.append(node)
     return list(dict.fromkeys(transforms)), list(dict.fromkeys(others))
@@ -58,8 +50,8 @@ def _mfn(path):
 
 
 def _record(transform):
-    parent = _parent(transform)
-    record = {"name": _leaf(transform), "parent": _leaf(parent) if parent else None}
+    parent = data.parent_of(transform)
+    record = {"name": short_name(transform), "parent": short_name(parent) if parent else None}
     for attr in _VECTORS:
         record[attr] = list(cmds.getAttr(f"{transform}.{attr}")[0])
     record["rotateOrder"] = int(cmds.getAttr(f"{transform}.rotateOrder"))
@@ -84,24 +76,6 @@ def _record(transform):
         sorted(fn.getEdgeVertices(e)) for e in range(fn.numEdges) if not fn.isEdgeSmooth(e)
     )
     return record
-
-
-def _outside_parents(records):
-    """Map each saved parent name to the scene node of that name (``None``
-    for world). Raises, before anything is created, if a name matches
-    several nodes."""
-    found, ambiguous = {}, []
-    for record in records:
-        name = record["parent"]
-        if not name or name in found:
-            continue
-        matches = cmds.ls(name, type="transform", long=True) or []
-        if len(matches) > 1:
-            ambiguous.append(f"{name} ({', '.join(matches)})")
-        found[name] = matches[0] if matches else None
-    if ambiguous:
-        raise RuntimeError(f"Several nodes have the parent's name, can't tell which to use: {'; '.join(ambiguous)}")
-    return found
 
 
 def _build_shape(transform, record):
@@ -150,7 +124,7 @@ class MeshProduct(data.DataProduct):
             return ["Nothing selected. Select the meshes to publish."]
         transforms, others = _split_selection(selection)
         if others:
-            names = ", ".join(_leaf(n) for n in others)
+            names = ", ".join(short_name(n) for n in others)
             return [f"Not meshes: {names}. Select only meshes to publish."]
         if not transforms:
             return ["No meshes selected. Select the meshes to publish."]
@@ -159,14 +133,14 @@ class MeshProduct(data.DataProduct):
     def gather(self, selection):
         transforms, others = _split_selection(selection)
         if others:
-            raise RuntimeError(f"Not meshes: {', '.join(_leaf(n) for n in others)}")
+            raise RuntimeError(f"Not meshes: {', '.join(short_name(n) for n in others)}")
         if not transforms:
             raise RuntimeError("No meshes selected to publish.")
         return {"meshes": [_record(t) for t in transforms]}
 
     def apply(self, payload):
         records = payload["meshes"]
-        parents = _outside_parents(records)
+        parents = data.outside_parents(records)
         uuids, renamed = [], []
         for record in records:
             uuid = data.create_node("transform", record["name"], parents.get(record["parent"]))
@@ -175,7 +149,7 @@ class MeshProduct(data.DataProduct):
                 cmds.setAttr(f"{transform}.{attr}", *record[attr])
             cmds.setAttr(f"{transform}.rotateOrder", record["rotateOrder"])
             shape = _build_shape(transform, record)
-            leaf = _leaf(transform)
+            leaf = short_name(transform)
             cmds.rename(shape, data.unique_name(f"{leaf}Shape"))
             cmds.sets(data.node_path(uuid), edit=True, forceElement="initialShadingGroup")
             uuids.append(uuid)

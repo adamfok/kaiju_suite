@@ -17,17 +17,10 @@ warning. Rational curve weights aren't saved.
 from maya import cmds, mel
 from maya.api import OpenMaya as om
 
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.tools.assembler import data, runlog
 
 _DISPLAY = ("overrideEnabled", "overrideRGBColors", "overrideColor", "lineWidth")
-
-
-def _plural(count, word):
-    return f"{count} {word}{'s' if count != 1 else ''}"
-
-
-def _leaf(path):
-    return path.rsplit("|", 1)[-1]
 
 
 def _curve_shapes(node):
@@ -54,7 +47,7 @@ def _record(shape, pivot):
     curve = om.MFnNurbsCurve(om.MSelectionList().add(shape).getDagPath(0))
     px, py, pz = pivot
     record = {
-        "name": _leaf(shape),
+        "name": short_name(shape),
         "degree": curve.degree,
         "form": cmds.getAttr(f"{shape}.form"),  # 0 open, 1 closed, 2 periodic
         "knots": list(curve.knots()),
@@ -81,12 +74,6 @@ def _build(control, record, pivot):
         cmds.setAttr(f"{shape}.{attr}", record[attr])
     cmds.setAttr(f"{shape}.overrideColorRGB", *record["overrideColorRGB"])
     return shape
-
-
-def _require_unique(names):
-    ambiguous = [f"{name} ({', '.join(cmds.ls(name, long=True))})" for name in names if len(cmds.ls(name)) > 1]
-    if ambiguous:
-        raise RuntimeError(f"Several nodes have the same name, can't tell which to use: {'; '.join(ambiguous)}")
 
 
 class ControlShapeProduct(data.DataProduct):
@@ -120,7 +107,7 @@ class ControlShapeProduct(data.DataProduct):
         records = payload["controls"]
         missing = data.skip_missing([record["name"] for record in records], "controls")
         records = [record for record in records if record["name"] not in missing]
-        _require_unique([record["name"] for record in records])
+        data.require_unique([record["name"] for record in records])
 
         for record in records:
             control = cmds.ls(record["name"], long=True)[0]
@@ -130,15 +117,15 @@ class ControlShapeProduct(data.DataProduct):
             pivot = _pivot(control)
             for shape in record["shapes"]:
                 _build(control, shape, pivot)
-            runlog.info(f"{record['name']}: replaced with {_plural(len(record['shapes']), 'curve shape')}")
-        return f"Replaced the shapes of {_plural(len(records), 'control')}"
+            runlog.info(f"{record['name']}: replaced with {data.plural(len(record['shapes']), 'curve shape')}")
+        return f"Replaced the shapes of {data.plural(len(records), 'control')}"
 
     def describe(self, payload):
         records = payload["controls"]
         count = sum(len(record["shapes"]) for record in records)
         return [
-            _plural(len(records), "control"),
-            _plural(count, "curve shape"),
+            data.plural(len(records), "control"),
+            data.plural(count, "curve shape"),
             f"Controls: {', '.join(record['name'] for record in records)}",
         ]
 
