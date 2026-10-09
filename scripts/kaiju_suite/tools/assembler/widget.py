@@ -5,12 +5,13 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import logic, products, runlog, versions
+from kaiju_suite.tools.assembler import logic, plan, products, runlog, versions
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
 
 SETTINGS_KEY = "assembler"
+_PLAN_FILTER = "Build Plans (*.json);;All Files (*)"
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
@@ -547,6 +548,9 @@ class AssemblerWindow(ToolWindow):
         if not is_file:
             label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All"
             menu.addAction(label, lambda: self._run_folder(directory))
+            plan_menu = menu.addMenu("Build Plan")
+            plan_menu.addAction("Export...", lambda: self._export_plan(directory))
+            plan_menu.addAction("Import...", lambda: self._import_plan(directory))
         if toggles:
             enabled = [logic.is_enabled(p) for p in toggles]
             if any(enabled):
@@ -663,6 +667,41 @@ class AssemblerWindow(ToolWindow):
         except Exception as e:
             _warn(f"Failed to update: {e}")
         self.populate()
+
+    def _plan_dir(self):
+        saved = settings.get(SETTINGS_KEY, "plan_dir", "")
+        return saved if saved and os.path.isdir(saved) else self.root_dir()
+
+    def _export_plan(self, directory):
+        name = os.path.basename(directory) or "build"
+        target, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export Build Plan", os.path.join(self._plan_dir(), f"{name}.json"), _PLAN_FILTER
+        )
+        if not target:
+            return
+        settings.set(SETTINGS_KEY, "plan_dir", os.path.dirname(target))
+        try:
+            plan.save_plan(directory, target)
+        except Exception as e:
+            log.exception("Build plan export failed")
+            _warn(f"Failed to export the build plan: {e}")
+            return
+        _notify(f"Exported the build plan of {name} to {os.path.basename(target)}")
+
+    def _import_plan(self, directory):
+        source, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import Build Plan", self._plan_dir(), _PLAN_FILTER)
+        if not source:
+            return
+        settings.set(SETTINGS_KEY, "plan_dir", os.path.dirname(source))
+        try:
+            created = plan.import_plan(plan.load_plan(source), directory)
+        except Exception as e:
+            log.exception("Build plan import failed")
+            # Problems can be a long list: show them in a box, not the status line.
+            QtWidgets.QMessageBox.warning(self, "Can't Import Build Plan", str(e))
+            return
+        self.populate()
+        _notify(f"Imported {len(created)} item{'s' if len(created) != 1 else ''} from {os.path.basename(source)}")
 
     def _create(self, product, creator, directory):
         title = f"New {creator.label}"

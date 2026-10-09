@@ -70,11 +70,13 @@ def point_to(path, maya_file):
         raise FileNotFoundError(f"File not found: {maya_file}")
     maya_file = os.path.abspath(maya_file).replace("\\", "/")
 
-    def write(entry):
-        with open(entry, "w", encoding="utf-8") as f:
-            json.dump({"path": maya_file}, f, indent=2)
+    return versions.export_into(path, lambda entry: _write_entry(entry, maya_file))
 
-    return versions.export_into(path, write)
+
+def _write_entry(entry, maya_file):
+    """Write the entry at ``entry`` pointing to ``maya_file``."""
+    with open(entry, "w", encoding="utf-8") as f:
+        json.dump({"path": maya_file}, f, indent=2)
 
 
 def pick_scene_file(start_dir):
@@ -132,6 +134,21 @@ class SceneProduct(Product):
     def publish(self, path):
         # No question first: the path it replaces is kept as a version.
         return Action("Publish", lambda: publish_from_browser(path))
+
+    def to_plan(self, path):
+        maya_file = target(path)
+        return {} if maya_file is None else {"path": maya_file}
+
+    def plan_problems(self, item):
+        if "path" in item and not isinstance(item["path"], str):
+            return [f"path must be text, not {item['path']!r}"]
+        return []
+
+    def from_plan(self, path, item):
+        if item.get("path"):
+            _write_entry(path, item["path"])
+        else:
+            super().from_plan(path, item)
 
     def panel(self, path):
         try:
