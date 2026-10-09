@@ -57,8 +57,10 @@ def test_ik_parameters_and_defaults():
         "end_joint",
         "pole_distance",
         "control_size",
+        "color",
         "parent",
     ]
+    assert module.defaults()["color"] == 17
     assert module.name == "Simple IK"
 
 
@@ -78,6 +80,7 @@ def test_valid_params_have_no_problems(arm):
         ({"end_joint": "shoulder"}, "below"),
         ({"control_size": 0.0}, "Control size"),
         ({"pole_distance": -1.0}, "Pole distance"),
+        ({"color": 40}, "Color"),
         ({"parent": "nothing"}, "nothing"),
         ({"end_joint": "elbow"}, "3 joints"),
     ],
@@ -170,6 +173,26 @@ def test_moving_the_control_drives_the_chain(arm):
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
 
     assert _close([_world("wrist")], [_world("L_arm_ik_ctrl")])
+
+
+def _color(control):
+    """``(overrideEnabled, overrideColor)`` of each curve shape under ``control``."""
+    shapes = cmds.listRelatives(control, shapes=True, type="nurbsCurve")
+    return {(cmds.getAttr(f"{s}.overrideEnabled"), cmds.getAttr(f"{s}.overrideColor")) for s in shapes}
+
+
+def test_color_goes_on_both_controls(arm):
+    rig.get("simple_ik").build(_params(color=13))
+
+    assert _color("L_arm_ik_ctrl") == {(True, 13)}
+    assert _color("L_arm_pv_ctrl") == {(True, 13)}
+
+
+def test_color_0_leaves_the_controls_maya_default_color(arm):
+    rig.get("simple_ik").build(_params(color=0))
+
+    assert _color("L_arm_ik_ctrl") == {(False, 0)}
+    assert _color("L_arm_pv_ctrl") == {(False, 0)}
 
 
 def test_build_goes_under_the_parent(arm):

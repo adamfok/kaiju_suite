@@ -17,6 +17,7 @@ class _Box(RigModule):
         Param("size", "Size", "float", 1.0),
         Param("side", "Side", "choice", "L", choices=("L", "R")),
         Param("target", "Target", "node", ""),
+        Param("color", "Color", "color", 17),
     )
 
 
@@ -50,7 +51,7 @@ def test_rig_package_imports_no_qt_tools_or_ui():
 
 
 def test_defaults_come_from_the_params():
-    assert _Box().defaults() == {"name": "box", "size": 1.0, "side": "L", "target": ""}
+    assert _Box().defaults() == {"name": "box", "size": 1.0, "side": "L", "target": "", "color": 17}
 
 
 def test_complete_fills_missing_params_and_keeps_unknown_ones():
@@ -59,6 +60,7 @@ def test_complete_fills_missing_params_and_keeps_unknown_ones():
         "size": 2.0,
         "side": "L",
         "target": "",
+        "color": 17,
         "extra": 1,
     }
 
@@ -72,6 +74,18 @@ def test_problems_report_required_and_bad_choices():
 
 def test_problems_report_a_number_that_is_not_one():
     assert any("Size" in p for p in _Box().problems({"size": "big"}))
+
+
+@pytest.mark.parametrize("value", [0, 1, 17, 31])
+def test_a_color_is_a_maya_index_color(value):
+    assert _Box().problems({"color": value}) == []
+
+
+@pytest.mark.parametrize("value", [-1, 32, 2.5, True, "red", None])
+def test_problems_report_a_color_that_is_not_an_index_color(value):
+    problems = _Box().problems({"color": value})
+
+    assert any("Color" in p and "0 to 31" in p for p in problems), problems
 
 
 def test_build_refuses_params_with_problems(new_scene):
