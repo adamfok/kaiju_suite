@@ -9,6 +9,7 @@ import time
 from maya import cmds
 
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.tools.assembler import versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, new_path
 
 EXTENSIONS = (".ma", ".mb")
@@ -63,8 +64,16 @@ def is_empty(path):
 
 
 def export_into(path):
-    """Replace the scene at ``path`` with the current selection."""
+    """Replace the scene at ``path`` with the current selection and save
+    the result as its next version.
+
+    Old content not yet in the history (a scene from before versioning) is
+    saved as a version first, so nothing is lost.
+    """
+    if cmds.ls(selection=True):
+        versions.save_version(path)
     export_selection(path, overwrite=True)
+    versions.save_version(path)
     return f"Exported selection to {os.path.basename(path)}"
 
 
@@ -73,6 +82,7 @@ class SceneProduct(Product):
     extensions = EXTENSIONS
     order = 30
     runnable = True
+    versioned = True
     creators = (Creator("Scene", create_scene, [("Maya Binary (.mb)", ".mb"), ("Maya Ascii (.ma)", ".ma")]),)
 
     def run(self, path):
@@ -86,8 +96,11 @@ class SceneProduct(Product):
             confirm = None
         else:
             saved = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(path)))
-            info = [f"{os.path.getsize(path) / 1024:.1f} KB, saved {saved}"]
-            confirm = f"Replace {os.path.basename(path)} with the current selection?"
+            info = [f"{os.path.getsize(path) / 1024:.1f} KB, saved {saved}", versions.summary(path)]
+            confirm = (
+                f"Replace {os.path.basename(path)} with the current selection?"
+                " Its current content stays in Versions."
+            )
         return Panel(info, [Action("Export Selected", lambda: export_into(path), confirm)])
 
 

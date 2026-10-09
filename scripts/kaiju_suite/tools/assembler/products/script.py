@@ -2,7 +2,7 @@
 
 import os
 
-from maya import mel
+from maya import cmds, mel
 
 from kaiju_suite.core.undo import undo_chunk
 from kaiju_suite.tools.assembler.products import Creator, Product, new_path
@@ -38,6 +38,68 @@ def run_script(path):
             exec(compile(code, path, "exec"), __main__.__dict__)
         else:
             mel.eval(code)
+
+
+# Script Editor tabs opened here call kaijuExecuterTabFileChanged when their
+# file changes on disk (e.g. a version is restored). Maya's own handler,
+# executerTabFileChanged, parents its "Reload?" dialog to a window that
+# doesn't exist in Maya 2026 ("Object 'scriptEditorPanel1Window' not found"),
+# so the dialog fails and the tab keeps the old text. This one reloads
+# straight away, asking first only if the tab has unsaved edits.
+_FILE_CHANGED_MEL = """
+global proc kaijuExecuterTabFileChanged(string $file)
+{
+    global string $gCommandExecuter[];
+    global string $gCommandExecuterName[];
+
+    if (!`filetest -r $file`) {
+        return;
+    }
+    int $i;
+    for ($i = 0; $i < size($gCommandExecuter); $i++) {
+        if ($gCommandExecuterName[$i] != $file) {
+            continue;
+        }
+        string $executer = $gCommandExecuter[$i];
+        if (`cmdScrollFieldExecuter -q -modified $executer`) {
+            string $answer = `confirmDialog -title "Script Changed on Disk"
+                -message ($file + " changed on disk.\\nReload it and lose your unsaved edits in the Script Editor?")
+                -button "Reload" -button "Keep My Edits"
+                -defaultButton "Keep My Edits" -cancelButton "Keep My Edits" -dismissString "Keep My Edits"`;
+            if ($answer != "Reload") {
+                continue;
+            }
+        }
+        cmdScrollFieldExecuter -e -loadFile $file $executer;
+    }
+}
+
+global proc kaijuWatchExecuterFile(string $file)
+{
+    global string $gCommandExecuter[];
+    global string $gCommandExecuterName[];
+
+    int $i;
+    for ($i = 0; $i < size($gCommandExecuter); $i++) {
+        if ($gCommandExecuterName[$i] == $file) {
+            cmdScrollFieldExecuter -e -fileChangedCommand "kaijuExecuterTabFileChanged" $gCommandExecuter[$i];
+        }
+    }
+}
+"""
+
+
+def _mel_path(path):
+    return path.replace("\\", "/").replace('"', '\\"')
+
+
+def watch_in_script_editor(path):
+    """Make any open Script Editor tab for ``path`` reload when the file
+    changes (GUI Maya only; does nothing in standalone)."""
+    if cmds.about(batch=True):
+        return
+    mel.eval(_FILE_CHANGED_MEL)
+    mel.eval(f'kaijuWatchExecuterFile "{_mel_path(path)}"')
 
 
 # Opens a file in a new Script Editor tab, or focuses its tab if already open.
@@ -77,9 +139,10 @@ _OPEN_IN_EDITOR_MEL = """
         if (size($filename) > 0) {
             renameCurrentExecuterTab($filename, 0);
             delegateCommandToFocusedExecuterWindow "-e -modificationChangedCommand executerTabModificationChanged" 0;
-            delegateCommandToFocusedExecuterWindow "-e -fileChangedCommand executerTabFileChanged" 0;
+            delegateCommandToFocusedExecuterWindow "-e -fileChangedCommand kaijuExecuterTabFileChanged" 0;
         }
     }
+    kaijuWatchExecuterFile($loadFile);
 }
 """
 
@@ -88,8 +151,8 @@ def open_in_script_editor(path):
     """Load a script into its own Script Editor tab (GUI Maya only)."""
     if _ext(path) not in EXTENSIONS:
         raise ValueError(f"Not a script: {os.path.basename(path)}")
-    safe = path.replace("\\", "/").replace('"', '\\"')
-    mel.eval(_OPEN_IN_EDITOR_MEL % safe)
+    mel.eval(_FILE_CHANGED_MEL)
+    mel.eval(_OPEN_IN_EDITOR_MEL % _mel_path(path))
 
 
 class ScriptProduct(Product):
@@ -97,6 +160,7 @@ class ScriptProduct(Product):
     extensions = EXTENSIONS
     order = 10
     runnable = True
+    versioned = True
     creators = (
         Creator("Script", create_script, [("Python (.py)", ".py"), ("MEL (.mel)", ".mel")], open_after=True),
     )
@@ -106,6 +170,9 @@ class ScriptProduct(Product):
 
     def open(self, path):
         open_in_script_editor(path)
+
+    def before_replace(self, path):
+        watch_in_script_editor(path)
 
 
 PRODUCT = ScriptProduct()

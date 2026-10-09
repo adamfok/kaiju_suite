@@ -63,6 +63,7 @@ class Product:
     icon = None  # QStyle.StandardPixmap name, e.g. "SP_DirIcon"
     order = 100  # menu order; the lower one wins an extension clash
     runnable = False  # joins Run All
+    versioned = False  # gets Publish and the Versions submenu (see ..versions)
     creators = ()
 
     @property
@@ -87,6 +88,11 @@ class Product:
 
     def panel(self, path):
         """A :class:`Panel` to show in a window on double-click instead of :meth:`open`."""
+        return None
+
+    def before_replace(self, path):
+        """Called just before the Assembler overwrites ``path`` on disk, e.g.
+        to restore a version. Does nothing unless overridden."""
         return None
 
 

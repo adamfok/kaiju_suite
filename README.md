@@ -36,8 +36,9 @@ See `tools/renamer/` for a working example.
 The Assembler lists, runs and creates "products": scripts, scenes and folders today. Each one is a module in `tools/assembler/products/`.
 1. Add `tools/assembler/products/<my_product>.py`. Don't import Qt there.
 2. Subclass `Product` and set `name`, `extensions` and `order`. Set `runnable = True` and implement `run(path)` if it should take part in **Run All** (runnable items can also be disabled; override `can_disable` to change that).
-3. Optionally override `open(path)` for double-click, or return a `Panel` (info lines plus `Action` buttons) from `panel(path)` to open a window on double-click instead. Return right-click `Action`s from `actions(path)`, and list `Creator`s for its entries in the **New** submenu.
-4. End the module with `PRODUCT = MyProduct()`.
+3. Set `versioned = True` to give its files **Publish** and a **Versions** submenu on the right-click menu. Versions are copies kept in a hidden `.versions/<file name>/` folder next to the item (`v001.ma`, `v002.ma`, ...); they follow the item when it's renamed or moved, and are deleted with it.
+4. Optionally override `open(path)` for double-click, or return a `Panel` (info lines plus `Action` buttons) from `panel(path)` to open a window on double-click instead. Return right-click `Action`s from `actions(path)`, and list `Creator`s for its entries in the **New** submenu.
+5. End the module with `PRODUCT = MyProduct()`.
 
 Nothing else needs registering. See `products/scene.py` for a working example.
 
