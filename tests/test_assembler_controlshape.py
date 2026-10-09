@@ -4,7 +4,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.tools.assembler import data, logic, products, versions
+from kaiju_suite.tools.assembler import data, logic, products, runlog, versions
 from kaiju_suite.tools.assembler.products import controlshape
 
 
@@ -225,7 +225,7 @@ def test_round_trip_into_a_new_scene(new_scene, tmp_path):
     assert cmds.getAttr(f"{_shapes(ctrl)[0]}.degree") == 3
 
 
-def test_missing_control_raises_and_changes_nothing(new_scene, tmp_path):
+def test_missing_control_is_skipped_with_a_warning(new_scene, tmp_path):
     ctrl = _circle_ctrl()
     other = _circle_ctrl("other")
     path, _ = _publish(tmp_path, ctrl, other)
@@ -233,10 +233,10 @@ def test_missing_control_raises_and_changes_nothing(new_scene, tmp_path):
     square = _shapes(_square_ctrl("sq"))[0]
     cmds.parent(square, ctrl, shape=True, relative=True)
 
-    with pytest.raises(data.MissingNodesError) as info:
+    with runlog.capture() as run:
         controlshape.PRODUCT.run(path)
-    assert "other" in str(info.value)
-    assert len(_cvs(_shapes(ctrl)[0])) == 5
+    assert run.warnings == ["Skipped missing controls: other"]
+    assert len(_cvs(_shapes(ctrl)[0])) == 11
 
 
 def test_ambiguous_name_raises_and_changes_nothing(new_scene, tmp_path):

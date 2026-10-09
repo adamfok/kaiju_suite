@@ -7,13 +7,14 @@ by their shortest unique name.
 
 Run sets the values on the scene's nodes of those names with ``setAttr``.
 It creates no keys and leaves existing keys alone (on a keyed attribute it
-only changes the current value). Attributes that are now missing, locked or
-driven by a connection are skipped and listed in the returned message.
+only changes the current value). Nodes missing from the scene, and
+attributes that are now missing, locked or driven by a connection, are
+skipped with a warning.
 """
 
 from maya import cmds
 
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import data, runlog
 
 
 def _plural(count, word):
@@ -92,24 +93,29 @@ class PoseProduct(data.DataProduct):
 
     def apply(self, payload):
         records = payload["nodes"]
-        names = [record["name"] for record in records]
-        data.require_nodes(names)
-        _require_unique(names)
+        missing = data.skip_missing(record["name"] for record in records)
+        records = [record for record in records if record["name"] not in missing]
+        _require_unique([record["name"] for record in records])
 
         set_count, skipped = 0, []
         for record in records:
             node = record["name"]
+            node_count = 0
             for attr, value in record["attrs"].items():
                 reason = _skip_reason(node, attr)
                 if reason:
                     skipped.append(f"{node}.{attr} ({reason})")
                     continue
                 cmds.setAttr(f"{node}.{attr}", value)
-                set_count += 1
+                node_count += 1
+            runlog.info(f"{node}: set {_plural(node_count, 'attribute')}")
+            set_count += node_count
 
         message = f"Set {_plural(set_count, 'attribute')} on {_plural(len(records), 'node')}"
         if skipped:
-            message += f". Skipped {_plural(len(skipped), 'attribute')}: {', '.join(skipped)}"
+            skipped = f"Skipped {_plural(len(skipped), 'attribute')}: {', '.join(skipped)}"
+            runlog.warning(skipped)
+            message += f". {skipped}"
         return message
 
     def describe(self, payload):

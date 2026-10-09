@@ -3,7 +3,7 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.assembler import data, logic, products, versions
+from kaiju_suite.tools.assembler import data, logic, products, runlog, versions
 from kaiju_suite.tools.assembler.products import deltamush
 
 SETTINGS = {
@@ -215,7 +215,7 @@ def test_other_deltamush_nodes_are_left_alone(new_scene, tmp_path):
     assert _deformers(mesh) == ["body_dm", "keep_dm"]
 
 
-def test_missing_mesh_raises_and_changes_nothing(new_scene, tmp_path):
+def test_missing_mesh_is_skipped_with_a_warning(new_scene, tmp_path):
     body = _mesh("body")
     head = _mesh("head")
     _mush(body, "body_dm")
@@ -224,9 +224,19 @@ def test_missing_mesh_raises_and_changes_nothing(new_scene, tmp_path):
 
     cmds.file(new=True, force=True)
     _mesh("body")
-    with pytest.raises(data.MissingNodesError) as info:
+    with runlog.capture() as run:
         deltamush.PRODUCT.run(path)
-    assert str(info.value) == "Missing meshes: head"
+    assert run.warnings == ["Skipped missing meshes: head"]
+    assert cmds.ls(type="deltaMush") == ["body_dm"]
+
+
+def test_all_meshes_missing_is_a_warning_not_an_error(new_scene, tmp_path):
+    _mush(_mesh("body"), "body_dm")
+    path, _ = _publish(tmp_path, "body")
+    cmds.file(new=True, force=True)
+    with runlog.capture() as run:
+        deltamush.PRODUCT.run(path)
+    assert run.warnings == ["Skipped missing meshes: body"]
     assert not cmds.ls(type="deltaMush")
 
 

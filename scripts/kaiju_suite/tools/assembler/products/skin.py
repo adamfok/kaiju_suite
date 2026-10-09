@@ -5,8 +5,9 @@ index order), settings and sparse weights (per vertex, ``[influence index,
 weight]`` pairs without zeros), plus the dual quaternion blend weights when
 the skinning method is weight blended.
 
-Run finds the mesh and influences by name. It checks every mesh in the file
-first (they exist, and the vertex counts match) and raises before changing
+Run finds the mesh and influences by name. A mesh that's missing, or whose
+influences aren't all there, is skipped with a warning. It checks every
+other mesh first (the vertex counts match) and raises before changing
 anything. Then, per mesh, it removes the mesh's existing skinCluster, binds
 exactly the file's influences under the saved name, and sets every weight
 in one ``MFnSkinCluster.setWeights`` call. Remapping weights onto a changed
@@ -21,7 +22,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import data, runlog
 
 _WEIGHT_BLENDED = 2
 # Decimals kept for weights: well below what a skin can show, and it keeps
@@ -122,10 +123,25 @@ def _unique(name, label):
     return found[0]
 
 
+def _present(records):
+    """The records whose mesh and influences are all in the scene. The rest
+    are skipped with a warning: binding a mesh to only some of its
+    influences would give it the wrong weights."""
+    missing = data.skip_missing([r["mesh"] for r in records], "meshes")
+    kept = []
+    for record in records:
+        if record["mesh"] in missing:
+            continue
+        absent = [name for name in dict.fromkeys(record["influences"]) if not cmds.objExists(name)]
+        if absent:
+            runlog.warning(f"Skipped {record['mesh']}: missing influences {', '.join(absent)}")
+            continue
+        kept.append(record)
+    return kept
+
+
 def _check(records):
     """Raise, before anything changes, if any record can't be applied."""
-    data.require_nodes([r["mesh"] for r in records], "meshes")
-    data.require_nodes([name for r in records for name in r["influences"]], "influences")
     problems = []
     for record in records:
         mesh = _unique(record["mesh"], "mesh")
@@ -208,10 +224,16 @@ class SkinProduct(data.DataProduct):
         return {"meshes": [_record(m) for m in meshes]}
 
     def apply(self, payload):
-        records = payload["meshes"]
+        records = _present(payload["meshes"])
         _check(records)
-        clusters = [_apply_record(r) for r in records]
-        return f"Bound {_plural(len(clusters), 'mesh', 'meshes')}: {', '.join(clusters)}"
+        clusters = []
+        for record in records:
+            clusters.append(_apply_record(record))
+            runlog.info(
+                f"{record['mesh']}: bound {clusters[-1]} to {_plural(len(record['influences']), 'influence')}"
+            )
+        message = f"Bound {_plural(len(clusters), 'mesh', 'meshes')}"
+        return f"{message}: {', '.join(clusters)}" if clusters else message
 
     def describe(self, payload):
         records = payload["meshes"]

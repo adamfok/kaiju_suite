@@ -3,7 +3,7 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.assembler import data, logic, products, versions
+from kaiju_suite.tools.assembler import data, logic, products, runlog, versions
 from kaiju_suite.tools.assembler.products import pose
 
 
@@ -156,24 +156,36 @@ def test_locked_connected_and_missing_attributes_are_skipped_and_reported(new_sc
     cmds.connectAttr(f"{driver}.rotateY", f"{node}.rotateY")
     cmds.deleteAttr(f"{node}.weight")
 
-    message = pose.PRODUCT.run(path)
-    assert "Skipped 3 attributes: ctrl.translateX (locked), ctrl.rotateY (connected), ctrl.weight (missing)" in message
+    with runlog.capture() as run:
+        message = pose.PRODUCT.run(path)
+    skipped = "Skipped 3 attributes: ctrl.translateX (locked), ctrl.rotateY (connected), ctrl.weight (missing)"
+    assert skipped in message
+    assert run.warnings == [skipped]
     assert cmds.getAttr(f"{node}.translateX") == 0
     assert cmds.getAttr(f"{node}.translateY") == pytest.approx(2)
     assert cmds.getAttr(f"{node}.rotateX") == pytest.approx(10)
 
 
-def test_missing_node_raises_and_changes_nothing(new_scene, tmp_path):
+def test_missing_node_is_skipped_with_a_warning(new_scene, tmp_path):
     node = _ctrl()
     other = _ctrl("other")
     path, _ = _publish(tmp_path, node, other)
     cmds.delete(other)
     _zero(node)
 
-    with pytest.raises(data.MissingNodesError) as info:
+    with runlog.capture() as run:
+        message = pose.PRODUCT.run(path)
+    assert run.warnings == ["Skipped missing nodes: other"]
+    assert message.startswith("Set 13 attributes on 1 node")
+    assert cmds.getAttr(f"{node}.translate")[0] == pytest.approx((1, 2, 3))
+
+
+def test_all_nodes_missing_is_a_warning_not_an_error(new_scene, tmp_path):
+    path, _ = _publish(tmp_path, _ctrl())
+    cmds.file(new=True, force=True)
+    with runlog.capture() as run:
         pose.PRODUCT.run(path)
-    assert "other" in str(info.value)
-    assert cmds.getAttr(f"{node}.translate")[0] == (0, 0, 0)
+    assert run.warnings == ["Skipped missing nodes: ctrl"]
 
 
 def test_ambiguous_name_raises_and_changes_nothing(new_scene, tmp_path):
