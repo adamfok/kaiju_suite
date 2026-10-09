@@ -191,7 +191,7 @@ def test_move_carries_history(tmp_path):
     versions.save_version(path)
     os.makedirs(tmp_path / "sub")
 
-    new = logic.move_path(path, str(tmp_path / "sub"))
+    [new] = logic.place([path], str(tmp_path / "sub"), None)
     assert _numbers(new) == [1]
     assert versions.list_versions(path) == []
 

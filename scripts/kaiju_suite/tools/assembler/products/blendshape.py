@@ -18,20 +18,13 @@ import re
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.tools.assembler import data, runlog
 
 # Deltas shorter than this, computed from a live sculpt mesh, aren't saved.
 _TOLERANCE = 1e-6
 
 _COMPONENT = re.compile(r"\[(\d+)(?::(\d+))?\]")
-
-
-def _leaf(path):
-    return path.rsplit("|", 1)[-1]
-
-
-def _plural(count, word):
-    return f"{count} {word}{'s' if count != 1 else ''}"
 
 
 def _plug(name):
@@ -162,8 +155,8 @@ def _record(node, transform, shape):
             }
         )
     return {
-        "name": _leaf(node),
-        "mesh": _leaf(transform),
+        "name": short_name(node),
+        "mesh": short_name(transform),
         "vertex_count": cmds.polyEvaluate(shape, vertex=True),
         "envelope": cmds.getAttr(f"{node}.envelope"),
         "base_weights": _sparse(f"{target_root}.baseWeights"),
@@ -243,7 +236,7 @@ class BlendShapeProduct(data.DataProduct):
         meshes = _selected_meshes(selection)
         if not meshes:
             return ["No meshes selected. Select the meshes whose blendShapes to publish."]
-        without = [_leaf(t) for s, t in meshes.items() if not _blendshapes_on(s)]
+        without = [short_name(t) for s, t in meshes.items() if not _blendshapes_on(s)]
         if without:
             return [f"No blendShape on: {', '.join(without)}"]
         return []
@@ -270,15 +263,15 @@ class BlendShapeProduct(data.DataProduct):
         _check(records)
         for record in records:
             _build(record)
-            runlog.info(f"{record['name']}: built on {record['mesh']}, {_plural(len(record['targets']), 'target')}")
+            runlog.info(f"{record['name']}: built on {record['mesh']}, {data.plural(len(record['targets']), 'target')}")
         count = sum(len(r["targets"]) for r in records)
-        return f"Built {_plural(len(records), 'blendShape')} with {_plural(count, 'target')}"
+        return f"Built {data.plural(len(records), 'blendShape')} with {data.plural(count, 'target')}"
 
     def describe(self, payload):
         records = payload["blendshapes"]
         count = sum(len(r["targets"]) for r in records)
         meshes = list(dict.fromkeys(r["mesh"] for r in records))
-        return [f"{_plural(len(records), 'blendShape')}, {_plural(count, 'target')}", f"Meshes: {', '.join(meshes)}"]
+        return [f"{data.plural(len(records), 'blendShape')}, {data.plural(count, 'target')}", f"Meshes: {', '.join(meshes)}"]
 
 
 PRODUCT = BlendShapeProduct()

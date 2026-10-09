@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
 from kaiju_suite.tools.assembler import runlog, versions
-from kaiju_suite.tools.assembler.products import product_for
+from kaiju_suite.tools.assembler.products import ext_of, product_for
 
 log = get_logger(__name__)
 
@@ -38,7 +38,7 @@ class Entry:
 
     @property
     def ext(self):
-        return "" if self.is_dir else os.path.splitext(self.name)[1].lower()
+        return "" if self.is_dir else ext_of(self.name)
 
     @property
     def label(self):
@@ -55,10 +55,6 @@ class Entry:
         if len(self.product.extensions) > 1:
             return f"{self.product.name}({self.ext})"
         return self.product.name
-
-
-def ext_of(path):
-    return os.path.splitext(path)[1].lower()
 
 
 def scan(root):
@@ -227,19 +223,6 @@ def _check_move(src, target_dir):
         raise ValueError("Cannot move a folder into itself.")
     if os.path.dirname(src) != target_dir and os.path.exists(os.path.join(target_dir, os.path.basename(src))):
         raise FileExistsError(f"Already exists at destination: {os.path.basename(src)}")
-
-
-def move_path(src, target):
-    """Move ``src`` into ``target`` (a folder, or a file whose folder is used).
-
-    Returns the new path, or ``src`` unchanged if it's already there.
-    """
-    src = os.path.normpath(src)
-    target_dir = os.path.normpath(target if os.path.isdir(target) else os.path.dirname(target))
-    _check_move(src, target_dir)
-    if os.path.dirname(src) == target_dir:
-        return src
-    return place([src], target_dir, None)[0]
 
 
 def place(paths, directory, index):

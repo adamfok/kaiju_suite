@@ -93,41 +93,30 @@ def test_delete_file(tmp_path):
 def test_move_into_folder(tmp_path):
     src = _touch(tmp_path / "a.py")
     (tmp_path / "sub").mkdir()
-    new = logic.move_path(src, str(tmp_path / "sub"))
+    [new] = logic.place([src], str(tmp_path / "sub"), None)
     assert new == str(tmp_path / "sub" / "a.py") and os.path.isfile(new)
-
-
-def test_move_onto_file_uses_its_folder(tmp_path):
-    src = _touch(tmp_path / "a.py")
-    other = _touch(tmp_path / "sub" / "b.py")
-    assert logic.move_path(src, other) == str(tmp_path / "sub" / "a.py")
 
 
 def test_move_folder_into_itself_raises(tmp_path):
     (tmp_path / "f" / "inner").mkdir(parents=True)
     with pytest.raises(ValueError):
-        logic.move_path(str(tmp_path / "f"), str(tmp_path / "f"))
+        logic.place([str(tmp_path / "f")], str(tmp_path / "f"), None)
     with pytest.raises(ValueError):
-        logic.move_path(str(tmp_path / "f"), str(tmp_path / "f" / "inner"))
+        logic.place([str(tmp_path / "f")], str(tmp_path / "f" / "inner"), None)
 
 
 def test_move_sibling_with_shared_prefix_is_allowed(tmp_path):
     (tmp_path / "f").mkdir()
     (tmp_path / "f2").mkdir()
-    assert logic.move_path(str(tmp_path / "f"), str(tmp_path / "f2")) == str(tmp_path / "f2" / "f")
+    assert logic.place([str(tmp_path / "f")], str(tmp_path / "f2"), None) == [str(tmp_path / "f2" / "f")]
 
 
 def test_move_name_clash_raises(tmp_path):
     src = _touch(tmp_path / "a.py")
     _touch(tmp_path / "sub" / "a.py")
     with pytest.raises(FileExistsError):
-        logic.move_path(src, str(tmp_path / "sub"))
+        logic.place([src], str(tmp_path / "sub"), None)
     assert os.path.isfile(src)
-
-
-def test_move_to_same_folder_is_noop(tmp_path):
-    src = _touch(tmp_path / "a.py")
-    assert logic.move_path(src, str(tmp_path)) == os.path.normpath(src)
 
 
 # -- run --------------------------------------------------------------------

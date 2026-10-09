@@ -11,6 +11,7 @@ from maya import cmds
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaAnim as oma
 
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.tools.assembler import data, runlog
 
 # Saved settings, with the type each is stored as.
@@ -25,10 +26,6 @@ _SETTINGS = (
     ("envelope", float),
 )
 _DIGITS = 6
-
-
-def _leaf(path):
-    return path.rsplit("|", 1)[-1]
 
 
 def _shape(transform):
@@ -87,7 +84,7 @@ def _read_weights(node, index, vertex_count):
 
 def _record(node, transform, shape):
     vertex_count = cmds.polyEvaluate(shape, vertex=True)
-    record = {"name": node, "mesh": _leaf(transform), "vertex_count": vertex_count}
+    record = {"name": node, "mesh": short_name(transform), "vertex_count": vertex_count}
     for attr, kind in _SETTINGS:
         value = kind(cmds.getAttr(f"{node}.{attr}"))
         record[attr] = round(value, _DIGITS) if kind is float else value
@@ -168,7 +165,7 @@ class DeltaMushProduct(data.DataProduct):
         transforms = _mesh_transforms(selection)
         if not transforms:
             return ["No meshes selected. Select the meshes with a deltaMush to publish."]
-        without = [_leaf(t) for t in transforms if not _deltamushes(_shape(t))]
+        without = [short_name(t) for t in transforms if not _deltamushes(_shape(t))]
         if without:
             return [f"No deltaMush on: {', '.join(without)}"]
         return []

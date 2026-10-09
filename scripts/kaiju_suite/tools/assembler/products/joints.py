@@ -9,19 +9,11 @@ otherwise under the world.
 
 from maya import cmds
 
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.tools.assembler import data
 
 _VECTORS = ("translate", "rotate", "jointOrient", "scale", "preferredAngle")
 _INTS = ("rotateOrder", "side", "type")
-
-
-def _leaf(path):
-    return path.rsplit("|", 1)[-1]
-
-
-def _parent(path):
-    found = cmds.listRelatives(path, parent=True, fullPath=True)
-    return found[0] if found else None
 
 
 def _joints_under(selection):
@@ -41,16 +33,16 @@ def _joints_under(selection):
             walk(child)
 
     for joint in dict.fromkeys(selected):
-        if _parent(joint) not in members:
+        if data.parent_of(joint) not in members:
             walk(joint)
     return ordered
 
 
 def _record(path, index_of):
-    parent = _parent(path)
+    parent = data.parent_of(path)
     record = {
-        "name": _leaf(path),
-        "parent": _leaf(parent) if parent else None,
+        "name": short_name(path),
+        "parent": short_name(parent) if parent else None,
         "parent_index": index_of.get(parent),
     }
     for attr in _VECTORS:
@@ -71,24 +63,6 @@ def _set_values(path, record):
     cmds.setAttr(f"{path}.segmentScaleCompensate", record["segmentScaleCompensate"])
     cmds.setAttr(f"{path}.radius", record["radius"])
     cmds.setAttr(f"{path}.otherType", record["otherType"], type="string")
-
-
-def _outside_parents(records):
-    """Map each parent name not in the file to the scene node of that name
-    (``None`` for world). Raises, before anything is created, if a name
-    matches several nodes."""
-    found, ambiguous = {}, []
-    for record in records:
-        name = record["parent"]
-        if record["parent_index"] is not None or not name or name in found:
-            continue
-        matches = cmds.ls(name, type="transform", long=True) or []
-        if len(matches) > 1:
-            ambiguous.append(f"{name} ({', '.join(matches)})")
-        found[name] = matches[0] if matches else None
-    if ambiguous:
-        raise RuntimeError(f"Several nodes have the parent's name, can't tell which to use: {'; '.join(ambiguous)}")
-    return found
 
 
 class JointsProduct(data.DataProduct):
@@ -118,7 +92,7 @@ class JointsProduct(data.DataProduct):
 
     def apply(self, payload):
         records = payload["joints"]
-        outside = _outside_parents(records)
+        outside = data.outside_parents(records)
         uuids, renamed = [], []
         for record in records:
             index = record["parent_index"]
@@ -127,8 +101,8 @@ class JointsProduct(data.DataProduct):
             path = data.node_path(uuid)
             _set_values(path, record)
             uuids.append(uuid)
-            if _leaf(path) != record["name"]:
-                renamed.append(f"{record['name']} → {_leaf(path)}")
+            if short_name(path) != record["name"]:
+                renamed.append(f"{record['name']} → {short_name(path)}")
         message = f"Created {len(records)} joint{'s' if len(records) != 1 else ''}"
         if renamed:
             message += f" (names taken, renamed: {', '.join(renamed)})"

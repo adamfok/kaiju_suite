@@ -7,7 +7,8 @@ Each file holds one item, with a header naming what it is::
 :class:`DataProduct` is the base class for such products (Joints, Mesh,
 SkinCluster, ...): subclasses only say how to gather the payload from the
 selection and how to apply it. The node helpers here (:func:`unique_name`,
-:func:`create_node`, :func:`require_nodes`) are shared by them. No Qt here.
+:func:`create_node`, :func:`require_nodes`, :func:`plural`, ...) are
+shared by them. No Qt here.
 """
 
 import json
@@ -18,7 +19,7 @@ from maya import cmds
 
 from kaiju_suite.core.undo import undo_chunk
 from kaiju_suite.tools.assembler import runlog, versions
-from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, new_path
+from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, is_empty, new_path
 
 # The file format this code writes; files with a newer one are refused.
 FORMAT = 1
@@ -77,11 +78,6 @@ def read(path, kind):
     if "data" not in content:
         raise DataFormatError(f"{name} has no data.")
     return content["data"]
-
-
-def is_empty(path):
-    """Whether ``path`` is an empty entry, created but not published into yet."""
-    return os.path.getsize(path) == 0
 
 
 # -- nodes ------------------------------------------------------------------
@@ -147,6 +143,43 @@ def skip_missing(names, label="nodes"):
     if missing:
         runlog.warning(f"Skipped missing {label}: {', '.join(missing)}")
     return set(missing)
+
+
+def require_unique(names):
+    """Raise if any of ``names`` matches several nodes, naming them all."""
+    ambiguous = [f"{name} ({', '.join(cmds.ls(name, long=True))})" for name in names if len(cmds.ls(name)) > 1]
+    if ambiguous:
+        raise RuntimeError(f"Several nodes have the same name, can't tell which to use: {'; '.join(ambiguous)}")
+
+
+def parent_of(path):
+    """The long path of ``path``'s parent, or ``None`` under the world."""
+    found = cmds.listRelatives(path, parent=True, fullPath=True)
+    return found[0] if found else None
+
+
+def outside_parents(records):
+    """Map each saved parent name to the scene node of that name (``None``
+    for world). Records whose parent is in the file itself (a set
+    ``parent_index``) are skipped. Raises, before anything is created, if a
+    name matches several nodes."""
+    found, ambiguous = {}, []
+    for record in records:
+        name = record["parent"]
+        if record.get("parent_index") is not None or not name or name in found:
+            continue
+        matches = cmds.ls(name, type="transform", long=True) or []
+        if len(matches) > 1:
+            ambiguous.append(f"{name} ({', '.join(matches)})")
+        found[name] = matches[0] if matches else None
+    if ambiguous:
+        raise RuntimeError(f"Several nodes have the parent's name, can't tell which to use: {'; '.join(ambiguous)}")
+    return found
+
+
+def plural(count, word, plural=None):
+    """``plural(2, "mesh", "meshes")`` → ``"2 meshes"``; ``plural`` defaults to ``word + "s"``."""
+    return f"{count} {word if count == 1 else (plural or word + 's')}"
 
 
 # -- the product base class -------------------------------------------------

@@ -30,10 +30,6 @@ from kaiju_suite.tools.assembler import data, runlog
 CURVE_TYPES = ("animCurveTL", "animCurveTA", "animCurveTU", "animCurveTT")
 
 
-def _plural(count, word):
-    return f"{count} {word}{'s' if count != 1 else ''}"
-
-
 def _number(value):
     """``value`` as an int when it's whole (frame 4 rather than 4.0)."""
     return int(value) if float(value).is_integer() else value
@@ -196,17 +192,17 @@ class AnimationProduct(data.DataProduct):
         for record in records:
             plug = f"{record['node']}.{record['attribute']}"
             _apply_curve(plug, record)
-            runlog.info(f"{plug}: {_plural(len(record['keys']), 'key')}")
+            runlog.info(f"{plug}: {data.plural(len(record['keys']), 'key')}")
         keys = sum(len(r["keys"]) for r in records)
-        return f"Keyed {_plural(len(records), 'attribute')} ({_plural(keys, 'key')})"
+        return f"Keyed {data.plural(len(records), 'attribute')} ({data.plural(keys, 'key')})"
 
     def describe(self, payload):
         records = payload["curves"]
         nodes = len({r["node"] for r in records})
         times = [k["time"] for r in records for k in r["keys"]]
         lines = [
-            f"{_plural(len(records), 'animated attribute')} on {_plural(nodes, 'node')}, "
-            f"{_plural(len(times), 'key')}"
+            f"{data.plural(len(records), 'animated attribute')} on {data.plural(nodes, 'node')}, "
+            f"{data.plural(len(times), 'key')}"
         ]
         if times:
             lines.append(f"Frames {_number(min(times))} to {_number(max(times))}")

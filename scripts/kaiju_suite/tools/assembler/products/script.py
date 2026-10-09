@@ -5,13 +5,9 @@ import os
 from maya import cmds, mel
 
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.assembler.products import Creator, Product, new_path
+from kaiju_suite.tools.assembler.products import Creator, Product, ext_of, new_path
 
 EXTENSIONS = (".py", ".mel")
-
-
-def _ext(path):
-    return os.path.splitext(path)[1].lower()
 
 
 def create_script(directory, name, ext):
@@ -26,7 +22,7 @@ def create_script(directory, name, ext):
 
 def run_script(path):
     """Execute a ``.py`` (in ``__main__``) or ``.mel`` file as one undo step."""
-    ext = _ext(path)
+    ext = ext_of(path)
     if ext not in EXTENSIONS:
         raise ValueError(f"Not a script: {os.path.basename(path)}")
     with open(path, encoding="utf-8") as f:
@@ -149,7 +145,7 @@ _OPEN_IN_EDITOR_MEL = """
 
 def open_in_script_editor(path):
     """Load a script into its own Script Editor tab (GUI Maya only)."""
-    if _ext(path) not in EXTENSIONS:
+    if ext_of(path) not in EXTENSIONS:
         raise ValueError(f"Not a script: {os.path.basename(path)}")
     mel.eval(_FILE_CHANGED_MEL)
     mel.eval(_OPEN_IN_EDITOR_MEL % _mel_path(path))
