@@ -81,3 +81,9 @@ def test_problems_come_from_the_module(new_scene, ik_file):
 
     params["end_joint"] = "wrist"
     assert any("shoulder" in p for p in logic.problems(module, params))
+
+
+def test_colors_are_maya_index_colors_with_their_rgb():
+    assert list(logic.COLORS) == list(range(32))
+    assert logic.color_rgb(13) == pytest.approx((1.0, 0.0, 0.0))
+    assert logic.color_rgb(6) == pytest.approx((0.0, 0.0, 1.0))

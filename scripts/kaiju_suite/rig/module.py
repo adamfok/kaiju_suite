@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from kaiju_suite.core.undo import undo_chunk
 
 # What a parameter holds. "node" is a scene node's name; editors offer to
-# pick it from the selection.
-KINDS = ("string", "node", "float", "bool", "choice")
+# pick it from the selection. "color" is a Maya index color, 0 to 31 (the
+# Drawing Overrides palette); 0 means Maya's default color.
+KINDS = ("string", "node", "float", "bool", "choice", "color")
+COLORS = range(32)
 
 
 @dataclass(frozen=True)
@@ -99,4 +101,7 @@ def _value_problems(param, value):
     elif param.kind == "choice":
         if value not in param.choices:
             return [f"{param.label} must be one of {', '.join(map(str, param.choices))}, not {value!r}."]
+    elif param.kind == "color":
+        if isinstance(value, bool) or not isinstance(value, int) or value not in COLORS:
+            return [f"{param.label} must be a Maya index color, 0 to 31, not {value!r}."]
     return []

@@ -1,7 +1,7 @@
 import os
 
 from maya import cmds
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.tools.rig_module_editor import logic
@@ -132,6 +132,8 @@ class RigModuleEditorWindow(ToolWindow):
 
             combo.currentTextChanged.connect(self._on_edited)
             return combo, combo.currentText, set_choice
+        if param.kind == "color":
+            return self._color_field()
         line = QtWidgets.QLineEdit()
         line.textChanged.connect(self._on_edited)
         if param.kind != "node":
@@ -145,6 +147,27 @@ class RigModuleEditorWindow(ToolWindow):
         pick.clicked.connect(lambda: self._pick_into(line))
         layout.addWidget(pick)
         return row, line.text, lambda v: line.setText(str(v))
+
+    def _color_field(self):
+        """A drop-down of Maya's index colors, each with its swatch."""
+        combo = QtWidgets.QComboBox()
+        for index in logic.COLORS:
+            if index == 0:
+                combo.addItem("0  None (Maya default)", 0)
+                continue
+            swatch = QtGui.QPixmap(16, 16)
+            swatch.fill(QtGui.QColor.fromRgbF(*logic.color_rgb(index)))
+            combo.addItem(QtGui.QIcon(swatch), str(index), index)
+
+        def set_color(value):
+            found = combo.findData(value)
+            if found < 0:  # an unknown value stays visible, and is reported
+                combo.addItem(str(value), value)
+                found = combo.count() - 1
+            combo.setCurrentIndex(found)
+
+        combo.currentIndexChanged.connect(self._on_edited)
+        return combo, combo.currentData, set_color
 
     def _pick_into(self, line):
         try:

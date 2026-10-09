@@ -4,6 +4,7 @@ import sys
 import pytest
 from maya import cmds
 
+from kaiju_suite import rig
 from kaiju_suite.tools.assembler import logic, products, versions
 from kaiju_suite.tools.assembler.products import folder, mesh, scene, script
 
@@ -180,8 +181,9 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "Pose", "Animation",
         None,
-        "Simple IK",
+        *(module.name for module in rig.all_modules()),
     ]
+    assert "Simple IK" in _menu_labels()
     assert folder.PRODUCT.creators[0].choices is None
 
 
