@@ -35,6 +35,7 @@ class FolderProduct(Product):
     name = "Folder"
     icon = "SP_DirIcon"
     order = 20
+    menu_slot = (1, 0)
     can_disable = True  # Run All skips a disabled folder and everything in it
     creators = (Creator("Folder", lambda directory, name, _ext: create_folder(directory, name)),)
 

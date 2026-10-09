@@ -198,6 +198,7 @@ class SkinProduct(data.DataProduct):
     kind = "skin"
     extension = ".skin"
     order = 60
+    menu_slot = (3, 0)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True)

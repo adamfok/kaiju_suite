@@ -158,6 +158,7 @@ class DeltaMushProduct(data.DataProduct):
     kind = "deltamush"
     extension = ".dmsh"
     order = 70
+    menu_slot = (3, 1)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True)

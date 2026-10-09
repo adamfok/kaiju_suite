@@ -82,6 +82,7 @@ class ControlShapeProduct(data.DataProduct):
     kind = "controlShape"
     extension = ".ctrl"
     order = 120
+    menu_slot = (2, 2)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True, long=True)

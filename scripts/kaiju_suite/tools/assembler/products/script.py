@@ -155,6 +155,7 @@ class ScriptProduct(Product):
     name = "Script"
     extensions = EXTENSIONS
     order = 10
+    menu_slot = (0, 0)
     runnable = True
     versioned = True
     creators = (

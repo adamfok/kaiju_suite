@@ -321,7 +321,7 @@ class AssemblerWindow(ToolWindow):
     def _add_entries(self, parent, entries, inside_disabled=False):
         for entry in entries:
             product = entry.product
-            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, "", entry.type_label])
+            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, entry.version_label or "", entry.type_label])
             item.setData(0, PATH_ROLE, entry.path)
             item.setToolTip(2, entry.name)
             if product and product.versioned and not entry.is_dir:
@@ -566,8 +566,11 @@ class AssemblerWindow(ToolWindow):
         menu.addSeparator()
 
         new_menu = menu.addMenu("New")
-        for owner in products.all_products():
-            for creator in owner.creators:
+        for entry in products.new_menu():
+            if entry is None:
+                new_menu.addSeparator()
+            else:
+                owner, creator = entry
                 new_menu.addAction(creator.label, lambda o=owner, c=creator: self._create(o, c, directory))
 
         menu.addSeparator()

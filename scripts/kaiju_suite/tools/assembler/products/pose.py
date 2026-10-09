@@ -63,6 +63,7 @@ class PoseProduct(data.DataProduct):
     kind = "pose"
     extension = ".pose"
     order = 100
+    menu_slot = (4, 0)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True, long=True)

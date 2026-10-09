@@ -170,6 +170,7 @@ class AnimationProduct(data.DataProduct):
     kind = "animation"
     extension = ".anim"
     order = 110
+    menu_slot = (4, 1)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True, long=True)

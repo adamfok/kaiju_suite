@@ -230,6 +230,7 @@ class BlendShapeProduct(data.DataProduct):
     kind = "blendshape"
     extension = ".bshp"
     order = 80
+    menu_slot = (3, 2)
 
     def _problems(self, selection):
         if not selection:
