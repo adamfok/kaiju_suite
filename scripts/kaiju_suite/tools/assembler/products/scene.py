@@ -1,10 +1,10 @@
 """Scenes (.ma, .mb): imported as a build step, filled by exporting the selection.
 
-Double-clicking a scene opens its panel, which holds Export Selected.
+Right-click Publish exports the selection into the scene as its next version.
+Double-clicking a scene opens its panel, which is empty for now.
 """
 
 import os
-import time
 
 from maya import cmds
 
@@ -73,8 +73,9 @@ def export_into(path):
     if cmds.ls(selection=True):
         versions.save_version(path)
     export_selection(path, overwrite=True)
-    versions.save_version(path)
-    return f"Exported selection to {os.path.basename(path)}"
+    # None if the export matches a saved version: it's then that one.
+    version = versions.save_version(path) or versions.current_version(path)
+    return versions.published_message(path, version)
 
 
 class SceneProduct(Product):
@@ -90,18 +91,17 @@ class SceneProduct(Product):
         if not is_empty(path):
             import_scene(path)
 
+    def publish(self, path):
+        # No question first: the content it replaces is kept as a version.
+        return Action("Publish", lambda: export_into(path))
+
+    def publish_problems(self, path):
+        if not cmds.ls(selection=True):
+            return [f"Nothing selected. Select what to publish into {os.path.basename(path)}."]
+        return []
+
     def panel(self, path):
-        if is_empty(path):
-            info = ["Empty. Select something in Maya, then Export Selected.", "Run All skips it until then."]
-            confirm = None
-        else:
-            saved = time.strftime("%Y-%m-%d %H:%M", time.localtime(os.path.getmtime(path)))
-            info = [f"{os.path.getsize(path) / 1024:.1f} KB, saved {saved}", versions.summary(path)]
-            confirm = (
-                f"Replace {os.path.basename(path)} with the current selection?"
-                " Its current content stays in Versions."
-            )
-        return Panel(info, [Action("Export Selected", lambda: export_into(path), confirm)])
+        return Panel([], [])
 
 
 PRODUCT = SceneProduct()

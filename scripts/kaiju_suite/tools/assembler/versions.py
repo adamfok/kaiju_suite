@@ -107,6 +107,39 @@ def save_version(path):
     return list_versions(path)[0]
 
 
+def published_message(path, version):
+    """What to tell the user once ``path`` is published as ``version``,
+    e.g. ``Published Scene ball.ma v003``."""
+    product = product_for(path)
+    kind = f"{product.name} " if product is not None else ""
+    return f"Published {kind}{os.path.basename(path)} {version.tag}"
+
+
+def publish(path):
+    """Save ``path`` as it is as its next version. Returns a message."""
+    name = os.path.basename(path)
+    version = save_version(path)
+    if version:
+        return published_message(path, version)
+    current = current_version(path)
+    return f"{name} is already published as {current.tag}" if current else f"{name} is empty: nothing to publish"
+
+
+def publish_action(path):
+    """The :class:`Action` for right-click Publish: the product's own, or
+    :func:`publish` if it has none."""
+    product = product_for(path)
+    action = product.publish(path) if product is not None else None
+    return action or Action("Publish", lambda: publish(path))
+
+
+def publish_problems(path):
+    """The pre-publish check: what stops ``path`` being published now, as
+    messages (empty if nothing does). Run it before :func:`publish_action`."""
+    product = product_for(path)
+    return product.publish_problems(path) if product is not None else []
+
+
 def restore_version(path, number):
     """Replace ``path`` with version ``number``. Adds no version: content
     not published is lost, so callers should warn first (see

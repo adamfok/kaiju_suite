@@ -3,7 +3,7 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.assembler import logic, versions
+from kaiju_suite.tools.assembler import logic, products, versions
 from kaiju_suite.tools.assembler.products import folder, scene, script
 
 
@@ -270,11 +270,62 @@ def test_failed_export_saves_no_version(new_scene, tmp_path):
     assert versions.list_versions(path) == []
 
 
-def test_scene_panel_mentions_versions(new_scene, tmp_path):
+def test_publishing_a_scene_exports_the_selection_as_a_new_version(new_scene, tmp_path):
     path = scene.create_scene(str(tmp_path), "hero", ".ma")
+    cmds.select(cmds.createNode("transform", name="first"))
+    action = versions.publish_action(path)
+    assert action.fn() == "Published Scene hero.ma v001"
+    assert _numbers(path) == [1]
+
+    cmds.select(cmds.createNode("transform", name="second"))
+    action = versions.publish_action(path)
+    assert action.confirm is None  # publishes in one click
+    assert action.fn() == "Published Scene hero.ma v002"
+    assert _numbers(path) == [2, 1]
+    assert "second" in _read(path)
+
+
+def test_publishing_a_scene_needs_a_selection(new_scene, tmp_path):
+    path = scene.create_scene(str(tmp_path), "hero", ".ma")
+    cmds.select(clear=True)
+    with pytest.raises(RuntimeError):
+        versions.publish_action(path).fn()
+    assert versions.list_versions(path) == []
+
+
+def test_publishing_a_script_saves_it_as_it_is(tmp_path):
+    path = _write(tmp_path / "build.py", "a = 1\n")
+    action = versions.publish_action(path)
+    assert action.label == "Publish" and action.confirm is None
+    assert action.fn() == "Published Script build.py v001"
+    assert action.fn() == "build.py is already published as v001"
+    assert _numbers(path) == [1]
+
+    empty = _write(tmp_path / "empty.py", "")
+    assert versions.publish_action(empty).fn() == "empty.py is empty: nothing to publish"
+
+
+def test_publish_check_stops_a_scene_with_nothing_selected(new_scene, tmp_path):
+    path = scene.create_scene(str(tmp_path), "hero", ".ma")
+    cmds.select(clear=True)
+    (problem,) = versions.publish_problems(path)
+    assert "Nothing selected" in problem and "hero.ma" in problem
+
     cmds.select(cmds.createNode("transform"))
-    scene.export_into(path)
-    assert "Current: v001" in " ".join(scene.PRODUCT.panel(path).info)
+    assert versions.publish_problems(path) == []
+
+
+def test_publish_check_passes_scripts(tmp_path):
+    path = _write(tmp_path / "build.py", "a = 1\n")
+    assert versions.publish_problems(path) == []
+
+
+def test_products_have_no_publish_problems_by_default(tmp_path):
+    assert products.Product().publish_problems(str(tmp_path / "x")) == []
+
+
+def test_products_publish_the_file_as_it_is_by_default(tmp_path):
+    assert script.PRODUCT.publish(str(tmp_path / "a.py")) is None
 
 
 # -- right-click submenu ----------------------------------------------------

@@ -4,7 +4,7 @@ import sys
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.assembler import logic, products
+from kaiju_suite.tools.assembler import logic, products, versions
 from kaiju_suite.tools.assembler.products import folder, scene, script
 
 
@@ -195,27 +195,27 @@ def test_scenes_have_no_right_click_actions(new_scene, tmp_path):
 
 
 def _export_action(path):
-    (action,) = scene.PRODUCT.panel(path).actions
-    assert action.label == "Export Selected"
+    action = versions.publish_action(path)
+    assert action.label == "Publish"
     return action
 
 
-def test_scene_panel_says_when_a_scene_is_empty(new_scene, tmp_path):
+def test_scene_double_click_opens_an_empty_window(new_scene, tmp_path):
     path = scene.create_scene(str(tmp_path), "hero", ".ma")
-    assert "Empty" in " ".join(scene.PRODUCT.panel(path).info)
+    panel = scene.PRODUCT.panel(path)
+    assert panel is not None  # a window, not open()
+    assert panel.info == [] and panel.actions == []
 
     cmds.select(cmds.createNode("transform"))
     _export_action(path).fn()
-    info = " ".join(scene.PRODUCT.panel(path).info)
-    assert "Empty" not in info
-    assert "KB" in info
+    panel = scene.PRODUCT.panel(path)
+    assert panel.info == [] and panel.actions == []
 
 
 @pytest.mark.parametrize("ext", scene.EXTENSIONS)
-def test_export_selected_fills_a_scene_entry(new_scene, tmp_path, ext):
+def test_publish_fills_a_scene_entry(new_scene, tmp_path, ext):
     path = scene.create_scene(str(tmp_path), "hero", ext)
     action = _export_action(path)
-    assert action.confirm is None  # nothing to lose in an empty entry
 
     cmds.select(cmds.createNode("transform", name="hero"))
     assert "hero" in action.fn()
@@ -226,14 +226,14 @@ def test_export_selected_fills_a_scene_entry(new_scene, tmp_path, ext):
     assert cmds.objExists("hero")
 
 
-def test_export_selected_asks_before_replacing_a_full_scene(new_scene, tmp_path):
+def test_publish_replaces_a_full_scene_without_asking(new_scene, tmp_path):
     cmds.select(cmds.createNode("transform"))
     path = scene.export_selection(str(tmp_path / "full.ma"))
     action = _export_action(path)
-    assert action.confirm and "full.ma" in action.confirm
+    assert action.confirm is None  # the old content is kept as a version
 
 
-def test_export_selected_needs_a_selection(new_scene, tmp_path):
+def test_publish_needs_a_selection(new_scene, tmp_path):
     path = scene.create_scene(str(tmp_path), "hero", ".ma")
     cmds.select(clear=True)
     with pytest.raises(RuntimeError):
