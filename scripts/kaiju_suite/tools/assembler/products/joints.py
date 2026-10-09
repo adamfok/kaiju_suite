@@ -67,6 +67,7 @@ def _set_values(path, record):
 
 class JointsProduct(data.DataProduct):
     name = "Joints"
+    utility = "Joint Tool"
     kind = "joints"
     extension = ".jnt"
     order = 40

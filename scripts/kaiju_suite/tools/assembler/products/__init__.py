@@ -64,6 +64,7 @@ class Product:
     order = 100  # menu order; the lower one wins an extension clash
     runnable = False  # joins Run All
     versioned = False  # gets Publish and the Versions submenu (see ..versions)
+    utility = None  # name of the Kaiju tool double-click opens, e.g. "Mesh Tool"
     creators = ()
 
     @property

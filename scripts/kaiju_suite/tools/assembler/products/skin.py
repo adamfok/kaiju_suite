@@ -194,6 +194,7 @@ def _apply_record(record):
 
 class SkinProduct(data.DataProduct):
     name = "SkinCluster"
+    utility = "SkinCluster Tool"
     kind = "skin"
     extension = ".skin"
     order = 60

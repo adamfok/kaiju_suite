@@ -336,6 +336,7 @@ def _settle(created, namespace):
 
 class MaterialProduct(data.DataProduct):
     name = "Material"
+    utility = "Material Tool"
     kind = "material"
     extension = ".mat"
     order = 90

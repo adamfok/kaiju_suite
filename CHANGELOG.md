@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- New utility tools, one per Assembler item type except Script and Folder: **Scene Tool**, **Joint Tool**, **Mesh Tool**, **SkinCluster Tool**, **DeltaMush Tool**, **BlendShape Tool**, **Material Tool**, **Pose Tool**, **Animation Tool** and **ControlShape Tool**. They're under **Kaiju ▸ Utilities**, and double-clicking an item of that type in the Assembler opens its tool. The windows are empty for now
+- Assembler: the info window that double-click used to open (e.g. how many meshes a file holds) is now right-click **Info**. Scenes, whose window was empty, have no Info entry
 - Menu: **Assembler** and **Renamer** are now directly in the **Kaiju** menu instead of under **Kaiju ▸ Utilities**
 - Assembler: the step that's running now shows in light blue instead of yellow
 - Assembler: the **Type** column only shows the file extension for Scene and Script items, which can be either of two kinds (e.g. `Scene(.mb)`, `Script(.py)`). Other types show just their name, e.g. `Mesh` instead of `Mesh(.mesh)`

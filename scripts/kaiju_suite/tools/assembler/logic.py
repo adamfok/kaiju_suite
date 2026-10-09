@@ -107,6 +107,16 @@ def _ordered_names(root, meta=None):
     return ordered + [n for n in names if n not in seen]
 
 
+def utility_for(product):
+    """The TOOL dict of ``product``'s utility, which double-click opens, or
+    ``None`` if it has none (or that tool isn't installed)."""
+    if not product.utility:
+        return None
+    from kaiju_suite import registry  # lazily: the registry imports every tool
+
+    return registry.find(product.utility)
+
+
 # -- folder metadata --------------------------------------------------------
 
 

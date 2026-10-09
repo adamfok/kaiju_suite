@@ -78,6 +78,7 @@ def _build(control, record, pivot):
 
 class ControlShapeProduct(data.DataProduct):
     name = "ControlShape"
+    utility = "ControlShape Tool"
     kind = "controlShape"
     extension = ".ctrl"
     order = 120

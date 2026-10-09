@@ -226,6 +226,7 @@ def _build(record):
 
 class BlendShapeProduct(data.DataProduct):
     name = "BlendShapes"
+    utility = "BlendShape Tool"
     kind = "blendshape"
     extension = ".bshp"
     order = 80
