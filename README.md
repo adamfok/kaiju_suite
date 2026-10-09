@@ -31,7 +31,7 @@ Imports only flow one way: `tools` → `ui` → `core`, and `tools` → `rig` �
    ```
 5. Click **Kaiju → Reload Kaiju Suite**. The tool shows up under its category, or directly in the Kaiju menu if it has none (`category` is optional). Add `"menu": False` to keep a tool out of the menu, e.g. one that's only opened from another tool; `registry.find(name)` still finds it.
 
-See `tools/renamer/` for a working example.
+See `tools/renamer/` for a working example. Ideas for tools to build next are in [docs/tool-ideas.md](docs/tool-ideas.md).
 
 Shared helpers live in `core/` so tools can use them without importing each other: `core.curves` (NURBS curve shapes as data, and rebuilt from it), `core.colors` (Maya's index colors), `core.nodes.unique_name` and `core.naming.opposite_name` (`L_arm` ↔ `R_arm`).
 
