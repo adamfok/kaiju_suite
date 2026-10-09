@@ -9,5 +9,5 @@ TOOL = {
     "name": "Mesh Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler Mesh items.",
+    "description": "Check meshes for problems and fix some of them.",
 }

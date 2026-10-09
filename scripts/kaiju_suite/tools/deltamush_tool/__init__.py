@@ -9,5 +9,5 @@ TOOL = {
     "name": "DeltaMush Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler DeltaMush items.",
+    "description": "Add a deltaMush and paint or set where it acts.",
 }

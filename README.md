@@ -33,6 +33,8 @@ Imports only flow one way: `tools` → `ui` → `core`, and `tools` → `rig` �
 
 See `tools/renamer/` for a working example.
 
+Shared helpers live in `core/` so tools can use them without importing each other: `core.curves` (NURBS curve shapes as data, and rebuilt from it), `core.colors` (Maya's index colors), `core.nodes.unique_name` and `core.naming.opposite_name` (`L_arm` ↔ `R_arm`).
+
 ## Adding an Assembler product
 The Assembler lists, runs and creates "products": scripts, scenes, folders, joints, meshes, skinClusters, deltaMush, blendShapes, materials, poses, animation and control shapes today. Each one is a module in `tools/assembler/products/`.
 1. Add `tools/assembler/products/<my_product>.py`. Don't import Qt there.
