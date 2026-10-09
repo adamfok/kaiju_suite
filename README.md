@@ -40,6 +40,8 @@ The Assembler lists, runs and creates "products": scripts, scenes, folders, join
 4. Optionally override `open(path)` for double-click, or return a `Panel` (info lines plus `Action` buttons) from `panel(path)` to open a window on double-click instead. Return right-click `Action`s from `actions(path)`, and list `Creator`s for its entries in the **New** submenu.
 5. End the module with `PRODUCT = MyProduct()`.
 
+Each run of a step is logged and saved in a hidden `.logs/<file name>.log` next to the item (right-click **Show Log** opens it). The log gets anything `run` returns as a message, Maya's output during the step (`cmds.warning`, MEL `print`, errors) and, on failure, the traceback. Call `runlog.info(message)` to log what the step did, and `runlog.warning(message)` for things it skipped: a step with warnings ends orange (Warning) instead of green, and the build goes on.
+
 Nothing else needs registering. See `products/scene.py` for a working example.
 
 ### Rig-data products (`DataProduct`)
@@ -47,7 +49,7 @@ Products that save rig data from the scene and apply it back (Joints, Mesh, Skin
 1. Set `name`, `kind` (the header's `kaiju` value), `extension` (one, lower case, with the dot) and `order`.
 2. Implement `gather(selection)`, which returns the payload from the selected nodes (long names) or raises; `apply(payload)`, which changes the scene and may return a message; `selection_problems()`, which returns messages when the selection can't be published; and `describe(payload)`, which returns the info lines for the double-click window.
 3. Everything else comes from the base class: **New ▸ <name>** creates an empty file, which a build skips; **Run** applies the file as one undo step; **Publish** gathers from the selection and saves the result as the next version via `versions.export_into(path, write_fn)` (Scene uses it too); `publish_problems` returns `selection_problems()`, and `publish_warnings` returns `selection_warnings()` (none unless overridden).
-4. In `apply`, check first and raise before changing anything: `data.require_nodes(names, "influences")` raises one error listing every missing node. Create nodes with `data.create_node(type, name, parent)`, which picks a free name the way Maya does (`spine_jnt` becomes `spine_jnt1`) and returns a UUID; get the current path with `data.node_path(uuid)`.
+4. In `apply`, skip what's missing and check the rest first, raising before changing anything. `data.skip_missing(names, "meshes")` returns the missing ones and logs one warning naming them (Pose, SkinCluster, DeltaMush, BlendShapes and ControlShape do this; Animation the same by hand); `data.require_nodes(names, "influences")` instead raises one error listing them, for products where a missing node must stop the run (Material). Create nodes with `data.create_node(type, name, parent)`, which picks a free name the way Maya does (`spine_jnt` becomes `spine_jnt1`) and returns a UUID; get the current path with `data.node_path(uuid)`.
 
 See `products/joints.py` for a working example.
 

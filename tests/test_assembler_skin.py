@@ -3,7 +3,7 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.assembler import data, logic, products, versions
+from kaiju_suite.tools.assembler import data, logic, products, runlog, versions
 from kaiju_suite.tools.assembler.products import skin
 
 JOINTS = ("hip", "knee", "ankle")
@@ -235,7 +235,7 @@ def _unchanged_after_failed_run(path, mesh):
     return str(info.value)
 
 
-def test_missing_influences_raise_and_change_nothing(new_scene, tmp_path):
+def test_mesh_with_missing_influences_is_skipped_with_a_warning(new_scene, tmp_path):
     joints, mesh, cluster = _rig()
     path, _ = _publish(tmp_path, mesh)
 
@@ -243,19 +243,23 @@ def test_missing_influences_raise_and_change_nothing(new_scene, tmp_path):
     mesh = _mesh()
     cmds.joint(name="hip")
     _bind(mesh, ["hip"], name="old_skin")
-    message = _unchanged_after_failed_run(path, mesh)
-    assert "Missing influences: knee, ankle" in message
+    before = _weights(mesh, "old_skin")
+    with runlog.capture() as run:
+        skin.PRODUCT.run(path)
+    assert run.warnings == ["Skipped leg: missing influences knee, ankle"]
+    assert _skin_cluster(mesh) == "old_skin"
+    assert _weights(mesh, "old_skin") == before
 
 
-def test_missing_mesh_raises_and_changes_nothing(new_scene, tmp_path):
+def test_missing_mesh_is_skipped_with_a_warning(new_scene, tmp_path):
     joints, mesh, cluster = _rig()
     path, _ = _publish(tmp_path, mesh)
 
     cmds.file(new=True, force=True)
     _skeleton()
-    with pytest.raises(data.MissingNodesError) as info:
+    with runlog.capture() as run:
         skin.PRODUCT.run(path)
-    assert "leg" in str(info.value)
+    assert run.warnings == ["Skipped missing meshes: leg"]
     assert not cmds.ls(type="skinCluster")
 
 
@@ -271,7 +275,7 @@ def test_vertex_count_mismatch_raises_and_changes_nothing(new_scene, tmp_path):
     assert "leg" in message and "vert" in message.lower()
 
 
-def test_one_bad_mesh_stops_the_others_too(new_scene, tmp_path):
+def test_a_missing_mesh_doesnt_stop_the_others(new_scene, tmp_path):
     joints, mesh, cluster = _rig()
     other = _mesh("arm")
     _bind(other, joints, name="arm_skin")
@@ -280,7 +284,23 @@ def test_one_bad_mesh_stops_the_others_too(new_scene, tmp_path):
     cmds.file(new=True, force=True)
     _skeleton()
     _mesh()  # leg is fine, arm is missing
-    with pytest.raises(data.MissingNodesError):
+    with runlog.capture() as run:
+        skin.PRODUCT.run(path)
+    assert run.warnings == ["Skipped missing meshes: arm"]
+    assert cmds.ls(type="skinCluster") == ["leg_skin"]
+
+
+def test_one_bad_mesh_stops_the_others_too(new_scene, tmp_path):
+    joints, mesh, cluster = _rig()
+    other = _mesh("arm")
+    _bind(other, joints, name="arm_skin")
+    path, _ = _publish(tmp_path, mesh, other)
+
+    cmds.file(new=True, force=True)
+    _skeleton()
+    _mesh()
+    cmds.polyCylinder(name="arm", subdivisionsX=6, constructionHistory=False)  # wrong vertex count
+    with pytest.raises(RuntimeError):
         skin.PRODUCT.run(path)
     assert not cmds.ls(type="skinCluster")
 

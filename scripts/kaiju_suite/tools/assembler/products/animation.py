@@ -13,8 +13,9 @@ gives them (frames at the current frame rate, degrees or radians as set), and
 Run reads them back in the units of the scene it runs in. There's no time
 offset: keys go back on their saved frames.
 
-Run checks first that every node and attribute exists. Then, on each
-attribute in the file, it removes the existing keys and rebuilds them.
+Run skips, with a warning, the curves whose node or attribute is missing.
+Then, on each other attribute in the file, it removes the existing keys and
+rebuilds them.
 Attributes not in the file keep their keys.
 
 The ``.anim`` extension is also used by Maya's animImportExport plug-in,
@@ -24,7 +25,7 @@ them.
 
 from maya import cmds
 
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import data, runlog
 
 CURVE_TYPES = ("animCurveTL", "animCurveTA", "animCurveTU", "animCurveTT")
 
@@ -103,9 +104,10 @@ def _record(name, plug, attribute, curve):
 
 
 def _check(records):
-    """Raise, before anything changes, if a node or attribute is missing or
-    a node name matches several nodes."""
-    missing, ambiguous = [], []
+    """The records to apply. Those whose node or attribute is missing are
+    skipped with a warning; raises, before anything changes, if a node name
+    matches several nodes."""
+    missing, ambiguous, kept = [], [], []
     for record in records:
         node, plug = record["node"], f"{record['node']}.{record['attribute']}"
         matches = cmds.ls(node) or []
@@ -115,15 +117,18 @@ def _check(records):
             ambiguous.append(node)
         elif not cmds.objExists(plug):
             missing.append(plug)
+        else:
+            kept.append(record)
     missing = list(dict.fromkeys(missing))
     if missing:
         nodes = any("." not in m for m in missing)
         attrs = any("." in m for m in missing)
         label = "nodes and attributes" if nodes and attrs else "nodes" if nodes else "attributes"
-        raise data.MissingNodesError(missing, label)
+        runlog.warning(f"Skipped missing {label}: {', '.join(missing)}")
     if ambiguous:
         names = ", ".join(dict.fromkeys(ambiguous))
         raise RuntimeError(f"Several nodes have these names, can't tell which to key: {names}")
+    return kept
 
 
 def _apply_curve(plug, record):
@@ -187,10 +192,11 @@ class AnimationProduct(data.DataProduct):
         return {"curves": records}
 
     def apply(self, payload):
-        records = payload["curves"]
-        _check(records)
+        records = _check(payload["curves"])
         for record in records:
-            _apply_curve(f"{record['node']}.{record['attribute']}", record)
+            plug = f"{record['node']}.{record['attribute']}"
+            _apply_curve(plug, record)
+            runlog.info(f"{plug}: {_plural(len(record['keys']), 'key')}")
         keys = sum(len(r["keys"]) for r in records)
         return f"Keyed {_plural(len(records), 'attribute')} ({_plural(keys, 'key')})"
 

@@ -3,14 +3,15 @@
 Publish saves every deltaMush on the selected meshes: its settings and its
 per-vertex weight map (sparse: only weights that aren't 1.0). Run finds the
 meshes by name, replaces a deltaMush of the same name, and creates the new one
-after the mesh's existing deformers, so it sits on top of skin.
+after the mesh's existing deformers, so it sits on top of skin. Missing
+meshes are skipped with a warning.
 """
 
 from maya import cmds
 import maya.api.OpenMaya as om
 import maya.api.OpenMayaAnim as oma
 
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import data, runlog
 
 # Saved settings, with the type each is stored as.
 _SETTINGS = (
@@ -96,11 +97,9 @@ def _record(node, transform, shape):
 
 def _check(records):
     """Map each mesh name to its transform, raising before anything changes
-    if a mesh is missing or ambiguous, a vertex count differs, or a node's
-    name is taken by something other than a deltaMush on its meshes."""
+    if a mesh is ambiguous, a vertex count differs, or a node's name is
+    taken by something other than a deltaMush on its meshes."""
     meshes = list(dict.fromkeys(r["mesh"] for r in records))
-    data.require_nodes(meshes, "meshes")
-
     transforms, problems = {}, []
     for name in meshes:
         matches = [m for m in cmds.ls(name, long=True) if cmds.objectType(m, isAType="transform") and _shape(m)]
@@ -185,8 +184,15 @@ class DeltaMushProduct(data.DataProduct):
 
     def apply(self, payload):
         records = payload["deltamush"]
+        missing = data.skip_missing([r["mesh"] for r in records], "meshes")
+        records = [r for r in records if r["mesh"] not in missing]
         transforms = _check(records)
-        created = [_rebuild(name, group, transforms) for name, group in _groups(records).items()]
+        created = []
+        for name, group in _groups(records).items():
+            created.append(_rebuild(name, group, transforms))
+            runlog.info(f"{created[-1]}: created on {', '.join(r['mesh'] for r in group)}")
+        if not created:
+            return "Created no deltaMush nodes"
         meshes = ", ".join(dict.fromkeys(r["mesh"] for r in records))
         noun = "deltaMush" if len(created) == 1 else "deltaMush nodes"
         return f"Created {noun} {', '.join(created)} on {meshes}"

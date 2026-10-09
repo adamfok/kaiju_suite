@@ -4,7 +4,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.tools.assembler import data, logic, products, versions
+from kaiju_suite.tools.assembler import data, logic, products, runlog, versions
 from kaiju_suite.tools.assembler.products import blendshape
 
 # Weight settings the evaluated points are compared at: rest, full, an
@@ -207,7 +207,7 @@ def test_several_meshes_round_trip(new_scene, tmp_path):
     assert _points("body")[1][2] == pytest.approx(_points("face")[1][2] + 3)
 
 
-def test_missing_mesh_raises_and_changes_nothing(new_scene, tmp_path):
+def test_missing_mesh_is_skipped_with_a_warning(new_scene, tmp_path):
     base, node = _face_rig()
     other = _base("body")
     cmds.blendShape(_sculpt(other, "fat", {1: (0, 0, 3)}), other, name="bodyBS")
@@ -215,10 +215,10 @@ def test_missing_mesh_raises_and_changes_nothing(new_scene, tmp_path):
 
     cmds.file(new=True, force=True)
     _base()  # body is missing
-    with pytest.raises(data.MissingNodesError) as info:
+    with runlog.capture() as run:
         blendshape.PRODUCT.run(path)
-    assert "body" in str(info.value)
-    assert _blendshapes() == []
+    assert run.warnings == ["Skipped missing meshes: body"]
+    assert _blendshapes() == ["faceBS"]
 
 
 def test_vertex_count_mismatch_raises_and_changes_nothing(new_scene, tmp_path):

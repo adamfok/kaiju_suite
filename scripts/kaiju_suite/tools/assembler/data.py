@@ -17,7 +17,7 @@ import re
 from maya import cmds
 
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.assembler import versions
+from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, new_path
 
 # The file format this code writes; files with a newer one are refused.
@@ -136,6 +136,19 @@ def require_nodes(names, label="nodes"):
         raise MissingNodesError(missing, label)
 
 
+def skip_missing(names, label="nodes"):
+    """The set of ``names`` that aren't in the scene, for the caller to skip.
+
+    Logs one warning naming them, e.g. ``Skipped missing meshes: head``, so
+    the step ends with the warning status (see :mod:`.runlog`) instead of
+    failing.
+    """
+    missing = [n for n in dict.fromkeys(names) if not cmds.objExists(n)]
+    if missing:
+        runlog.warning(f"Skipped missing {label}: {', '.join(missing)}")
+    return set(missing)
+
+
 # -- the product base class -------------------------------------------------
 
 
@@ -172,8 +185,9 @@ class DataProduct(Product):
     def apply(self, payload):
         """Apply a payload to the scene. May return a message for the user.
 
-        Check everything first (see :func:`require_nodes`) and raise before
-        changing anything. Runs inside one undo chunk.
+        Skip what's missing from the scene with a warning (see
+        :func:`skip_missing`); check the rest first and raise before changing
+        anything. Runs inside one undo chunk.
         """
         raise NotImplementedError
 

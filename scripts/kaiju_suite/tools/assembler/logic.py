@@ -9,11 +9,13 @@ bad input instead of warning; the widget decides how to tell the user.
 import json
 import os
 import shutil
+import time
+import traceback
 from dataclasses import dataclass, field
 
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.assembler import versions
+from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import product_for
 
 log = get_logger(__name__)
@@ -175,6 +177,7 @@ def delete_path(path):
     else:
         raise FileNotFoundError(path)
     versions.delete_history(path)
+    runlog.delete(path)
     _forget(path)
 
 
@@ -204,6 +207,7 @@ def rename_path(path, name):
         raise FileExistsError(f"Already exists: {name}")
     os.rename(path, new)
     versions.move_history(path, new)
+    runlog.move(path, new)
 
     meta = _load_meta(directory)
     if old in meta["order"] or old in meta["disabled"]:
@@ -262,6 +266,7 @@ def place(paths, directory, index):
             was_disabled = _forget(src)
             shutil.move(src, new)
             versions.move_history(src, new)
+            runlog.move(src, new)
             if was_disabled:
                 set_enabled(new, False)
         new_paths.append(new)
@@ -350,6 +355,7 @@ def _insert_order(directory, current, names, anchor):
 # Step statuses passed to run_steps(on_status=...).
 RUNNING = "running"
 SUCCESS = "success"
+WARNING = "warning"  # ran, but logged warnings (a skipped missing node, say)
 ERROR = "error"
 
 
@@ -386,25 +392,44 @@ def run_steps(paths, on_status=None):
     ran stay applied. One undo reverts them, unless a scene was imported:
     Maya flushes undo on import. Returns ``paths``.
 
+    Each step's log (see :mod:`.runlog`) is saved next to it, failed or not.
+
     ``on_status(path, status)``, if given, is called with :data:`RUNNING`
-    before each step and :data:`SUCCESS` or :data:`ERROR` after it. Steps
-    after a failure get no call.
+    before each step and, after it, :data:`ERROR` if it failed,
+    :data:`WARNING` if it logged warnings or errors, else :data:`SUCCESS`.
+    Steps after a failure get no call.
     """
     paths = list(paths)
     report = on_status or (lambda path, status: None)
     with undo_chunk("Assembler"):
         for path in paths:
             report(path, RUNNING)
-            try:
-                product = product_for(path)
-                if product is None or not product.runnable:
-                    raise ValueError("Not something the Assembler can run.")
-                product.run(path)
-            except Exception as e:
-                report(path, ERROR)
-                raise StepError(path, e) from e
-            report(path, SUCCESS)
+            product = product_for(path)
+            status, failure, start = SUCCESS, None, time.perf_counter()
+            with runlog.capture() as run:
+                try:
+                    if product is None or not product.runnable:
+                        raise ValueError("Not something the Assembler can run.")
+                    message = product.run(path)
+                    if isinstance(message, str):
+                        run.info(message)
+                except Exception as e:
+                    run.error(traceback.format_exc())
+                    status, failure = ERROR, e
+            if status == SUCCESS and run.has_problems:
+                status = WARNING
+            _save_log(path, run, status, product, time.perf_counter() - start)
+            report(path, status)
+            if failure is not None:
+                raise StepError(path, failure) from failure
     return paths
+
+
+def _save_log(path, run, status, product, seconds):
+    try:
+        runlog.save(path, run, status, product.name if product else "Item", seconds)
+    except OSError:
+        log.exception("Couldn't save the run log of %s", path)
 
 
 def run_folder(folder):

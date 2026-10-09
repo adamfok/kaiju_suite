@@ -5,7 +5,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import logic, products, versions
+from kaiju_suite.tools.assembler import logic, products, runlog, versions
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -23,7 +23,18 @@ DEFAULT_WIDTHS = (220, 60)
 STATUS_COLORS = {
     logic.RUNNING: QtGui.QColor(230, 200, 60),
     logic.SUCCESS: QtGui.QColor(95, 190, 95),
+    logic.WARNING: QtGui.QColor(240, 140, 40),
     logic.ERROR: QtGui.QColor(225, 85, 85),
+}
+STATUS_TIPS = {
+    logic.WARNING: "Ran with warnings. Right-click > Show Log to see them.",
+    logic.ERROR: "Failed. Right-click > Show Log to see why.",
+}
+# Line colors in the Show Log window, by level; header lines are dimmed.
+LOG_COLORS = {
+    None: QtGui.QColor(150, 150, 150),
+    runlog.WARNING: STATUS_COLORS[logic.WARNING],
+    runlog.ERROR: STATUS_COLORS[logic.ERROR],
 }
 
 
@@ -185,6 +196,38 @@ class _PanelDialog(QtWidgets.QDialog):
         self._build()
 
 
+class _LogDialog(QtWidgets.QDialog):
+    """Non-modal window showing the log of an item's last run (see runlog),
+    warnings in orange and errors in red. :meth:`reload` re-reads it."""
+
+    def __init__(self, window, path):
+        super().__init__(window)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setWindowTitle(f"Log of {os.path.basename(path)}")
+        self.resize(640, 400)
+        self._path = path
+        layout = QtWidgets.QVBoxLayout(self)
+        self._text = QtWidgets.QPlainTextEdit(readOnly=True)
+        self._text.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
+        self._text.setFont(QtGui.QFontDatabase.systemFont(QtGui.QFontDatabase.SystemFont.FixedFont))
+        layout.addWidget(self._text)
+        self.reload()
+
+    def reload(self):
+        self._text.clear()
+        lines = runlog.read(self._path)
+        if not lines:
+            self._text.setPlainText("No log: this item hasn't been run yet.")
+            return
+        cursor = self._text.textCursor()
+        default = self._text.palette().color(QtGui.QPalette.ColorRole.Text)
+        for i, (level, line) in enumerate(lines):
+            fmt = QtGui.QTextCharFormat()
+            fmt.setForeground(LOG_COLORS.get(level, default))
+            cursor.insertText(line if i == 0 else f"\n{line}", fmt)
+        self._text.moveCursor(QtGui.QTextCursor.MoveOperation.Start)
+
+
 class AssemblerWindow(ToolWindow):
     TITLE = "Kaiju Assembler"
 
@@ -326,9 +369,12 @@ class AssemblerWindow(ToolWindow):
             self._show_version(item)
 
     def _show_status(self, item):
-        color = STATUS_COLORS.get(self._status.get(item.data(0, PATH_ROLE)))
+        status = self._status.get(item.data(0, PATH_ROLE))
+        color = STATUS_COLORS.get(status)
         if color:
             item.setForeground(0, color)
+        if status in STATUS_TIPS:
+            item.setToolTip(0, STATUS_TIPS[status])
 
     def _find_item(self, path):
         def visit(item):
@@ -417,10 +463,21 @@ class AssemblerWindow(ToolWindow):
         title = f"Versions of {os.path.basename(path)}"
         self._show_panel(("versions", path), title, lambda: versions.panel(path))
 
-    def _show_panel(self, key, title, make_panel):
+    def _show_log(self, path):
+        self._show_panel(("log", path), None, None, lambda: _LogDialog(self, path))
+
+    def _reload_logs(self, paths):
+        """Re-read the open Show Log windows of ``paths``, after they ran."""
+        for path in paths:
+            dialog = self._panels.get(("log", path))
+            if dialog is not None:
+                dialog.reload()
+
+    def _show_panel(self, key, title, make_panel, make_dialog=None):
         dialog = self._panels.get(key)
         if dialog is None:
-            dialog = self._panels[key] = _PanelDialog(self, title, make_panel)
+            dialog = make_dialog() if make_dialog else _PanelDialog(self, title, make_panel)
+            self._panels[key] = dialog
             dialog.destroyed.connect(lambda _=None, k=key: self._panels.pop(k, None))
         dialog.show()
         dialog.raise_()
@@ -473,6 +530,11 @@ class AssemblerWindow(ToolWindow):
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
+        if product and product.runnable and is_file:
+            show_log = menu.addAction("Show Log", lambda: self._show_log(path))
+            if not runlog.exists(path):
+                show_log.setEnabled(False)
+                show_log.setText("Show Log (not run yet)")
         if not is_file:
             label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All"
             menu.addAction(label, lambda: self._run_folder(directory))
@@ -560,9 +622,15 @@ class AssemblerWindow(ToolWindow):
             log.exception("Step %s failed", e.path)
             done = paths.index(e.path)
             ran = f" ({done} ran before it and stay applied)" if done else ""
-            _warn(f"Failed to run {e}{ran}")
+            _warn(f"Failed to run {e}{ran}. Right-click it > Show Log for details.")
             return
-        if len(paths) > 1:
+        finally:
+            self._reload_logs(paths)
+        warned = [p for p in paths if self._status.get(p) == logic.WARNING]
+        if warned:
+            names = ", ".join(os.path.basename(p) for p in warned)
+            _warn(f"Ran with warnings: {names}. Right-click > Show Log to see them.")
+        elif len(paths) > 1:
             _notify(f"Ran {len(paths)} steps")
 
     def _run_folder(self, folder):

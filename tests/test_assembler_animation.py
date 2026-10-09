@@ -3,7 +3,7 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.assembler import data, logic, products, versions
+from kaiju_suite.tools.assembler import data, logic, products, runlog, versions
 from kaiju_suite.tools.assembler.products import animation
 
 KEY_FIELDS = (
@@ -223,7 +223,7 @@ def test_driven_keys_are_not_saved(new_scene, tmp_path):
     assert [(c["node"], c["attribute"]) for c in curves] == [("box", "translateX")]
 
 
-def test_missing_nodes_and_attributes_raise_and_change_nothing(new_scene, tmp_path):
+def test_missing_nodes_and_attributes_are_skipped_with_a_warning(new_scene, tmp_path):
     _box()
     other = _box("other")
     for node in ("box", other):
@@ -234,12 +234,11 @@ def test_missing_nodes_and_attributes_raise_and_change_nothing(new_scene, tmp_pa
     cmds.file(new=True, force=True)
     cmds.createNode("transform", name="box")  # no squash attribute
     cmds.setKeyframe("box.translateX", time=3, value=9)
-    before = _curve_state("box.translateX")
-    with pytest.raises(data.MissingNodesError) as info:
-        animation.PRODUCT.run(path)
-    message = str(info.value)
-    assert "other" in message and "box.squash" in message
-    assert _curve_state("box.translateX") == before
+    with runlog.capture() as run:
+        message = animation.PRODUCT.run(path)
+    assert run.warnings == ["Skipped missing nodes and attributes: box.squash, other"]
+    assert message == "Keyed 1 attribute (1 key)"
+    assert cmds.keyframe("box.translateX", query=True, timeChange=True) == [1]
 
 
 def test_empty_file_is_skipped(new_scene, tmp_path):

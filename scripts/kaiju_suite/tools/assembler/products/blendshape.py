@@ -6,7 +6,8 @@ deltas of each in-between (item 5000-6000; 6000 is the full target). A target
 still connected to a sculpt mesh is saved from that mesh, so the file never
 needs target geometry.
 
-Run checks the base mesh exists and has the saved vertex count, then
+Run skips, with a warning, the blendShapes whose base mesh is missing. It
+checks the other base meshes have the saved vertex count, then
 replaces any blendShape with the same name by a new one made at the front of
 the deformer chain (under a skin, whatever order the steps run in), and
 writes the targets straight into its ``inputTarget`` attributes.
@@ -17,7 +18,7 @@ import re
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import data, runlog
 
 # Deltas shorter than this, computed from a live sculpt mesh, aren't saved.
 _TOLERANCE = 1e-6
@@ -189,7 +190,6 @@ def _find_mesh(name):
 
 def _check(records):
     """Raise, before anything changes, if any record can't be applied."""
-    data.require_nodes([r["mesh"] for r in records], "meshes")
     problems = []
     for record in records:
         mesh, problem = _find_mesh(record["mesh"])
@@ -265,9 +265,12 @@ class BlendShapeProduct(data.DataProduct):
 
     def apply(self, payload):
         records = payload["blendshapes"]
+        missing = data.skip_missing([r["mesh"] for r in records], "meshes")
+        records = [r for r in records if r["mesh"] not in missing]
         _check(records)
         for record in records:
             _build(record)
+            runlog.info(f"{record['name']}: built on {record['mesh']}, {_plural(len(record['targets']), 'target')}")
         count = sum(len(r["targets"]) for r in records)
         return f"Built {_plural(len(records), 'blendShape')} with {_plural(count, 'target')}"
 

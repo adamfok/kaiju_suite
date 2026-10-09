@@ -10,13 +10,14 @@ Run finds each control by name, deletes its curve shapes (CV counts may
 differ, so they're replaced rather than edited) and creates the saved ones,
 placed relative to the control's current pivot: a control that has moved,
 or whose pivot has, gets the shape where it now is. Other shapes (locators,
-...) are left alone. Rational curve weights aren't saved.
+...) are left alone. Controls missing from the scene are skipped with a
+warning. Rational curve weights aren't saved.
 """
 
 from maya import cmds, mel
 from maya.api import OpenMaya as om
 
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import data, runlog
 
 _DISPLAY = ("overrideEnabled", "overrideRGBColors", "overrideColor", "lineWidth")
 
@@ -117,9 +118,9 @@ class ControlShapeProduct(data.DataProduct):
 
     def apply(self, payload):
         records = payload["controls"]
-        names = [record["name"] for record in records]
-        data.require_nodes(names, "controls")
-        _require_unique(names)
+        missing = data.skip_missing([record["name"] for record in records], "controls")
+        records = [record for record in records if record["name"] not in missing]
+        _require_unique([record["name"] for record in records])
 
         for record in records:
             control = cmds.ls(record["name"], long=True)[0]
@@ -129,6 +130,7 @@ class ControlShapeProduct(data.DataProduct):
             pivot = _pivot(control)
             for shape in record["shapes"]:
                 _build(control, shape, pivot)
+            runlog.info(f"{record['name']}: replaced with {_plural(len(record['shapes']), 'curve shape')}")
         return f"Replaced the shapes of {_plural(len(records), 'control')}"
 
     def describe(self, payload):
