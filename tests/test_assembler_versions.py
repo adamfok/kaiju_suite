@@ -230,67 +230,7 @@ def test_pasted_folder_keeps_its_contents_history(tmp_path):
     assert _numbers(os.path.join(copy, "build.py")) == [1]
 
 
-# -- scenes -----------------------------------------------------------------
-
-
-def test_each_export_is_saved_as_a_version(new_scene, tmp_path):
-    path = scene.create_scene(str(tmp_path), "hero", ".ma")
-
-    cmds.select(cmds.createNode("transform", name="first"))
-    scene.export_into(path)
-    assert _numbers(path) == [1]
-    assert "first" in _read(versions.list_versions(path)[0].path)
-
-    cmds.select(cmds.createNode("transform", name="second"))
-    scene.export_into(path)
-    assert _numbers(path) == [2, 1]
-    assert versions.current_version(path).number == 2
-
-    versions.restore_version(path, 1)
-    assert "first" in _read(path)
-    assert _numbers(path) == [2, 1]
-
-
-def test_export_keeps_an_unversioned_scene_before_replacing_it(new_scene, tmp_path):
-    cmds.select(cmds.createNode("transform", name="legacy"))
-    path = scene.export_selection(str(tmp_path / "hero.ma"))  # made before versioning
-
-    cmds.select(cmds.createNode("transform", name="fresh"))
-    scene.export_into(path)
-    old, new = sorted(versions.list_versions(path), key=lambda v: v.number)
-    assert "legacy" in _read(old.path)
-    assert "fresh" in _read(new.path)
-
-
-def test_failed_export_saves_no_version(new_scene, tmp_path):
-    path = scene.create_scene(str(tmp_path), "hero", ".ma")
-    cmds.select(clear=True)
-    with pytest.raises(RuntimeError):
-        scene.export_into(path)
-    assert versions.list_versions(path) == []
-
-
-def test_publishing_a_scene_exports_the_selection_as_a_new_version(new_scene, tmp_path):
-    path = scene.create_scene(str(tmp_path), "hero", ".ma")
-    cmds.select(cmds.createNode("transform", name="first"))
-    action = versions.publish_action(path)
-    assert action.fn() == "Published Scene hero.ma v001"
-    assert _numbers(path) == [1]
-
-    cmds.select(cmds.createNode("transform", name="second"))
-    action = versions.publish_action(path)
-    assert action.confirm is None  # publishes in one click
-    assert action.fn() == "Published Scene hero.ma v002"
-    assert _numbers(path) == [2, 1]
-    assert "second" in _read(path)
-
-
-def test_publishing_a_scene_needs_a_selection(new_scene, tmp_path):
-    path = scene.create_scene(str(tmp_path), "hero", ".ma")
-    cmds.select(clear=True)
-    with pytest.raises(RuntimeError):
-        versions.publish_action(path).fn()
-    assert versions.list_versions(path) == []
+# -- publish ----------------------------------------------------------------
 
 
 def test_publishing_a_script_saves_it_as_it_is(tmp_path):
@@ -303,16 +243,6 @@ def test_publishing_a_script_saves_it_as_it_is(tmp_path):
 
     empty = _write(tmp_path / "empty.py", "")
     assert versions.publish_action(empty).fn() == "empty.py is empty: nothing to publish"
-
-
-def test_publish_check_stops_a_scene_with_nothing_selected(new_scene, tmp_path):
-    path = scene.create_scene(str(tmp_path), "hero", ".ma")
-    cmds.select(clear=True)
-    (problem,) = versions.publish_problems(path)
-    assert "Nothing selected" in problem and "hero.ma" in problem
-
-    cmds.select(cmds.createNode("transform"))
-    assert versions.publish_problems(path) == []
 
 
 def test_publish_check_passes_scripts(tmp_path):

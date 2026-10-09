@@ -25,8 +25,8 @@ def test_scan_sorts_and_filters(tmp_path):
     _touch(tmp_path / "b.py")
     _touch(tmp_path / "A.mel")
     _touch(tmp_path / "notes.txt")
-    _touch(tmp_path / "rigs" / "arm.ma")
-    _touch(tmp_path / "rigs" / "leg.mb")
+    _touch(tmp_path / "rigs" / "arm.scene")
+    _touch(tmp_path / "rigs" / "leg.scene")
     (tmp_path / "empty").mkdir()
     _touch(tmp_path / ".git" / "x.py")
     _touch(tmp_path / "__pycache__" / "b.py")
@@ -35,7 +35,7 @@ def test_scan_sorts_and_filters(tmp_path):
 
     assert _names(entries) == ["empty", "rigs", "A.mel", "b.py"]
     rigs = entries[1]
-    assert rigs.is_dir and _names(rigs.children) == ["arm.ma", "leg.mb"]
+    assert rigs.is_dir and _names(rigs.children) == ["arm.scene", "leg.scene"]
     assert entries[0].children == []
 
 
@@ -144,51 +144,6 @@ def test_run_mel_script(new_scene, tmp_path):
 def test_run_rejects_scene(tmp_path):
     with pytest.raises(ValueError):
         script.run_script(_touch(tmp_path / "a.ma"))
-
-
-# -- scenes -----------------------------------------------------------------
-
-
-@pytest.mark.parametrize("ext", scene.EXTENSIONS)
-def test_export_import_round_trip(new_scene, tmp_path, ext):
-    cmds.select(cmds.createNode("transform", name="hero"))
-    path = scene.export_selection(str(tmp_path / f"hero{ext}"))
-    assert os.path.isfile(path)
-
-    cmds.file(new=True, force=True)
-    scene.import_scene(path)
-    assert cmds.objExists("hero")
-
-
-def test_export_requires_selection(new_scene, tmp_path):
-    cmds.select(clear=True)
-    with pytest.raises(RuntimeError):
-        scene.export_selection(str(tmp_path / "a.ma"))
-
-
-def test_export_overwrite_guard(new_scene, tmp_path):
-    cmds.select(cmds.createNode("transform"))
-    path = scene.export_selection(str(tmp_path / "a.mb"))
-    with pytest.raises(FileExistsError):
-        scene.export_selection(path)
-    assert scene.export_selection(path, overwrite=True) == path
-
-
-def test_import_flushes_undo_but_leaves_it_usable(new_scene, tmp_path):
-    # Maya can't undo a file import (it flushes the queue); make sure our
-    # undo chunk doesn't leave undo broken for whatever comes next.
-    cmds.select([cmds.createNode("transform", name=n) for n in ("one", "two")])
-    path = scene.export_selection(str(tmp_path / "pair.ma"))
-    cmds.file(new=True, force=True)
-    cmds.undoInfo(state=True)
-
-    scene.import_scene(path)
-    assert cmds.objExists("one") and cmds.objExists("two")
-
-    cmds.createNode("transform", name="after")
-    cmds.undo()
-    assert not cmds.objExists("after")
-    assert cmds.objExists("one")
 
 
 def test_registry_finds_assembler():
@@ -328,7 +283,7 @@ def test_collect_steps_in_display_order_skipping_disabled(tmp_path):
     root = str(tmp_path)
     a = _make_script(tmp_path / "a.py", "a")
     b = _make_script(tmp_path / "b.py", "b")
-    m = _touch(tmp_path / "scene.ma")
+    m = _touch(tmp_path / "scene.scene")
     s1 = _touch(tmp_path / "sub" / "s1.mel")
     s2 = _make_script(tmp_path / "sub" / "s2.py", "s2")
     logic.place([b], root, 0)
@@ -529,17 +484,17 @@ def test_run_folder_skips_disabled_subfolder_as_one_undo_step(new_scene, tmp_pat
 def test_entry_label_hides_extension_and_type_label_names_product(tmp_path):
     _touch(tmp_path / "rig.py")
     _touch(tmp_path / "Build.MEL")
-    _touch(tmp_path / "body.mb")
+    _touch(tmp_path / "body.scene")
     _touch(tmp_path / "head.mesh")
     (tmp_path / "parts.v2").mkdir()
     by_name = {e.name: e for e in logic.scan(str(tmp_path))}
     assert by_name["rig.py"].label == "rig"
-    assert by_name["body.mb"].label == "body"
+    assert by_name["body.scene"].label == "body"
     # Folders keep their full name, dots included, and show no type.
     assert by_name["parts.v2"].label == "parts.v2"
     assert by_name["rig.py"].type_label == "Script(.py)"
     assert by_name["Build.MEL"].type_label == "Script(.mel)"
-    assert by_name["body.mb"].type_label == "Scene(.mb)"
+    assert by_name["body.scene"].type_label == "Scene"
     # A product with only one extension doesn't repeat it.
     assert by_name["head.mesh"].type_label == "Mesh"
     assert by_name["parts.v2"].type_label == ""

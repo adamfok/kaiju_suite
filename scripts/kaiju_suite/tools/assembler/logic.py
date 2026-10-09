@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
 from kaiju_suite.tools.assembler import runlog, versions
-from kaiju_suite.tools.assembler.products import ext_of, product_for
+from kaiju_suite.tools.assembler.products import Product, ext_of, product_for
 
 log = get_logger(__name__)
 
@@ -125,6 +125,13 @@ def utility_for(product):
     from kaiju_suite import registry  # lazily: the registry imports every tool
 
     return registry.find(product.utility)
+
+
+
+def has_info(product):
+    """Whether ``product``'s items get right-click Info: those with an info
+    window (:meth:`Product.panel`)."""
+    return type(product).panel is not Product.panel
 
 
 # -- folder metadata --------------------------------------------------------
