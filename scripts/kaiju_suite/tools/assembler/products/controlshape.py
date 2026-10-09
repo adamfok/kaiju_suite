@@ -14,19 +14,10 @@ or whose pivot has, gets the shape where it now is. Other shapes (locators,
 warning. Rational curve weights aren't saved.
 """
 
-from maya import cmds, mel
-from maya.api import OpenMaya as om
+from maya import cmds
 
-from kaiju_suite.core.selection import short_name
+from kaiju_suite.core import curves
 from kaiju_suite.tools.assembler import data, runlog
-
-_DISPLAY = ("overrideEnabled", "overrideRGBColors", "overrideColor", "lineWidth")
-
-
-def _curve_shapes(node):
-    shapes = cmds.listRelatives(node, shapes=True, noIntermediate=True, fullPath=True, type="nurbsCurve")
-    return shapes or []
-
 
 def _controls(selection):
     """The selected controls, a selected curve shape standing for its parent,
@@ -43,39 +34,6 @@ def _pivot(control):
     return cmds.xform(control, query=True, objectSpace=True, rotatePivot=True)
 
 
-def _record(shape, pivot):
-    curve = om.MFnNurbsCurve(om.MSelectionList().add(shape).getDagPath(0))
-    px, py, pz = pivot
-    record = {
-        "name": short_name(shape),
-        "degree": curve.degree,
-        "form": cmds.getAttr(f"{shape}.form"),  # 0 open, 1 closed, 2 periodic
-        "knots": list(curve.knots()),
-        "cvs": [[p.x - px, p.y - py, p.z - pz] for p in curve.cvPositions(om.MSpace.kObject)],
-    }
-    for attr in _DISPLAY:
-        record[attr] = cmds.getAttr(f"{shape}.{attr}")
-    record["overrideColorRGB"] = list(cmds.getAttr(f"{shape}.overrideColorRGB")[0])
-    return record
-
-
-def _build(control, record, pivot):
-    """Create the shape of ``record`` under ``control``. Uses MEL ``setAttr``
-    on the curve data (the line a .ma file holds), which Python's ``setAttr``
-    can't take, so the shape is exact and the change undoable."""
-    shape = data.node_path(data.create_node("nurbsCurve", record["name"], control))
-    px, py, pz = pivot
-    cvs = [repr(v) for x, y, z in record["cvs"] for v in (x + px, y + py, z + pz)]
-    knots = [repr(float(k)) for k in record["knots"]]
-    spans = len(record["cvs"]) - record["degree"]  # for every form
-    values = [record["degree"], spans, record["form"], "no", 3, len(knots), *knots, len(record["cvs"]), *cvs]
-    mel.eval(f'setAttr "{shape}.cc" -type "nurbsCurve" {" ".join(map(str, values))};')
-    for attr in _DISPLAY:
-        cmds.setAttr(f"{shape}.{attr}", record[attr])
-    cmds.setAttr(f"{shape}.overrideColorRGB", *record["overrideColorRGB"])
-    return shape
-
-
 class ControlShapeProduct(data.DataProduct):
     name = "ControlShape"
     utility = "ControlShape Tool"
@@ -88,7 +46,7 @@ class ControlShapeProduct(data.DataProduct):
         selection = cmds.ls(selection=True, long=True)
         if not selection:
             return ["Nothing selected. Select the controls whose shapes to publish."]
-        without = [cmds.ls(c)[0] for c in _controls(selection) if not _curve_shapes(c)]
+        without = [cmds.ls(c)[0] for c in _controls(selection) if not curves.shapes(c)]
         if without:
             return [f"These have no NURBS curve shapes: {', '.join(without)}. Select controls with curve shapes."]
         return []
@@ -96,11 +54,11 @@ class ControlShapeProduct(data.DataProduct):
     def gather(self, selection):
         records = []
         for control in _controls(selection):
-            shapes = _curve_shapes(control)
+            shapes = curves.shapes(control)
             if not shapes:
                 raise RuntimeError(f"{cmds.ls(control)[0]} has no NURBS curve shapes.")
             pivot = _pivot(control)
-            records.append({"name": cmds.ls(control)[0], "shapes": [_record(s, pivot) for s in shapes]})
+            records.append({"name": cmds.ls(control)[0], "shapes": [curves.record(s, pivot) for s in shapes]})
         if not records:
             raise RuntimeError("No controls selected to publish.")
         return {"controls": records}
@@ -113,12 +71,12 @@ class ControlShapeProduct(data.DataProduct):
 
         for record in records:
             control = cmds.ls(record["name"], long=True)[0]
-            old = _curve_shapes(control)
+            old = curves.shapes(control)
             if old:
                 cmds.delete(old)
             pivot = _pivot(control)
             for shape in record["shapes"]:
-                _build(control, shape, pivot)
+                curves.build(control, shape, pivot)
             runlog.info(f"{record['name']}: replaced with {data.plural(len(record['shapes']), 'curve shape')}")
         return f"Replaced the shapes of {data.plural(len(records), 'control')}"
 

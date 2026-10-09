@@ -15,17 +15,14 @@ shared by them. No Qt here.
 """
 
 import os
-import re
 
 from maya import cmds
 
 from kaiju_suite.core.datafile import FORMAT, DataFormatError, read, write  # noqa: F401 (re-exported)
+from kaiju_suite.core.nodes import unique_name  # noqa: F401 (re-exported)
 from kaiju_suite.core.undo import undo_chunk
 from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, is_empty, new_path
-
-_TRAILING_DIGITS = re.compile(r"\d+$")
-
 
 class MissingNodesError(RuntimeError):
     """Nodes a data file needs that aren't in the scene; see :func:`require_nodes`."""
@@ -36,22 +33,6 @@ class MissingNodesError(RuntimeError):
 
 
 # -- nodes ------------------------------------------------------------------
-
-
-def unique_name(name):
-    """``name`` if no node has it, else the next free one, numbered the way
-    Maya does it: ``spine_jnt`` → ``spine_jnt1``, a taken ``joint1`` → ``joint2``.
-
-    Checks every node, not just siblings, so names found later by name
-    stay unambiguous.
-    """
-    if not cmds.objExists(name):
-        return name
-    base = _TRAILING_DIGITS.sub("", name) or name
-    number = 1
-    while cmds.objExists(f"{base}{number}"):
-        number += 1
-    return f"{base}{number}"
 
 
 def create_node(node_type, name, parent=None):
