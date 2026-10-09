@@ -400,6 +400,13 @@ class MaterialProduct(data.DataProduct):
             message += f" (used existing: {', '.join(reused)})"
         return message
 
+    def nodes(self, payload):
+        # A mesh assigned whole was published whole; otherwise only the
+        # faces in the file were, so gather just those again.
+        members = [m for ms in payload["assignments"].values() for m in ms]
+        whole = {m for m in members if "." not in m}
+        return sorted({m for m in members if m in whole or _mesh_of(m) not in whole})
+
     def describe(self, payload):
         sgs = payload["shading_engines"]
         meshes = sorted({_mesh_of(m) for members in payload["assignments"].values() for m in members})

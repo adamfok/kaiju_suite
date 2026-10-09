@@ -162,6 +162,9 @@ class MeshProduct(data.DataProduct):
             message += f" (names taken, renamed: {', '.join(renamed)})"
         return message
 
+    def nodes(self, payload):
+        return [r["name"] for r in payload["meshes"]]
+
     def describe(self, payload):
         records = payload["meshes"]
         return [

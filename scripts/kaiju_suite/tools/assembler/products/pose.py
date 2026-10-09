@@ -110,6 +110,9 @@ class PoseProduct(data.DataProduct):
             message += f". {skipped}"
         return message
 
+    def nodes(self, payload):
+        return [record["name"] for record in payload["nodes"]]
+
     def describe(self, payload):
         records = payload["nodes"]
         count = sum(len(record["attrs"]) for record in records)

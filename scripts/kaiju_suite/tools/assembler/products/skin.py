@@ -233,6 +233,9 @@ class SkinProduct(data.DataProduct):
         message = f"Bound {data.plural(len(clusters), 'mesh', 'meshes')}"
         return f"{message}: {', '.join(clusters)}" if clusters else message
 
+    def nodes(self, payload):
+        return [r["mesh"] for r in payload["meshes"]]
+
     def describe(self, payload):
         records = payload["meshes"]
         influences = {name for r in records for name in r["influences"]}

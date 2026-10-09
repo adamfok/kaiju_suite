@@ -81,6 +81,9 @@ class ControlShapeProduct(data.DataProduct):
             runlog.info(f"{record['name']}: replaced with {data.plural(len(record['shapes']), 'curve shape')}")
         return f"Replaced the shapes of {data.plural(len(records), 'control')}"
 
+    def nodes(self, payload):
+        return [record["name"] for record in payload["controls"]]
+
     def describe(self, payload):
         records = payload["controls"]
         count = sum(len(record["shapes"]) for record in records)
