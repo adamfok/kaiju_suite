@@ -531,6 +531,18 @@ class AssemblerWindow(ToolWindow):
         if problems:
             QtWidgets.QMessageBox.information(self, f"Can't Publish {os.path.basename(path)}", "\n".join(problems))
             return
+        warnings = versions.publish_warnings(path)
+        if warnings:
+            Button = QtWidgets.QMessageBox.StandardButton
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                f"Publish {os.path.basename(path)}?",
+                "\n".join(warnings) + "\n\nPublish anyway?",
+                Button.Yes | Button.No,
+                Button.No,
+            )
+            if answer != Button.Yes:
+                return
         self._do_and_refresh(versions.publish_action(path))
 
     def _refresh(self):

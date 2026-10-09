@@ -497,3 +497,72 @@ def test_script_tabs_use_the_kaiju_file_changed_handler():
     # Maya's own handler fails when the Script Editor is docked; never bind it.
     assert "executerTabFileChanged" not in script._OPEN_IN_EDITOR_MEL.replace("kaijuExecuterTabFileChanged", "")
     assert "kaijuWatchExecuterFile" in script._OPEN_IN_EDITOR_MEL
+
+
+# -- export_into: write new content, keep the old as a version --------------
+
+
+def _writer(text):
+    def write(path):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+
+    return write
+
+
+def test_export_into_writes_and_publishes(tmp_path):
+    path = _write(tmp_path / "build.py", "")
+    assert versions.export_into(path, _writer("a = 1\n")) == "Published Script build.py v001"
+    assert _read(path) == "a = 1\n"
+    assert _numbers(path) == [1]
+
+
+def test_export_into_writes_through_a_file_of_the_same_name(tmp_path):
+    # Maya ASCII scenes record their own file name, so the writer must see it.
+    path = _write(tmp_path / "build.py", "")
+    seen = []
+    versions.export_into(path, lambda p: (seen.append(os.path.basename(p)), _writer("x\n")(p)))
+    assert seen == ["build.py"]
+
+
+def test_export_into_keeps_unversioned_content_first(tmp_path):
+    path = _write(tmp_path / "build.py", "legacy\n")
+    assert versions.export_into(path, _writer("fresh\n")) == "Published Script build.py v002"
+    old, new = sorted(versions.list_versions(path), key=lambda v: v.number)
+    assert _read(old.path) == "legacy\n" and _read(new.path) == "fresh\n"
+
+
+def test_export_into_same_content_adds_no_version(tmp_path):
+    path = _write(tmp_path / "build.py", "")
+    versions.export_into(path, _writer("a = 1\n"))
+    assert versions.export_into(path, _writer("a = 1\n")) == "Published Script build.py v001"
+    assert _numbers(path) == [1]
+
+
+def test_failed_export_into_changes_nothing(tmp_path):
+    path = _write(tmp_path / "build.py", "legacy\n")
+
+    def broken(p):
+        _writer("half")(p)
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        versions.export_into(path, broken)
+    assert _read(path) == "legacy\n"
+    assert versions.list_versions(path) == []
+
+
+def test_export_into_that_writes_nothing_changes_nothing(tmp_path):
+    path = _write(tmp_path / "build.py", "legacy\n")
+    with pytest.raises(RuntimeError):
+        versions.export_into(path, lambda p: None)
+    assert _read(path) == "legacy\n"
+    assert versions.list_versions(path) == []
+
+
+def test_products_have_no_publish_warnings_by_default(tmp_path):
+    assert products.Product().publish_warnings(str(tmp_path / "x")) == []
+
+
+def test_publish_warnings_are_empty_for_unclaimed_paths(tmp_path):
+    assert versions.publish_warnings(str(tmp_path / "x.txt")) == []

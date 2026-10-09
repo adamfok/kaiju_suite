@@ -70,12 +70,9 @@ def export_into(path):
     Old content not yet in the history (a scene from before versioning) is
     saved as a version first, so nothing is lost.
     """
-    if cmds.ls(selection=True):
-        versions.save_version(path)
-    export_selection(path, overwrite=True)
-    # None if the export matches a saved version: it's then that one.
-    version = versions.save_version(path) or versions.current_version(path)
-    return versions.published_message(path, version)
+    if not cmds.ls(selection=True):
+        raise RuntimeError("Nothing selected to export.")
+    return versions.export_into(path, lambda target: export_selection(target, overwrite=True))
 
 
 class SceneProduct(Product):
