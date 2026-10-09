@@ -127,6 +127,19 @@ def utility_for(product):
     return registry.find(product.utility)
 
 
+def open_utility(product, path):
+    """Double-click: open ``product``'s utility. A tool that edits files (its
+    TOOL dict has ``"open": fn(path)``) is opened on ``path``; any other is
+    just launched."""
+    tool = utility_for(product)
+    if tool is None:
+        raise LookupError(f"{product.utility} isn't installed.")
+    if "open" in tool:
+        tool["open"](path)
+    else:
+        tool["launch"]()
+
+
 
 def has_info(product):
     """Whether ``product``'s items get right-click Info: those with an info

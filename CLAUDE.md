@@ -12,8 +12,9 @@ Tests need `mayapy` (they start `maya.standalone`), not system Python. The inter
 Run the suite after every change. It takes about 5s.
 
 ## Architecture rules (keep these)
-- Imports only go one way: `tools` → `ui` → `core`. `core` never imports `ui` or `tools`. Tools never import each other.
-- No Qt in `core/` or in any tool's `logic.py`. Qt goes only in `ui/` and `tools/<tool>/widget.py`.
+- Imports only go one way: `tools` → `ui` → `core`, and `tools` → `rig` → `core`. `core` never imports `ui`, `rig` or `tools`; `rig` never imports `ui` or `tools`. Tools never import each other.
+- Rig module algorithms live in `rig/modules/`; Assembler Rig Module items only hold their parameters.
+- No Qt in `core/`, `rig/` or in any tool's `logic.py`. Qt goes only in `ui/` and `tools/<tool>/widget.py`.
 - A tool's `__init__.py` must not import Qt or its widget at module level. `show()` imports the widget lazily, because the registry imports every tool package when it builds the menu.
 - Wrap scene-changing logic functions with `@undoable` from `core.undo`, so one user action is one undo step.
 - When renaming or reparenting several nodes, track them by UUID, not by long path: paths go stale once a parent changes (see `renamer/logic.py`).

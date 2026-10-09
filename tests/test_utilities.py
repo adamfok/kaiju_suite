@@ -16,6 +16,7 @@ UTILITIES = {
     "Pose": "Pose Tool",
     "Animation": "Animation Tool",
     "ControlShape": "ControlShape Tool",
+    "Rig Module": "Rig Module Editor",
 }
 
 
@@ -45,7 +46,11 @@ def test_utilities_sit_under_the_utilities_menu():
 def test_discovering_utilities_does_not_load_their_windows():
     registry.discover()
 
-    loaded = [name for name in sys.modules if name.startswith("kaiju_suite.tools.") and name.endswith("_tool.widget")]
+    loaded = [
+        name
+        for name in sys.modules
+        if name.startswith("kaiju_suite.tools.") and name.endswith(".widget") and ".assembler." not in name
+    ]
     assert loaded == []
 
 
@@ -76,3 +81,46 @@ def test_products_with_an_info_window_get_right_click_info(product_name):
 @pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator"])
 def test_products_without_an_info_window_get_no_right_click_info(product_name):
     assert not logic.has_info(_product(product_name))
+
+
+# -- opening a utility on an item --------------------------------------------
+
+
+@pytest.fixture
+def fake_utility(monkeypatch):
+    """Make every product's utility a recording stand-in; returns the calls."""
+    calls = []
+    tool = {"name": "Fake", "launch": lambda: calls.append(("launch",))}
+    monkeypatch.setattr(logic, "utility_for", lambda product: tool)
+    return tool, calls
+
+
+def test_open_utility_launches_a_tool_that_takes_no_file(fake_utility):
+    tool, calls = fake_utility
+
+    logic.open_utility(_product("Mesh"), "a.mesh")
+
+    assert calls == [("launch",)]
+
+
+def test_open_utility_passes_the_item_to_a_tool_that_opens_files(fake_utility):
+    tool, calls = fake_utility
+    tool["open"] = lambda path: calls.append(("open", path))
+
+    logic.open_utility(_product("Rig Module"), "L_arm.rig")
+
+    assert calls == [("open", "L_arm.rig")]
+
+
+def test_open_utility_says_when_the_tool_is_missing(monkeypatch):
+    monkeypatch.setattr(logic, "utility_for", lambda product: None)
+
+    with pytest.raises(LookupError) as info:
+        logic.open_utility(_product("Mesh"), "a.mesh")
+    assert "Mesh Tool" in str(info.value)
+
+
+def test_rig_module_editor_opens_files():
+    tool = registry.find("Rig Module Editor")
+
+    assert callable(tool["open"]) and callable(tool["launch"])
