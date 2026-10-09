@@ -27,7 +27,8 @@ def _preview(records):
         projected = []
         for x, y, z in line:
             depth = x * math.sin(_TURN) + z * math.cos(_TURN)
-            projected.append((x * math.cos(_TURN) - z * math.sin(_TURN), -(y * math.cos(_TILT) - depth * math.sin(_TILT))))
+            across = x * math.cos(_TURN) - z * math.sin(_TURN)
+            projected.append((across, -(y * math.cos(_TILT) - depth * math.sin(_TILT))))
         lines.append(projected)
     points = [p for line in lines for p in line]
     reach = max((max(abs(a), abs(b)) for a, b in points), default=1) or 1
@@ -89,7 +90,9 @@ class ControlShapeToolWindow(ToolWindow):
 
         buttons = QtWidgets.QGridLayout()
         create = QtWidgets.QPushButton("Create")
-        create.setToolTip("Create a control with this shape at each selected node, or at the origin (double-click does the same).")
+        create.setToolTip(
+            "Create a control with this shape at each selected node, or at the origin (double-click does the same)."
+        )
         create.clicked.connect(self._create)
         replace = QtWidgets.QPushButton("Replace")
         replace.setToolTip("Swap the selected controls' shapes for this one, keeping their color (and size).")
@@ -218,7 +221,7 @@ class ControlShapeToolWindow(ToolWindow):
             return
         settings.set(SETTINGS_KEY, "size", self.size.value())
         name = self.presets.currentItem().text()
-        nodes = [n for n in selected() if cmds.objectType(n, isAType="transform")]
+        nodes = logic.transforms(selected())
         made = [
             logic.create_control(f"{short_name(node) if node else name}_ctrl", records, self.size.value(), at=node)
             for node in nodes or [None]

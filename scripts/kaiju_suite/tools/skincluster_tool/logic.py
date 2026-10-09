@@ -125,9 +125,12 @@ def copy_skin(source, targets, mode="closest_point"):
         raise ValueError("No target meshes. Select the source mesh first, then the targets.")
     if mode == "topology":
         count = cmds.polyEvaluate(source, vertex=True)
-        wrong = [f"{_short(t)} ({cmds.polyEvaluate(t, vertex=True)})" for t in targets if cmds.polyEvaluate(t, vertex=True) != count]
+        counts = {t: cmds.polyEvaluate(t, vertex=True) for t in targets}
+        wrong = [f"{_short(t)} ({n})" for t, n in counts.items() if n != count]
         if wrong:
-            raise ValueError(f"Copying by topology needs the same vertex count as {_short(source)} ({count}): {', '.join(wrong)}.")
+            raise ValueError(
+                f"Copying by topology needs the same vertex count as {_short(source)} ({count}): {', '.join(wrong)}."
+            )
 
     clusters = []
     for target in targets:

@@ -42,7 +42,9 @@ class SkinClusterToolWindow(ToolWindow):
             self.modes.button(0).setChecked(True)
         copy.addLayout(modes)
         copy_button = QtWidgets.QPushButton("Copy Skin")
-        copy_button.setToolTip("Unskinned targets are bound to the source's influences; skinned ones get the missing ones.")
+        copy_button.setToolTip(
+            "Unskinned targets are bound to the source's influences; skinned ones get the missing ones."
+        )
         copy_button.clicked.connect(self._copy)
         copy.addWidget(copy_button)
 

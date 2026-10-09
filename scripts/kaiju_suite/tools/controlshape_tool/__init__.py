@@ -9,5 +9,5 @@ TOOL = {
     "name": "ControlShape Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler ControlShape items.",
+    "description": "Control shape library; create, replace, edit, mirror and color control shapes.",
 }

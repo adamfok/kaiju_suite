@@ -9,5 +9,5 @@ TOOL = {
     "name": "SkinCluster Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler SkinCluster items.",
+    "description": "Copy skin by closest point, UV or topology; mirror and clean up weights.",
 }

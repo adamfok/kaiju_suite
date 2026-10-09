@@ -203,7 +203,8 @@ def test_clean_up_and_mirror_are_one_undo_step_each(new_scene):
     cmds.skinPercent(cluster, f"{src}.vtx[0]", transformValue=[("left", 0.995), ("right", 0.005)])
     before = _all_weights(src)
 
-    for edit in (lambda: logic.prune([src], 0.01), lambda: logic.mirror_skin([src]), lambda: logic.remove_unused([src])):
+    edits = (lambda: logic.prune([src], 0.01), lambda: logic.mirror_skin([src]), lambda: logic.remove_unused([src]))
+    for edit in edits:
         edit()
         cmds.undo()
 

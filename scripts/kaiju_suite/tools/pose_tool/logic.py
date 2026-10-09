@@ -110,8 +110,8 @@ def _rotate_frame(node):
     parent = om.MTransformationMatrix(_parent_frame(node)).asRotateMatrix()
     if cmds.nodeType(node) != "joint":
         return parent
-    orient = om.MEulerRotation([om.MAngle(v, om.MAngle.kDegrees).asRadians() for v in cmds.getAttr(f"{node}.jointOrient")[0]])
-    return orient.asMatrix() * parent
+    orient = [om.MAngle(v, om.MAngle.kDegrees).asRadians() for v in cmds.getAttr(f"{node}.jointOrient")[0]]
+    return om.MEulerRotation(orient).asMatrix() * parent
 
 
 def _diagonal(m):

@@ -9,5 +9,5 @@ TOOL = {
     "name": "Pose Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler Pose items.",
+    "description": "Mirror, flip and reset poses.",
 }
