@@ -94,9 +94,7 @@ def test_list_ignores_unrelated_files(tmp_path):
     assert versions.list_versions(path) == []
 
 
-def test_save_version_rejects_folders_and_missing_files(tmp_path):
-    with pytest.raises(ValueError):
-        versions.save_version(str(tmp_path))
+def test_save_version_rejects_missing_files(tmp_path):
     with pytest.raises(FileNotFoundError):
         versions.save_version(str(tmp_path / "gone.py"))
 
@@ -158,10 +156,9 @@ def test_restore_warns_when_unsaved_changes_would_be_lost(tmp_path):
     assert "lost" in action.confirm
 
 
-def test_only_files_are_versioned():
+def test_scripts_and_scenes_are_versioned():
     assert script.PRODUCT.versioned
     assert scene.PRODUCT.versioned
-    assert not folder.PRODUCT.versioned
 
 
 # -- the tree ignores history -----------------------------------------------

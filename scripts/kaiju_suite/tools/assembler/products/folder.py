@@ -1,6 +1,9 @@
 """Folders: they hold and order other items, and nest. Run All on one runs
 what's inside; disabling one makes Run All skip all of it. Double-clicking
-one opens it in the system file browser (Explorer on Windows)."""
+one opens it in the system file browser (Explorer on Windows).
+
+Publishing a folder records the version of every item in it; restoring a
+folder version sets them all back to it (see ..versions)."""
 
 import os
 import subprocess
@@ -37,6 +40,7 @@ class FolderProduct(Product):
     order = 20
     menu_slot = (1, 1)
     can_disable = True  # Run All skips a disabled folder and everything in it
+    versioned = True  # its versions record its items' versions
     creators = (Creator("Folder", lambda directory, name, _ext: create_folder(directory, name)),)
 
     def claims(self, path):
@@ -44,6 +48,11 @@ class FolderProduct(Product):
 
     def open(self, path):
         open_in_file_browser(path)
+
+    def publish_problems(self, path):
+        from kaiju_suite.tools.assembler import versions  # lazily: versions imports the products
+
+        return versions.folder_publish_problems(path)
 
 
 PRODUCT = FolderProduct()
