@@ -29,7 +29,7 @@ def user_curve(spine):
 
 
 def _params(**overrides):
-    params = rig.get("spine_ik").defaults()
+    params = rig.get("spline_ik").defaults()
     params.update(name="body", start_joint="hips", end_joint="chest")
     params.update(overrides)
     return params
@@ -62,8 +62,8 @@ def _close(a, b, tolerance=1e-3):
 # -- parameters -------------------------------------------------------------
 
 
-def test_spine_parameters_and_defaults():
-    module = rig.get("spine_ik")
+def test_spline_parameters_and_defaults():
+    module = rig.get("spline_ik")
 
     assert [p.key for p in module.params] == [
         "name",
@@ -77,15 +77,15 @@ def test_spine_parameters_and_defaults():
     assert module.defaults()["name"] == "spine"
     assert module.defaults()["curve"] == ""
     assert module.defaults()["color"] == 17
-    assert module.name == "Spine IK"
+    assert module.name == "Spline IK"
 
 
 def test_valid_params_have_no_problems(spine):
-    assert rig.get("spine_ik").problems(_params()) == []
+    assert rig.get("spline_ik").problems(_params()) == []
 
 
 def test_valid_params_with_a_curve_have_no_problems(user_curve):
-    assert rig.get("spine_ik").problems(_params(curve="my_crv")) == []
+    assert rig.get("spline_ik").problems(_params(curve="my_crv")) == []
 
 
 @pytest.mark.parametrize(
@@ -110,7 +110,7 @@ def test_valid_params_with_a_curve_have_no_problems(user_curve):
 def test_problems(spine, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rig.get("spine_ik").problems(_params(**overrides))
+    problems = rig.get("spline_ik").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
@@ -119,7 +119,7 @@ def test_ambiguous_joint_name_is_a_problem(spine):
     cmds.group(empty=True, name="other")
     _joint("chest", "other")
 
-    problems = rig.get("spine_ik").problems(_params())
+    problems = rig.get("spline_ik").problems(_params())
 
     assert any("chest" in p and "Several" in p for p in problems), problems
 
@@ -129,17 +129,17 @@ def test_ambiguous_curve_name_is_a_problem(user_curve):
     cmds.parent(cmds.curve(degree=1, point=[(0, 0, 0), (1, 0, 0)]), "other")
     cmds.rename("other|curve1", "my_crv")
 
-    problems = rig.get("spine_ik").problems(_params(curve="my_crv"))
+    problems = rig.get("spline_ik").problems(_params(curve="my_crv"))
 
     assert any("my_crv" in p and "Several" in p for p in problems), problems
 
 
 def test_existing_module_with_the_same_name_is_a_problem(spine):
-    rig.get("spine_ik").build(_params())
+    rig.get("spline_ik").build(_params())
 
-    problems = rig.get("spine_ik").problems(_params())
+    problems = rig.get("spline_ik").problems(_params())
 
-    assert any("body_spine_grp" in p for p in problems), problems
+    assert any("body_splineIk_grp" in p for p in problems), problems
 
 
 # -- build ------------------------------------------------------------------
@@ -148,48 +148,48 @@ def test_existing_module_with_the_same_name_is_a_problem(spine):
 def test_build_creates_curve_handle_and_controls(spine):
     before = _positions(spine)
 
-    created = rig.get("spine_ik").build(_params())
+    created = rig.get("spline_ik").build(_params())
 
     assert created == {
-        "group": "body_spine_grp",
+        "group": "body_splineIk_grp",
         "handle": "body_ikHandle",
-        "curve": "body_spine_crv",
+        "curve": "body_splineIk_crv",
         "hip_control": "body_hip_ctrl",
         "chest_control": "body_chest_ctrl",
     }
     assert all(isinstance(v, str) for v in created.values())
     assert cmds.ikHandle("body_ikHandle", query=True, solver=True) == "ikSplineSolver"
     assert cmds.ikHandle("body_ikHandle", query=True, startJoint=True) == "hips"
-    assert cmds.ls(cmds.ikHandle("body_ikHandle", query=True, curve=True)) == ["body_spine_crvShape"]
+    assert cmds.ls(cmds.ikHandle("body_ikHandle", query=True, curve=True)) == ["body_splineIk_crvShape"]
     assert not cmds.getAttr("body_ikHandle.visibility")
     assert cmds.getAttr("body_ikHandle.dTwistControlEnable")
-    assert cmds.listRelatives("body_ikHandle", parent=True) == ["body_spine_grp"]
-    assert cmds.listRelatives("body_spine_crv", parent=True) == ["body_spine_grp"]
+    assert cmds.listRelatives("body_ikHandle", parent=True) == ["body_splineIk_grp"]
+    assert cmds.listRelatives("body_splineIk_crv", parent=True) == ["body_splineIk_grp"]
     assert cmds.listRelatives("body_hip_ctrl", parent=True) == ["body_hip_ctrl_grp"]
     assert cmds.listRelatives("body_chest_ctrl", parent=True) == ["body_chest_ctrl_grp"]
-    assert cmds.listRelatives("body_hip_ctrl_grp", parent=True) == ["body_spine_grp"]
-    assert cmds.listRelatives("body_chest_ctrl_grp", parent=True) == ["body_spine_grp"]
+    assert cmds.listRelatives("body_hip_ctrl_grp", parent=True) == ["body_splineIk_grp"]
+    assert cmds.listRelatives("body_chest_ctrl_grp", parent=True) == ["body_splineIk_grp"]
     assert cmds.listRelatives("body_hip_drv_jnt", parent=True) == ["body_hip_ctrl"]
     assert cmds.listRelatives("body_chest_drv_jnt", parent=True) == ["body_chest_ctrl"]
     assert cmds.ls(cmds.listRelatives("body_hip_ctrl", shapes=True), type="nurbsCurve")
     assert cmds.ls(cmds.listRelatives("body_chest_ctrl", shapes=True), type="nurbsCurve")
     # The driver joints bend the curve.
-    skin = cmds.ls(cmds.listHistory("body_spine_crv"), type="skinCluster")
+    skin = cmds.ls(cmds.listHistory("body_splineIk_crv"), type="skinCluster")
     assert set(cmds.skinCluster(skin[0], query=True, influence=True)) == {"body_hip_drv_jnt", "body_chest_drv_jnt"}
     # Building doesn't move the joints.
     assert _close(_positions(spine), before)
 
 
 def test_controls_sit_on_the_start_and_end_joints(spine):
-    rig.get("spine_ik").build(_params())
+    rig.get("spline_ik").build(_params())
 
     assert _close([_world("body_hip_ctrl"), _world("body_chest_ctrl")], [_world("hips"), _world("chest")])
 
 
 def test_build_with_a_curve_uses_a_copy_and_keeps_the_users_curve(user_curve):
-    rig.get("spine_ik").build(_params(curve="my_crv"))
+    rig.get("spline_ik").build(_params(curve="my_crv"))
 
-    assert cmds.ls(cmds.ikHandle("body_ikHandle", query=True, curve=True)) == ["body_spine_crvShape"]
+    assert cmds.ls(cmds.ikHandle("body_ikHandle", query=True, curve=True)) == ["body_splineIk_crvShape"]
     assert cmds.objExists("my_crv")
     assert not cmds.ls(cmds.listHistory("my_crv"), type="skinCluster")
     # The joints snap onto the given curve.
@@ -197,7 +197,7 @@ def test_build_with_a_curve_uses_a_copy_and_keeps_the_users_curve(user_curve):
 
 
 def test_moving_the_chest_control_moves_the_end_joint(spine):
-    rig.get("spine_ik").build(_params())
+    rig.get("spline_ik").build(_params())
     before = _world("chest")
 
     cmds.move(0, 0, 2, "body_chest_ctrl", relative=True)
@@ -206,7 +206,7 @@ def test_moving_the_chest_control_moves_the_end_joint(spine):
 
 
 def test_rotating_the_chest_control_twists_the_upper_joints(spine):
-    rig.get("spine_ik").build(_params())
+    rig.get("spline_ik").build(_params())
     hips, upper = _axis("hips", 2), _axis("spine3", 2)
 
     cmds.rotate(0, 90, 0, "body_chest_ctrl", relative=True, objectSpace=True)
@@ -222,14 +222,14 @@ def _color(control):
 
 
 def test_color_goes_on_both_controls(spine):
-    rig.get("spine_ik").build(_params(color=13))
+    rig.get("spline_ik").build(_params(color=13))
 
     assert _color("body_hip_ctrl") == {(True, 13)}
     assert _color("body_chest_ctrl") == {(True, 13)}
 
 
 def test_color_0_leaves_the_controls_maya_default_color(spine):
-    rig.get("spine_ik").build(_params(color=0))
+    rig.get("spline_ik").build(_params(color=0))
 
     assert _color("body_hip_ctrl") == {(False, 0)}
     assert _color("body_chest_ctrl") == {(False, 0)}
@@ -238,9 +238,9 @@ def test_color_0_leaves_the_controls_maya_default_color(spine):
 def test_build_goes_under_the_parent(spine):
     cmds.group(empty=True, name="rig_grp")
 
-    rig.get("spine_ik").build(_params(parent="rig_grp"))
+    rig.get("spline_ik").build(_params(parent="rig_grp"))
 
-    assert cmds.listRelatives("body_spine_grp", parent=True) == ["rig_grp"]
+    assert cmds.listRelatives("body_splineIk_grp", parent=True) == ["rig_grp"]
 
 
 def test_build_is_one_undo_step(spine):
@@ -248,7 +248,7 @@ def test_build_is_one_undo_step(spine):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rig.get("spine_ik").build(_params())
+    rig.get("spline_ik").build(_params())
     cmds.move(0, 0, 2, "body_chest_ctrl", relative=True)
     cmds.undo()
     cmds.undo()
@@ -261,6 +261,6 @@ def test_build_with_problems_creates_nothing(spine):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rig.get("spine_ik").build(_params(end_joint="nothing"))
+        rig.get("spline_ik").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before

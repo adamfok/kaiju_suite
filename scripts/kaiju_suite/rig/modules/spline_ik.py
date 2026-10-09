@@ -1,20 +1,20 @@
-"""Spine IK: a spline IK handle on a joint chain, along a curve bent by a hip
+"""Spline IK: a spline IK handle on a joint chain, along a curve bent by a hip
 and a chest control, which also twist the chain.
 
 Builds, every node named after ``name`` (``spine`` here)::
 
-    spine_spine_grp             under ``parent``, or the world
+    spine_splineIk_grp          under ``parent``, or the world
       spine_hip_ctrl_grp        at the start joint, matching its orientation
         spine_hip_ctrl          circle around the chain
           spine_hip_drv_jnt     hidden; bends the curve's start
       spine_chest_ctrl_grp      at the end joint, matching its orientation
         spine_chest_ctrl
           spine_chest_drv_jnt   hidden; bends the curve's end
-      spine_spine_crv           hidden; skinned to the two driver joints
+      spine_splineIk_crv        hidden; skinned to the two driver joints
       spine_ikHandle            start joint to end joint, along the curve, hidden
 
 With no ``curve``, the curve goes through the joints, so building doesn't
-move them. A given ``curve`` is copied (the copy is ``spine_spine_crv``)
+move them. A given ``curve`` is copied (the copy is ``spine_splineIk_crv``)
 and left as it is; the joints snap onto the copy. The chain needs at least
 3 joints. The controls twist the chain through the handle's Advanced Twist
 Controls: the hip control turns the start joint, the chest control the end
@@ -77,14 +77,14 @@ def _control(name, joint, size, normal, parent):
     return helpers.short(control), helpers.short(driver)
 
 
-class SpineIkModule(RigModule):
-    key = "spine_ik"
-    name = "Spine IK"
+class SplineIkModule(RigModule):
+    key = "spline_ik"
+    name = "Spline IK"
     params = (
         Param("name", "Name", "string", "spine", required=True, tooltip="Prefix of every node it creates, e.g. spine."),
         Param("start_joint", "Start joint", "node", "", required=True, tooltip="First joint of the chain, e.g. the hips."),
         Param("end_joint", "End joint", "node", "", required=True, tooltip="Last joint of the chain, e.g. the chest."),
-        Param("curve", "Curve", "node", "", tooltip="A NURBS curve for the spine to follow; blank makes one through the joints."),
+        Param("curve", "Curve", "node", "", tooltip="A NURBS curve for the chain to follow; blank makes one through the joints."),
         Param("control_size", "Control size", "float", 1.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the controls; 0 keeps Maya's default."),
         Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
@@ -92,7 +92,7 @@ class SpineIkModule(RigModule):
 
     def check(self, params):
         name = params["name"].strip()
-        found = helpers.name_problems(name, f"{name}_spine_grp", self.name)
+        found = helpers.name_problems(name, f"{name}_splineIk_grp", self.name)
         found.extend(helpers.chain_problems(params["start_joint"].strip(), params["end_joint"].strip(), 3))
         found.extend(_curve_problems(params["curve"]))
         if params["control_size"] <= 0:
@@ -109,13 +109,13 @@ class SpineIkModule(RigModule):
         normal[axis] = 1
 
         with helpers.kept_selection():
-            group = helpers.group(f"{name}_spine_grp", params["parent"].strip())
+            group = helpers.group(f"{name}_splineIk_grp", params["parent"].strip())
 
             hip, hip_driver = _control(f"{name}_hip", chain[0], size, normal, group)
             chest, chest_driver = _control(f"{name}_chest", chain[-1], size, normal, group)
 
             # Through the joints, before the handle exists, so they stay put.
-            curve_name = f"{name}_spine_crv"
+            curve_name = f"{name}_splineIk_crv"
             if params["curve"].strip():
                 curve = _copy_curve(params["curve"].strip(), curve_name, group)
             else:
@@ -127,7 +127,7 @@ class SpineIkModule(RigModule):
             cmds.setAttr(f"{curve}.inheritsTransform", False)
             cmds.setAttr(f"{curve}.visibility", False)
             cmds.skinCluster(
-                hip_driver, chest_driver, curve, toSelectedBones=True, maximumInfluences=2, name=f"{name}_spine_skinCluster"
+                hip_driver, chest_driver, curve, toSelectedBones=True, maximumInfluences=2, name=f"{name}_splineIk_skinCluster"
             )
 
             handle, effector = cmds.ikHandle(
@@ -171,4 +171,4 @@ class SpineIkModule(RigModule):
         }
 
 
-MODULE = SpineIkModule()
+MODULE = SplineIkModule()
