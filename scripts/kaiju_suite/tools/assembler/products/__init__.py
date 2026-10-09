@@ -101,6 +101,11 @@ class Product:
         messages for the user. Publish doesn't run unless this is empty."""
         return []
 
+    def publish_warnings(self, path):
+        """Pre-publish warnings: things that look wrong but don't stop Publish,
+        as messages. The user is asked whether to publish anyway."""
+        return []
+
     def before_replace(self, path):
         """Called just before the Assembler overwrites ``path`` on disk, e.g.
         to restore a version. Does nothing unless overridden."""

@@ -350,6 +350,10 @@ class MaterialProduct(data.DataProduct):
         meshes, assignments, network = _network_of_selection()
         if not meshes:
             return ["No meshes or faces selected. Select the meshes or faces to publish."]
+        return []
+
+    def selection_warnings(self):
+        meshes, assignments, network = _network_of_selection()
         missing = [p for p in _textures(network) if not _texture_exists(p)]
         if missing:
             return [f"Texture files not found: {', '.join(missing)}"]

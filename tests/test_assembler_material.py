@@ -155,9 +155,20 @@ def test_publish_problems(new_scene, tmp_path):
     cmds.select(body)
     assert versions.publish_problems(path) == []
 
+    assert versions.publish_warnings(path) == []
+
+
+def test_missing_texture_warns_but_does_not_block_publish(new_scene, tmp_path):
+    texture = _texture(tmp_path)
+    path = material.PRODUCT.create(str(tmp_path), "look")
+    body, head, eye = _look(texture)
+    cmds.select(body)
     os.remove(texture)
-    (problem,) = versions.publish_problems(path)
-    assert "not found" in problem and texture in problem
+
+    assert versions.publish_problems(path) == []
+    (warning,) = versions.publish_warnings(path)
+    assert "not found" in warning and texture in warning
+    assert versions.publish_action(path).fn().endswith("v001")
 
 
 def test_publish_without_meshes_raises_and_writes_nothing(new_scene, tmp_path):

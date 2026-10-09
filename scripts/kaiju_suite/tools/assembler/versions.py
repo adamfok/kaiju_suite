@@ -167,6 +167,13 @@ def publish_problems(path):
     return product.publish_problems(path) if product is not None else []
 
 
+def publish_warnings(path):
+    """What looks wrong about publishing ``path`` now without stopping it, as
+    messages (empty if nothing does). Run it after :func:`publish_problems`."""
+    product = product_for(path)
+    return product.publish_warnings(path) if product is not None else []
+
+
 def restore_version(path, number):
     """Replace ``path`` with version ``number``. Adds no version: content
     not published is lost, so callers should warn first (see
