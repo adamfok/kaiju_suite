@@ -11,6 +11,10 @@ anything. Then, per mesh, it removes the mesh's existing skinCluster, binds
 exactly the file's influences under the saved name, and sets every weight
 in one ``MFnSkinCluster.setWeights`` call. Remapping weights onto a changed
 mesh is not supported: the vertex count must match.
+
+``setWeights`` isn't on Maya's undo queue. Undo still reverts a Run (removing
+the new skinCluster takes its weights with it), but redo rebinds with Maya's
+default weights, not the saved ones: run the file again instead.
 """
 
 from maya import cmds
