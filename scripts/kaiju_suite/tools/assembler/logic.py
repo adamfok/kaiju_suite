@@ -47,9 +47,14 @@ class Entry:
 
     @property
     def type_label(self):
-        """Product and extension shown next to the label, e.g. ``Script(.py)``;
-        blank for folders."""
-        return "" if self.is_dir or self.product is None else f"{self.product.name}({self.ext})"
+        """Product shown next to the label. The extension is added only when
+        the product has several, e.g. ``Script(.py)`` but ``Mesh``; blank for
+        folders."""
+        if self.is_dir or self.product is None:
+            return ""
+        if len(self.product.extensions) > 1:
+            return f"{self.product.name}({self.ext})"
+        return self.product.name
 
 
 def ext_of(path):
