@@ -51,3 +51,11 @@ def discover():
         found.append(tool)
 
     return sorted(found, key=lambda t: (t.get("category", ""), t["name"]))
+
+
+def find(name):
+    """The TOOL dict named ``name``, or ``None`` if there's none.
+
+    Lets a tool open another without importing it.
+    """
+    return next((tool for tool in discover() if tool["name"] == name), None)

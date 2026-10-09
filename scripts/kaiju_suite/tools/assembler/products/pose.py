@@ -59,6 +59,7 @@ def _skip_reason(node, attr):
 
 class PoseProduct(data.DataProduct):
     name = "Pose"
+    utility = "Pose Tool"
     kind = "pose"
     extension = ".pose"
     order = 100

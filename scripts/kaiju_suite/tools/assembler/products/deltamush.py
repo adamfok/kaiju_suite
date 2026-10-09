@@ -154,6 +154,7 @@ def _rebuild(name, group, transforms):
 
 class DeltaMushProduct(data.DataProduct):
     name = "DeltaMush"
+    utility = "DeltaMush Tool"
     kind = "deltamush"
     extension = ".dmsh"
     order = 70

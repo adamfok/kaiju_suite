@@ -454,9 +454,21 @@ class AssemblerWindow(ToolWindow):
         product = products.product_for(path)
         if not product:
             return
+        if product.utility:
+            self._do(lambda: self._open_utility(product))
+            return
         if product.panel(path) is None:
             self._do(lambda: product.open(path))
             return
+        self._show_info(product, path)
+
+    def _open_utility(self, product):
+        tool = logic.utility_for(product)
+        if tool is None:
+            raise LookupError(f"{product.utility} isn't installed.")
+        tool["launch"]()
+
+    def _show_info(self, product, path):
         self._show_panel(("product", path), os.path.basename(path), lambda: product.panel(path))
 
     def _show_versions(self, path):
@@ -527,6 +539,9 @@ class AssemblerWindow(ToolWindow):
         if product:
             for action in product.actions(path):
                 menu.addAction(action.label, lambda a=action: self._do(a.fn, a.confirm))
+            if product.utility and type(product).panel is not products.Product.panel:
+                # Double-click opens the utility, so the info window lives here.
+                menu.addAction("Info", lambda: self._show_info(product, path))
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))

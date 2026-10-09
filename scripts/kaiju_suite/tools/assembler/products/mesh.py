@@ -114,6 +114,7 @@ def _build_shape(transform, record):
 
 class MeshProduct(data.DataProduct):
     name = "Mesh"
+    utility = "Mesh Tool"
     kind = "mesh"
     extension = ".mesh"
     order = 50

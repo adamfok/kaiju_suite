@@ -10,7 +10,7 @@ from maya import cmds
 
 from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.assembler import versions
-from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, ext_of, is_empty, new_path
+from kaiju_suite.tools.assembler.products import Action, Creator, Product, ext_of, is_empty, new_path
 
 EXTENSIONS = (".ma", ".mb")
 
@@ -69,6 +69,7 @@ def export_into(path):
 
 class SceneProduct(Product):
     name = "Scene"
+    utility = "Scene Tool"
     extensions = EXTENSIONS
     order = 30
     runnable = True
@@ -88,9 +89,6 @@ class SceneProduct(Product):
         if not cmds.ls(selection=True):
             return [f"Nothing selected. Select what to publish into {os.path.basename(path)}."]
         return []
-
-    def panel(self, path):
-        return Panel([], [])
 
 
 PRODUCT = SceneProduct()

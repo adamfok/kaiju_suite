@@ -217,16 +217,11 @@ def _export_action(path):
     return action
 
 
-def test_scene_double_click_opens_an_empty_window(new_scene, tmp_path):
+def test_scene_double_click_opens_the_scene_tool_not_a_panel(new_scene, tmp_path):
     path = scene.create_scene(str(tmp_path), "hero", ".ma")
-    panel = scene.PRODUCT.panel(path)
-    assert panel is not None  # a window, not open()
-    assert panel.info == [] and panel.actions == []
 
-    cmds.select(cmds.createNode("transform"))
-    _export_action(path).fn()
-    panel = scene.PRODUCT.panel(path)
-    assert panel.info == [] and panel.actions == []
+    assert scene.PRODUCT.utility == "Scene Tool"
+    assert scene.PRODUCT.panel(path) is None  # no right-click Info either
 
 
 @pytest.mark.parametrize("ext", scene.EXTENSIONS)

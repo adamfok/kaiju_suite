@@ -166,6 +166,7 @@ def _apply_curve(plug, record):
 
 class AnimationProduct(data.DataProduct):
     name = "Animation"
+    utility = "Animation Tool"
     kind = "animation"
     extension = ".anim"
     order = 110
