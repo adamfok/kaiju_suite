@@ -80,6 +80,11 @@ class Product:
         """Whether items can be switched off so Run All skips them."""
         return self.runnable
 
+    def type_name(self, path):
+        """What kind of item ``path`` is, for the Type column, publish messages
+        and run logs. ``name`` unless overridden (Rig Modules name their module)."""
+        return self.name
+
     def claims(self, path):
         return os.path.isfile(path) and ext_of(path) in self.extensions
 

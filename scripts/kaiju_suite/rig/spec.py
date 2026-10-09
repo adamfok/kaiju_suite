@@ -1,6 +1,6 @@
 """Rig module parameter files: which module, and its parameters. Nothing else.
 
-    {"kaiju": "rigModule", "format": 1, "data": {"module": "ik", "params": {...}}}
+    {"kaiju": "rigModule", "format": 1, "data": {"module": "simple_ik", "params": {...}}}
 """
 
 import os

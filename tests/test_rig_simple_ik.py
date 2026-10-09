@@ -21,7 +21,7 @@ def arm(new_scene):
 
 
 def _params(**overrides):
-    params = rig.get("ik").defaults()
+    params = rig.get("simple_ik").defaults()
     params.update(name="L_arm", start_joint="shoulder", end_joint="wrist")
     params.update(overrides)
     return params
@@ -49,24 +49,21 @@ def _close(a, b, tolerance=1e-3):
 
 
 def test_ik_parameters_and_defaults():
-    module = rig.get("ik")
+    module = rig.get("simple_ik")
 
     assert [p.key for p in module.params] == [
         "name",
         "start_joint",
         "end_joint",
-        "solver",
-        "pole_vector",
         "pole_distance",
         "control_size",
         "parent",
     ]
-    assert module.defaults()["solver"] == "rp"
-    assert module.defaults()["pole_vector"] is True
+    assert module.name == "Simple IK"
 
 
 def test_valid_params_have_no_problems(arm):
-    assert rig.get("ik").problems(_params()) == []
+    assert rig.get("simple_ik").problems(_params()) == []
 
 
 @pytest.mark.parametrize(
@@ -88,14 +85,9 @@ def test_valid_params_have_no_problems(arm):
 def test_problems(arm, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rig.get("ik").problems(_params(**overrides))
+    problems = rig.get("simple_ik").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
-
-
-def test_two_joint_chain_is_fine_without_a_pole_vector(arm):
-    assert rig.get("ik").problems(_params(end_joint="elbow", pole_vector=False)) == []
-    assert rig.get("ik").problems(_params(end_joint="elbow", solver="sc")) == []
 
 
 def test_straight_chain_has_no_pole_vector_direction(new_scene):
@@ -103,7 +95,7 @@ def test_straight_chain_has_no_pole_vector_direction(new_scene):
     _joint("b", "a", translate=(5, 0, 0))
     _joint("c", "b", translate=(5, 0, 0))
 
-    problems = rig.get("ik").problems(_params(start_joint="a", end_joint="c"))
+    problems = rig.get("simple_ik").problems(_params(start_joint="a", end_joint="c"))
 
     assert any("straight" in p for p in problems), problems
 
@@ -112,15 +104,15 @@ def test_ambiguous_joint_name_is_a_problem(arm):
     cmds.group(empty=True, name="other")
     _joint("wrist", "other")
 
-    problems = rig.get("ik").problems(_params())
+    problems = rig.get("simple_ik").problems(_params())
 
     assert any("wrist" in p and "Several" in p for p in problems), problems
 
 
 def test_existing_module_with_the_same_name_is_a_problem(arm):
-    rig.get("ik").build(_params())
+    rig.get("simple_ik").build(_params())
 
-    problems = rig.get("ik").problems(_params())
+    problems = rig.get("simple_ik").problems(_params())
 
     assert any("L_arm_ik_grp" in p for p in problems), problems
 
@@ -128,10 +120,10 @@ def test_existing_module_with_the_same_name_is_a_problem(arm):
 # -- build ------------------------------------------------------------------
 
 
-def test_build_rp_creates_handle_controls_and_constraints(arm):
+def test_build_creates_handle_controls_and_constraints(arm):
     before = _positions(arm)
 
-    created = rig.get("ik").build(_params())
+    created = rig.get("simple_ik").build(_params())
 
     assert created == {
         "group": "L_arm_ik_grp",
@@ -139,6 +131,7 @@ def test_build_rp_creates_handle_controls_and_constraints(arm):
         "control": "L_arm_ik_ctrl",
         "pole_vector": "L_arm_pv_ctrl",
     }
+    # Always the rotate-plane solver, always with a pole vector.
     assert cmds.ikHandle("L_arm_ikHandle", query=True, solver=True) == "ikRPsolver"
     assert cmds.ikHandle("L_arm_ikHandle", query=True, startJoint=True) == "shoulder"
     assert cmds.listRelatives("L_arm_ikHandle", parent=True) == ["L_arm_ik_ctrl"]
@@ -154,13 +147,13 @@ def test_build_rp_creates_handle_controls_and_constraints(arm):
 
 
 def test_ik_control_sits_on_the_end_joint(arm):
-    rig.get("ik").build(_params())
+    rig.get("simple_ik").build(_params())
 
     assert _close([_world("L_arm_ik_ctrl")], [_world("wrist")])
 
 
 def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
-    rig.get("ik").build(_params(pole_distance=4.0))
+    rig.get("simple_ik").build(_params(pole_distance=4.0))
 
     start, mid, end = _positions(arm)
     pole = _world("L_arm_pv_ctrl")
@@ -172,41 +165,26 @@ def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
 
 
 def test_moving_the_control_drives_the_chain(arm):
-    rig.get("ik").build(_params())
+    rig.get("simple_ik").build(_params())
 
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
 
     assert _close([_world("wrist")], [_world("L_arm_ik_ctrl")])
 
 
-def test_build_sc_has_no_pole_vector(arm):
-    created = rig.get("ik").build(_params(solver="sc"))
-
-    assert created["pole_vector"] is None
-    assert cmds.ikHandle("L_arm_ikHandle", query=True, solver=True) == "ikSCsolver"
-    assert not cmds.objExists("L_arm_pv_ctrl")
-
-
-def test_build_rp_without_pole_vector(arm):
-    created = rig.get("ik").build(_params(pole_vector=False))
-
-    assert created["pole_vector"] is None
-    assert not cmds.objExists("L_arm_pv_ctrl")
-
-
 def test_build_goes_under_the_parent(arm):
     cmds.group(empty=True, name="rig_grp")
 
-    rig.get("ik").build(_params(parent="rig_grp"))
+    rig.get("simple_ik").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("L_arm_ik_grp", parent=True) == ["rig_grp"]
 
 
 def test_control_size_scales_the_control(arm):
-    rig.get("ik").build(_params(name="small", control_size=1.0))
+    rig.get("simple_ik").build(_params(name="small", control_size=1.0))
     small = cmds.exactWorldBoundingBox("small_ik_ctrl")
     cmds.delete("small_ik_grp")
-    rig.get("ik").build(_params(name="big", control_size=2.0))
+    rig.get("simple_ik").build(_params(name="big", control_size=2.0))
     big = cmds.exactWorldBoundingBox("big_ik_ctrl")
 
     assert abs((big[4] - big[1]) - 2 * (small[4] - small[1])) < 1e-3
@@ -217,7 +195,7 @@ def test_build_is_one_undo_step(arm):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rig.get("ik").build(_params())
+    rig.get("simple_ik").build(_params())
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
     cmds.undo()
     cmds.undo()
@@ -230,6 +208,6 @@ def test_build_with_problems_creates_nothing(arm):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rig.get("ik").build(_params(end_joint="nothing"))
+        rig.get("simple_ik").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before

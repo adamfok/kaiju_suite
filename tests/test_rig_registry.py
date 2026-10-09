@@ -23,9 +23,9 @@ class _Box(RigModule):
 # -- the registry -----------------------------------------------------------
 
 
-def test_ik_module_is_discovered():
-    assert rig.get("ik").name == "IK Module"
-    assert "ik" in [module.key for module in rig.all_modules()]
+def test_simple_ik_is_discovered():
+    assert rig.get("simple_ik").name == "Simple IK"
+    assert "simple_ik" in [module.key for module in rig.all_modules()]
 
 
 def test_get_rejects_an_unknown_module():
@@ -85,26 +85,26 @@ def test_build_refuses_params_with_problems(new_scene):
 
 def test_spec_round_trips(tmp_path):
     path = str(tmp_path / "L_arm.rig")
-    spec.write(path, "ik", {"name": "L_arm"})
+    spec.write(path, "simple_ik", {"name": "L_arm"})
 
-    assert spec.read(path) == ("ik", {"name": "L_arm"})
-    assert datafile.read(path, spec.KIND) == {"module": "ik", "params": {"name": "L_arm"}}
+    assert spec.read(path) == ("simple_ik", {"name": "L_arm"})
+    assert datafile.read(path, spec.KIND) == {"module": "simple_ik", "params": {"name": "L_arm"}}
 
 
 def test_load_completes_the_params_with_defaults(tmp_path):
     path = str(tmp_path / "L_arm.rig")
-    spec.write(path, "ik", {"name": "L_arm"})
+    spec.write(path, "simple_ik", {"name": "L_arm"})
 
     module, params = spec.load(path)
 
-    assert module is rig.get("ik")
+    assert module is rig.get("simple_ik")
     assert params["name"] == "L_arm"
-    assert params["solver"] == "rp"
+    assert params["pole_distance"] == 5.0
 
 
 @pytest.mark.parametrize(
     "payload",
-    [[1], {"params": {}}, {"module": 3, "params": {}}, {"module": "ik", "params": []}],
+    [[1], {"params": {}}, {"module": 3, "params": {}}, {"module": "simple_ik", "params": []}],
 )
 def test_read_rejects_a_malformed_spec(tmp_path, payload):
     path = tmp_path / "bad.rig"

@@ -47,16 +47,18 @@ class Entry:
 
     @property
     def type_label(self):
-        """Product shown next to the label. The extension is added only when
+        """Product shown next to the label (its :meth:`~.products.Product.type_name`
+        for this item, e.g. ``Simple IK`` for a Rig Module). The extension is added only when
         the product has several, e.g. ``Script(.py)`` but ``Mesh``; blank for
         folders. A product with ``columns_text`` shows that instead."""
         if self.is_dir or self.product is None:
             return ""
         if self.product.columns_text is not None:
             return self.product.columns_text
+        name = self.product.type_name(self.path)
         if len(self.product.extensions) > 1:
-            return f"{self.product.name}({self.ext})"
-        return self.product.name
+            return f"{name}({self.ext})"
+        return name
 
     @property
     def version_label(self):
@@ -455,7 +457,7 @@ def run_steps(paths, on_status=None):
 
 def _save_log(path, run, status, product, seconds):
     try:
-        runlog.save(path, run, status, product.name if product else "Item", seconds)
+        runlog.save(path, run, status, product.type_name(path) if product else "Item", seconds)
     except OSError:
         log.exception("Couldn't save the run log of %s", path)
 

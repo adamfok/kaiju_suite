@@ -180,7 +180,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "Pose", "Animation",
         None,
-        "IK Module",
+        "Simple IK",
     ]
     assert folder.PRODUCT.creators[0].choices is None
 

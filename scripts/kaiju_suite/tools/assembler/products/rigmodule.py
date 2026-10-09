@@ -3,10 +3,11 @@
 The file holds only which module it is and its parameters (see
 :mod:`kaiju_suite.rig.spec`); the algorithm lives in
 :mod:`kaiju_suite.rig.modules`. **New** lists one entry per rig module and
-writes its default parameters. Double-click opens the Rig Module Editor on
-the file to change them. **Run** builds the module from them as one undo
-step, checking them first. **Publish** saves the parameters as they are as
-the next version.
+writes its default parameters. The Type column shows the module's name
+(e.g. ``Simple IK``) rather than "Rig Module". Double-click opens the Rig
+Module Editor on the file to change them. **Run** builds the module from
+them as one undo step, checking them first. **Publish** saves the
+parameters as they are as the next version.
 """
 
 from kaiju_suite import rig
@@ -47,10 +48,18 @@ class RigModuleProduct(Product):
             for module in rig.all_modules()
         )
 
+    def type_name(self, path):
+        """The module's name, e.g. ``Simple IK``; ``Rig Module`` if the file
+        can't be read or names a module this Kaiju Suite doesn't have."""
+        try:
+            return rig.get(spec.read(path)[0]).name
+        except (OSError, ValueError, LookupError):
+            return self.name
+
     def run(self, path):
         module, params = spec.load(path)
         created = module.build(params)
-        return f"Built {module.name} {params['name']}: {', '.join(n for n in created.values() if n)}"
+        return f"Built {module.name} {params['name']}: {', '.join(created.values())}"
 
     def panel(self, path):
         try:

@@ -1,5 +1,5 @@
-"""IK module: an IK handle on a joint chain, driven by a control, with an
-optional pole vector control.
+"""Simple IK: a rotate-plane IK handle on a joint chain, driven by a control,
+with a pole vector control.
 
 Builds, every node named after ``name`` (``L_arm`` here)::
 
@@ -7,12 +7,13 @@ Builds, every node named after ``name`` (``L_arm`` here)::
       L_arm_ik_ctrl_grp       at the end joint, matching its orientation
         L_arm_ik_ctrl         circle; the end joint's rotation follows it
           L_arm_ikHandle      start joint to end joint, hidden
-      L_arm_pv_ctrl_grp       rp solver with a pole vector only
+      L_arm_pv_ctrl_grp
         L_arm_pv_ctrl
 
 The pole vector control goes on the chain's plane, ``pole_distance`` out
 from the middle joint on the side the chain bends to, so adding it doesn't
-move the chain. A straight chain has no such side, so it needs a bend.
+move the chain. A straight chain has no such side, so it needs a bend, and
+the chain needs at least 3 joints.
 """
 
 import re
@@ -21,8 +22,6 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite.rig.module import Param, RigModule
-
-SOLVERS = {"rp": "ikRPsolver", "sc": "ikSCsolver"}
 
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -83,15 +82,13 @@ def _short(node):
     return cmds.ls(node)[0]
 
 
-class IkModule(RigModule):
-    key = "ik"
-    name = "IK Module"
+class SimpleIkModule(RigModule):
+    key = "simple_ik"
+    name = "Simple IK"
     params = (
         Param("name", "Name", "string", "arm", required=True, tooltip="Prefix of every node it creates, e.g. L_arm."),
         Param("start_joint", "Start joint", "node", "", required=True, tooltip="First joint of the chain, e.g. the shoulder."),
         Param("end_joint", "End joint", "node", "", required=True, tooltip="Last joint of the chain, e.g. the wrist."),
-        Param("solver", "Solver", "choice", "rp", choices=tuple(SOLVERS), tooltip="rp: rotate plane, with a pole vector. sc: single chain."),
-        Param("pole_vector", "Pole vector", "bool", True, tooltip="rp solver only: add a pole vector control."),
         Param("pole_distance", "Pole distance", "float", 5.0, tooltip="How far the pole vector control sits from the middle joint."),
         Param("control_size", "Control size", "float", 1.0),
         Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
@@ -103,9 +100,8 @@ class IkModule(RigModule):
         if not _NAME.match(name):
             found.append(f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit.")
         elif cmds.objExists(f"{name}_ik_grp"):
-            found.append(f"{name}_ik_grp already exists: another IK module is named {name}. Pick another name.")
+            found.append(f"{name}_ik_grp already exists: another Simple IK is named {name}. Pick another name.")
 
-        use_pole = params["solver"] == "rp" and params["pole_vector"]
         start, end = params["start_joint"].strip(), params["end_joint"].strip()
         joint_problems = _node_problems("Start joint", start, joint=True) + _node_problems("End joint", end, joint=True)
         found.extend(joint_problems)
@@ -116,14 +112,14 @@ class IkModule(RigModule):
             elif any(cmds.nodeType(node) != "joint" for node in chain):
                 others = [_short(node) for node in chain if cmds.nodeType(node) != "joint"]
                 found.append(f"Everything from start joint to end joint must be a joint; these aren't: {', '.join(others)}.")
-            elif use_pole and len(chain) < 3:
-                found.append("A pole vector needs at least 3 joints from start joint to end joint. Turn Pole vector off, or use the sc solver.")
-            elif use_pole and _pole_position(chain, 1.0) is None:
-                found.append("The chain is straight, so the pole vector has no side to go on. Bend the middle joint slightly, or turn Pole vector off.")
+            elif len(chain) < 3:
+                found.append("The chain needs at least 3 joints from start joint to end joint.")
+            elif _pole_position(chain, 1.0) is None:
+                found.append("The chain is straight, so the pole vector has no side to go on. Bend the middle joint slightly.")
 
         if params["control_size"] <= 0:
             found.append("Control size must be above 0.")
-        if use_pole and params["pole_distance"] <= 0:
+        if params["pole_distance"] <= 0:
             found.append("Pole distance must be above 0.")
         if params["parent"].strip():
             found.extend(_node_problems("Parent", params["parent"].strip()))
@@ -134,9 +130,8 @@ class IkModule(RigModule):
         chain = _chain(params["start_joint"].strip(), params["end_joint"].strip())
         parent = params["parent"].strip()
         size = float(params["control_size"])
-        use_pole = params["solver"] == "rp" and params["pole_vector"]
         # Before the handle exists, while the chain is as the user posed it.
-        pole = _pole_position(chain, float(params["pole_distance"])) if use_pole else None
+        pole = _pole_position(chain, float(params["pole_distance"]))
 
         selection = cmds.ls(selection=True, long=True)
         group = cmds.createNode("transform", name=f"{name}_ik_grp", skipSelect=True)
@@ -148,27 +143,25 @@ class IkModule(RigModule):
         control = _circle(f"{name}_ik_ctrl", size, control_group)
 
         handle, effector = cmds.ikHandle(
-            name=f"{name}_ikHandle", startJoint=chain[0], endEffector=chain[-1], solver=SOLVERS[params["solver"]]
+            name=f"{name}_ikHandle", startJoint=chain[0], endEffector=chain[-1], solver="ikRPsolver"
         )
         cmds.rename(effector, f"{name}_effector")
         handle = cmds.parent(handle, control)[0]
         cmds.setAttr(f"{handle}.visibility", False)
         cmds.orientConstraint(control, chain[-1], maintainOffset=True, name=f"{name}_end_orientConstraint")
 
-        pole_control = None
-        if pole is not None:
-            pole_group = cmds.createNode("transform", name=f"{name}_pv_ctrl_grp", parent=group, skipSelect=True)
-            cmds.xform(pole_group, worldSpace=True, translation=list(pole))
-            pole_control = _diamond(f"{name}_pv_ctrl", size, pole_group)
-            cmds.poleVectorConstraint(pole_control, handle, name=f"{name}_poleVectorConstraint")
+        pole_group = cmds.createNode("transform", name=f"{name}_pv_ctrl_grp", parent=group, skipSelect=True)
+        cmds.xform(pole_group, worldSpace=True, translation=list(pole))
+        pole_control = _diamond(f"{name}_pv_ctrl", size, pole_group)
+        cmds.poleVectorConstraint(pole_control, handle, name=f"{name}_poleVectorConstraint")
 
         cmds.select(selection, replace=True) if selection else cmds.select(clear=True)
         return {
             "group": _short(group),
             "handle": _short(handle),
             "control": _short(control),
-            "pole_vector": _short(pole_control) if pole_control else None,
+            "pole_vector": _short(pole_control),
         }
 
 
-MODULE = IkModule()
+MODULE = SimpleIkModule()
