@@ -324,9 +324,10 @@ class AssemblerWindow(ToolWindow):
             item = QtWidgets.QTreeWidgetItem(parent, [entry.label, entry.version_label or "", entry.type_label])
             item.setData(0, PATH_ROLE, entry.path)
             item.setToolTip(2, entry.name)
-            if product and product.versioned and not entry.is_dir:
+            if product and product.versioned:
                 self._show_version(item)
-                self._watcher.addPath(entry.path)
+                if not entry.is_dir:
+                    self._watcher.addPath(entry.path)
             icon = self._icon(product.icon) if product else None
             if icon:
                 item.setIcon(0, icon)
@@ -365,8 +366,10 @@ class AssemblerWindow(ToolWindow):
         if os.path.isfile(path) and path not in self._watcher.files():
             self._watcher.addPath(path)
         item = self._find_item(path)
-        if item:
+        # Folders above it too: their versions depend on their items'.
+        while item:
             self._show_version(item)
+            item = item.parent()
 
     def _show_status(self, item):
         status = self._status.get(item.data(0, PATH_ROLE))
@@ -550,7 +553,7 @@ class AssemblerWindow(ToolWindow):
                 menu.addAction("Disable", lambda: self._set_enabled(toggles, False))
             if not all(enabled):
                 menu.addAction("Enable", lambda: self._set_enabled(toggles, True))
-        if product and product.versioned and is_file:
+        if product and product.versioned:
             menu.addSeparator()
             menu.addAction("Publish", lambda: self._publish(path))
             self._add_versions_menu(menu.addMenu("Versions"), path)
