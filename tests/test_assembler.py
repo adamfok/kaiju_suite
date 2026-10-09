@@ -541,6 +541,7 @@ def test_entry_label_hides_extension_and_type_label_names_product(tmp_path):
     _touch(tmp_path / "rig.py")
     _touch(tmp_path / "Build.MEL")
     _touch(tmp_path / "body.mb")
+    _touch(tmp_path / "head.mesh")
     (tmp_path / "parts.v2").mkdir()
     by_name = {e.name: e for e in logic.scan(str(tmp_path))}
     assert by_name["rig.py"].label == "rig"
@@ -550,6 +551,8 @@ def test_entry_label_hides_extension_and_type_label_names_product(tmp_path):
     assert by_name["rig.py"].type_label == "Script(.py)"
     assert by_name["Build.MEL"].type_label == "Script(.mel)"
     assert by_name["body.mb"].type_label == "Scene(.mb)"
+    # A product with only one extension doesn't repeat it.
+    assert by_name["head.mesh"].type_label == "Mesh"
     assert by_name["parts.v2"].type_label == ""
 
 

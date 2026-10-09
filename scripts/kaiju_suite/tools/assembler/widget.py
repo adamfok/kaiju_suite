@@ -21,9 +21,9 @@ OLD_VERSION_COLOR = QtGui.QColor(235, 150, 50)
 DEFAULT_WIDTHS = (220, 60)
 # Name color for the last run of each step; see logic.run_steps.
 STATUS_COLORS = {
-    logic.RUNNING: QtGui.QColor(230, 200, 60),
+    logic.RUNNING: QtGui.QColor(110, 180, 240),
     logic.SUCCESS: QtGui.QColor(95, 190, 95),
-    logic.WARNING: QtGui.QColor(240, 140, 40),
+    logic.WARNING: QtGui.QColor(230, 200, 60),
     logic.ERROR: QtGui.QColor(225, 85, 85),
 }
 STATUS_TIPS = {
@@ -198,7 +198,7 @@ class _PanelDialog(QtWidgets.QDialog):
 
 class _LogDialog(QtWidgets.QDialog):
     """Non-modal window showing the log of an item's last run (see runlog),
-    warnings in orange and errors in red. :meth:`reload` re-reads it."""
+    warnings in yellow and errors in red. :meth:`reload` re-reads it."""
 
     def __init__(self, window, path):
         super().__init__(window)
