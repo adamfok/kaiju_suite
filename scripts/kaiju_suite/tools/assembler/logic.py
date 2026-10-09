@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
+from kaiju_suite.tools.assembler import versions
 from kaiju_suite.tools.assembler.products import product_for
 
 log = get_logger(__name__)
@@ -173,6 +174,7 @@ def delete_path(path):
         shutil.rmtree(path)
     else:
         raise FileNotFoundError(path)
+    versions.delete_history(path)
     _forget(path)
 
 
@@ -181,7 +183,7 @@ def rename_path(path, name):
 
     Files keep their extension, which is added unless ``name`` already ends
     with it. The item keeps its place in the folder's order and its disabled
-    state. A case-only change is allowed.
+    state, and a file keeps its versions. A case-only change is allowed.
     """
     path = os.path.normpath(path)
     if not os.path.exists(path):
@@ -201,6 +203,7 @@ def rename_path(path, name):
     if os.path.exists(new) and name.lower() != old.lower():
         raise FileExistsError(f"Already exists: {name}")
     os.rename(path, new)
+    versions.move_history(path, new)
 
     meta = _load_meta(directory)
     if old in meta["order"] or old in meta["disabled"]:
@@ -258,6 +261,7 @@ def place(paths, directory, index):
         if new != src:
             was_disabled = _forget(src)
             shutil.move(src, new)
+            versions.move_history(src, new)
             if was_disabled:
                 set_enabled(new, False)
         new_paths.append(new)
@@ -272,7 +276,7 @@ def paste_paths(paths, directory, index):
     Works like :func:`place` but leaves the originals alone. A copy whose
     name is taken gets ``_copy`` (then ``_copy2``, ...) before its extension.
     Copies keep their disabled state, and a copied folder keeps its contents'
-    order and disabled states. Everything is checked before anything is
+    order, disabled states and versions; a copied file starts with no versions. Everything is checked before anything is
     copied. Returns the new paths.
     """
     directory = os.path.normpath(directory)

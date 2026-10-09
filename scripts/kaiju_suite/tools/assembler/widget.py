@@ -5,7 +5,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import logic, products
+from kaiju_suite.tools.assembler import logic, products, versions
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -14,6 +14,11 @@ SETTINGS_KEY = "assembler"
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
+# Version column when the file isn't at its latest version.
+OLD_VERSION_COLOR = QtGui.QColor(235, 150, 50)
+# Starting widths of the Name and Version columns, until the user drags them.
+# Type, the last column, stretches to fill the rest.
+DEFAULT_WIDTHS = (220, 60)
 # Name color for the last run of each step; see logic.run_steps.
 STATUS_COLORS = {
     logic.RUNNING: QtGui.QColor(230, 200, 60),
@@ -37,18 +42,36 @@ class _AssemblerTree(QtWidgets.QTreeWidget):
     def __init__(self, window):
         super().__init__()
         self.window = window
-        self.setHeaderHidden(True)
-        # Column 0: name without extension. Column 1: product type.
-        self.setColumnCount(2)
+        # Name (without extension), current version, product type. Name and Version
+        # widths are adjustable and remembered; Type fills the rest.
+        self.setHeaderLabels(["Name", "Version", "Type"])
         header = self.header()
-        header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionsMovable(False)
+        header.setStretchLastSection(True)
+        for column in range(len(DEFAULT_WIDTHS)):
+            header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.Interactive)
+        for column, width in enumerate(self._saved_widths()):
+            self.setColumnWidth(column, width)
+        header.sectionResized.connect(self._remember_widths)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+
+    @staticmethod
+    def _saved_widths():
+        saved = settings.get(SETTINGS_KEY, "column_widths", "")
+        try:
+            widths = [int(w) for w in saved.split(",")]
+        except (AttributeError, ValueError):
+            return DEFAULT_WIDTHS
+        return widths if len(widths) == len(DEFAULT_WIDTHS) else DEFAULT_WIDTHS
+
+    def _remember_widths(self, column, _old, _new):
+        if column < len(DEFAULT_WIDTHS):  # Type just fills what's left
+            widths = ",".join(str(self.columnWidth(c)) for c in range(len(DEFAULT_WIDTHS)))
+            settings.set(SETTINGS_KEY, "column_widths", widths)
 
     def dropEvent(self, event):
         # Don't call super: the tree is rebuilt from disk instead.
@@ -120,19 +143,18 @@ class _NameDialog(QtWidgets.QDialog):
 
 
 class _PanelDialog(QtWidgets.QDialog):
-    """Non-modal window for a product's :class:`products.Panel`.
+    """Non-modal window showing the :class:`products.Panel` that ``make_panel()`` returns.
 
     Rebuilt after every button press so it shows the item's new state.
     """
 
-    def __init__(self, window, product, path):
+    def __init__(self, window, title, make_panel):
         super().__init__(window)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setWindowTitle(os.path.basename(path))
+        self.setWindowTitle(title)
         self.setMinimumWidth(320)
         self._window = window
-        self._product = product
-        self._path = path
+        self._make_panel = make_panel
         self._body = QtWidgets.QVBoxLayout(self)
         self._build()
 
@@ -142,7 +164,7 @@ class _PanelDialog(QtWidgets.QDialog):
             if widget:
                 widget.deleteLater()
         try:
-            panel = self._product.panel(self._path)
+            panel = self._make_panel()
         except Exception as e:
             # The file was moved or deleted while the window was open.
             _warn(str(e))
@@ -159,6 +181,7 @@ class _PanelDialog(QtWidgets.QDialog):
 
     def _press(self, action):
         self._window._do(action.fn, action.confirm)
+        self._window.populate()  # the version column may have changed
         self._build()
 
 
@@ -189,8 +212,12 @@ class AssemblerWindow(ToolWindow):
         self._status = {}
         # Paths picked by Copy; Paste copies them again from disk.
         self._clipboard = []
-        # Path -> open panel window, so a second double-click raises it.
+        # (kind, path) -> open panel window, so opening it again raises it.
         self._panels = {}
+        # Versioned files in the tree, so the Version column updates (e.g. shows
+        # "v003*") as soon as one is saved, without a refresh.
+        self._watcher = QtCore.QFileSystemWatcher(self)
+        self._watcher.fileChanged.connect(self._on_file_changed)
 
         self.tree = _AssemblerTree(self)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
@@ -231,6 +258,8 @@ class AssemblerWindow(ToolWindow):
         settings.set(SETTINGS_KEY, "root_dir", root)
 
         self.tree.clear()
+        if self._watcher.files():
+            self._watcher.removePaths(self._watcher.files())
         entries = logic.scan(root)
         if not entries:
             self._placeholder(f"No {', '.join(products.extensions())} files found")
@@ -245,10 +274,13 @@ class AssemblerWindow(ToolWindow):
 
     def _add_entries(self, parent, entries, inside_disabled=False):
         for entry in entries:
-            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, entry.type_label])
-            item.setData(0, PATH_ROLE, entry.path)
-            item.setToolTip(1, entry.name)
             product = entry.product
+            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, "", entry.type_label])
+            item.setData(0, PATH_ROLE, entry.path)
+            item.setToolTip(2, entry.name)
+            if product and product.versioned and not entry.is_dir:
+                self._show_version(item)
+                self._watcher.addPath(entry.path)
             icon = self._icon(product.icon) if product else None
             if icon:
                 item.setIcon(0, icon)
@@ -265,6 +297,30 @@ class AssemblerWindow(ToolWindow):
             self._show_status(item)
             if entry.is_dir:
                 self._add_entries(item, entry.children, inside_disabled or bool(disabled))
+
+    def _show_version(self, item):
+        """Fill the Version column: orange if not the latest, ``*`` if unpublished."""
+        version, latest = versions.tree_label(item.data(0, PATH_ROLE))
+        item.setText(1, version)
+        item.setData(1, QtCore.Qt.ItemDataRole.ForegroundRole, None if latest else OLD_VERSION_COLOR)
+        tips = []
+        if not latest:
+            tips.append("Not the latest version")
+        if version.endswith("*"):
+            tips.append("Has changes not published yet")
+        item.setToolTip(1, "\n".join(tips))
+
+    def _on_file_changed(self, path):
+        # Editors may still be writing, or save by replacing the file (which
+        # drops it from the watcher): look a moment later, and watch it again.
+        QtCore.QTimer.singleShot(200, lambda: self._update_version(path))
+
+    def _update_version(self, path):
+        if os.path.isfile(path) and path not in self._watcher.files():
+            self._watcher.addPath(path)
+        item = self._find_item(path)
+        if item:
+            self._show_version(item)
 
     def _show_status(self, item):
         color = STATUS_COLORS.get(self._status.get(item.data(0, PATH_ROLE)))
@@ -352,10 +408,17 @@ class AssemblerWindow(ToolWindow):
         if product.panel(path) is None:
             self._do(lambda: product.open(path))
             return
-        dialog = self._panels.get(path)
+        self._show_panel(("product", path), os.path.basename(path), lambda: product.panel(path))
+
+    def _show_versions(self, path):
+        title = f"Versions of {os.path.basename(path)}"
+        self._show_panel(("versions", path), title, lambda: versions.panel(path))
+
+    def _show_panel(self, key, title, make_panel):
+        dialog = self._panels.get(key)
         if dialog is None:
-            dialog = self._panels[path] = _PanelDialog(self, product, path)
-            dialog.destroyed.connect(lambda _=None, p=path: self._panels.pop(p, None))
+            dialog = self._panels[key] = _PanelDialog(self, title, make_panel)
+            dialog.destroyed.connect(lambda _=None, k=key: self._panels.pop(k, None))
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
@@ -416,6 +479,10 @@ class AssemblerWindow(ToolWindow):
                 menu.addAction("Disable", lambda: self._set_enabled(toggles, False))
             if not all(enabled):
                 menu.addAction("Enable", lambda: self._set_enabled(toggles, True))
+        if product and product.versioned and is_file:
+            menu.addSeparator()
+            menu.addAction("Publish", lambda: self._publish(path))
+            self._add_versions_menu(menu.addMenu("Versions"), path)
         menu.addSeparator()
 
         new_menu = menu.addMenu("New")
@@ -435,6 +502,41 @@ class AssemblerWindow(ToolWindow):
             menu.addAction("Delete", lambda: self._delete(path))
 
         menu.exec(self.tree.mapToGlobal(pos))
+
+    def _add_versions_menu(self, submenu, path):
+        """The newest versions, the current one checked; picking one restores it."""
+        status = versions.menu_status(path)
+        if status:
+            submenu.addAction(status).setEnabled(False)
+        items, more = versions.menu(path)
+        for entry in items:
+            action = submenu.addAction(entry.label)
+            if entry.current:
+                action.setCheckable(True)
+                action.setChecked(True)
+                action.setToolTip("Current version")
+            else:
+                action.triggered.connect(lambda _=False, a=entry.action: self._do_and_refresh(a))
+        if more:
+            submenu.addSeparator()
+            submenu.addAction("Show More...", lambda: self._show_versions(path))
+        submenu.setToolTipsVisible(True)
+
+    def _do_and_refresh(self, action):
+        self._do(action.fn, action.confirm)
+        self.populate()
+
+    def _publish(self, path):
+        def publish():
+            name = os.path.basename(path)
+            version = versions.save_version(path)
+            if version:
+                return f"Published {name} as {version.tag}"
+            current = versions.current_version(path)
+            return f"{name} is already published as {current.tag}" if current else f"{name} is empty: nothing to publish"
+
+        self._do(publish)
+        self.populate()
 
     def _refresh(self):
         self._status.clear()
