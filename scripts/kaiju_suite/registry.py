@@ -9,6 +9,8 @@ A tool is any sub-package whose ``__init__.py`` defines a ``TOOL`` dict:
         "launch": show,             # callable run from the menu
         "icon": "renamer.png",      # optional, looked up in icons/
         "description": "...",       # optional, used as the menu tooltip
+        "menu": False,              # optional; leaves it out of the menu,
+                                    # e.g. a tool only opened from another
     }
 
 Adding a tool means adding a folder; nothing else needs registering.
@@ -51,6 +53,11 @@ def discover():
         found.append(tool)
 
     return sorted(found, key=lambda t: (t.get("category", ""), t["name"]))
+
+
+def menu_tools():
+    """The tools that go in the Kaiju menu: every one not marked ``"menu": False``."""
+    return [tool for tool in discover() if tool.get("menu", True)]
 
 
 def find(name):
