@@ -48,7 +48,7 @@ def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
         "Script", "Folder", "Scene", "Joints", "Mesh", "SkinCluster",
-        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation",
+        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "ControlShape",
     ]
     exts = [ext for p in found for ext in p.extensions]
     assert len(exts) == len(set(exts)), "two products claim the same extension"
