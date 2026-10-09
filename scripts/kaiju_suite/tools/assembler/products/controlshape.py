@@ -19,6 +19,7 @@ from maya import cmds
 from kaiju_suite.core import curves
 from kaiju_suite.tools.assembler import data, runlog
 
+
 def _controls(selection):
     """The selected controls, a selected curve shape standing for its parent,
     in selection order without repeats."""

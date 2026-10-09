@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- **Mesh Tool**: checks meshes for problems: n-gons, non-manifold geometry, lamina faces, zero-area faces, zero-length edges, open borders, faces without UVs, locked normals, vertices with no mirror across X, unfrozen transforms, construction history (deformers don't count), duplicate names and shapes not named `<mesh>Shape`. **Check** runs the turned-on checks (remembered) on the selected meshes, or every mesh if nothing is selected, and lists what each found per mesh; **Select** (or double-click) selects the faces, edges, vertices or meshes found. **Fix** repairs unfrozen transforms (like Freeze Transformations), history (keeps deformers), locked normals and shape names, as one undo step, then checks again
 - Menu: the **Rig Module Editor** is no longer under **Kaiju ▸ Utilities**. Open it by double-clicking a Rig Module item in the Assembler
 - Rig modules: **Simple IK** has a new **Color** parameter, a Maya index color (0 to 31, as in Drawing Overrides) that both its controls get; new items default to 17 (yellow), and 0 leaves Maya's default color. Existing Simple IK items get 17 too. The Rig Module Editor shows it as a drop-down of color swatches
 - Rig modules: six new modules, each under **New** in the Assembler and edited in the Rig Module Editor like Simple IK. Every one has a **Color** parameter for its controls (default 17, yellow), checks its parameters before building and changes nothing if any are wrong, doesn't move your joints when it builds (except Spline IK with a curve, below), and is reverted by one undo:
