@@ -27,7 +27,7 @@ def build():
     )
 
     submenus = {}
-    for tool in registry.discover():
+    for tool in registry.menu_tools():
         category = tool.get("category")
         if category and category not in submenus:
             submenus[category] = cmds.menuItem(

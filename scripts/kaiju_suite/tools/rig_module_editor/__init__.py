@@ -17,5 +17,6 @@ TOOL = {
     "category": "Utilities",
     "launch": show,
     "open": open_file,
+    "menu": False,  # opened by double-clicking a Rig Module item in the Assembler
     "description": "Edit the parameters of Assembler Rig Module items.",
 }
