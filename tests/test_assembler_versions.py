@@ -558,3 +558,11 @@ def test_export_into_that_writes_nothing_changes_nothing(tmp_path):
         versions.export_into(path, lambda p: None)
     assert _read(path) == "legacy\n"
     assert versions.list_versions(path) == []
+
+
+def test_products_have_no_publish_warnings_by_default(tmp_path):
+    assert products.Product().publish_warnings(str(tmp_path / "x")) == []
+
+
+def test_publish_warnings_are_empty_for_unclaimed_paths(tmp_path):
+    assert versions.publish_warnings(str(tmp_path / "x.txt")) == []

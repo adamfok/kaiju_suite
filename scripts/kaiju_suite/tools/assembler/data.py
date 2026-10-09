@@ -213,6 +213,14 @@ class DataProduct(Product):
     def publish_problems(self, path):
         return self.selection_problems()
 
+    def publish_warnings(self, path):
+        return self.selection_warnings()
+
+    def selection_warnings(self):
+        """Messages about the selection that don't stop Publish; the user is
+        asked whether to publish anyway. None unless overridden."""
+        return []
+
     def panel(self, path):
         if is_empty(path):
             return Panel(["Empty: nothing published into it yet."], [])
