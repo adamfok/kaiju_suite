@@ -220,6 +220,9 @@ class AssemblerWindow(ToolWindow):
         self._watcher.fileChanged.connect(self._on_file_changed)
 
         self.tree = _AssemblerTree(self)
+        # Double-clicking a folder opens it in Explorer, so it doesn't also
+        # expand or collapse it; the arrow still does that.
+        self.tree.setExpandsOnDoubleClick(False)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
         self.tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
@@ -400,7 +403,7 @@ class AssemblerWindow(ToolWindow):
 
     def _on_double_click(self, item, _column):
         path = item.data(0, PATH_ROLE)
-        if not path or not os.path.isfile(path):
+        if not path or not os.path.exists(path):
             return
         product = products.product_for(path)
         if not product:

@@ -473,6 +473,21 @@ def test_folder_product_can_be_disabled():
     assert script.PRODUCT.can_disable and scene.PRODUCT.can_disable
 
 
+def test_double_click_folder_opens_it_in_file_browser(tmp_path, monkeypatch):
+    opened = []
+    monkeypatch.setattr(folder, "_launch", opened.append)
+    path = folder.create_folder(str(tmp_path), "stuff")
+    assert folder.PRODUCT.panel(path) is None  # so double-click calls open()
+    folder.PRODUCT.open(path)
+    assert opened == [os.path.normpath(path)]
+
+
+def test_open_in_file_browser_rejects_missing_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(folder, "_launch", lambda p: pytest.fail("launched"))
+    with pytest.raises(FileNotFoundError):
+        folder.open_in_file_browser(str(tmp_path / "gone"))
+
+
 def test_collect_steps_skips_everything_in_a_disabled_folder(tmp_path):
     root = str(tmp_path)
     a = _touch(tmp_path / "a.py")
