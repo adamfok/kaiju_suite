@@ -539,9 +539,6 @@ class AssemblerWindow(ToolWindow):
         if product:
             for action in product.actions(path):
                 menu.addAction(action.label, lambda a=action: self._do(a.fn, a.confirm))
-            if product.utility and type(product).panel is not products.Product.panel:
-                # Double-click opens the utility, so the info window lives here.
-                menu.addAction("Info", lambda: self._show_info(product, path))
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
@@ -583,6 +580,10 @@ class AssemblerWindow(ToolWindow):
             menu.addSeparator()
             menu.addAction("Rename", lambda: self._rename(path))
             menu.addAction("Delete", lambda: self._delete(path))
+
+        if product and logic.has_info(product):
+            menu.addSeparator()
+            menu.addAction("Info", lambda: self._show_info(product, path))
 
         menu.exec(self.tree.mapToGlobal(pos))
 

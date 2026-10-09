@@ -7,7 +7,6 @@ from kaiju_suite.tools.assembler import logic, products
 
 # Product name -> the utility tool double-clicking its items opens.
 UTILITIES = {
-    "Scene": "Scene Tool",
     "Joints": "Joint Tool",
     "Mesh": "Mesh Tool",
     "SkinCluster": "SkinCluster Tool",
@@ -32,6 +31,10 @@ def test_find_returns_none_for_an_unknown_name():
     assert registry.find("No Such Tool") is None
 
 
+def test_there_is_no_scene_tool():
+    assert registry.find("Scene Tool") is None
+
+
 def test_utilities_sit_under_the_utilities_menu():
     found = {tool["name"]: tool for tool in registry.discover()}
 
@@ -54,12 +57,22 @@ def test_each_product_opens_its_utility(product_name, utility):
     assert callable(tool["launch"])
 
 
-@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator"])
-def test_scripts_folders_and_separators_have_no_utility(product_name):
+@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator", "Scene"])
+def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
     assert logic.utility_for(_product(product_name)) is None
 
 
 def test_every_other_product_has_a_utility():
-    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator"}
+    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Scene"}
 
     assert names == set(UTILITIES)
+
+
+@pytest.mark.parametrize("product_name", sorted(set(UTILITIES) | {"Scene"}))
+def test_products_with_an_info_window_get_right_click_info(product_name):
+    assert logic.has_info(_product(product_name))
+
+
+@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator"])
+def test_products_without_an_info_window_get_no_right_click_info(product_name):
+    assert not logic.has_info(_product(product_name))
