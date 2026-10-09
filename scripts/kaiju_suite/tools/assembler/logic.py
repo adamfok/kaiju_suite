@@ -371,6 +371,11 @@ def _anchor(current, index, moving):
     return next((n for n in current[index:] if n not in moving), None)
 
 
+def append_to_order(directory, names):
+    """Put ``names``, already in ``directory``, last in its order, in the given order."""
+    _insert_order(directory, _ordered_names(directory), list(names), None)
+
+
 def _insert_order(directory, current, names, anchor):
     """Save ``directory``'s order as ``current`` with ``names`` before ``anchor``."""
     moving = set(names)

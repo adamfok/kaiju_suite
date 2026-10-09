@@ -125,6 +125,24 @@ class Product:
         to restore a version. Does nothing unless overridden."""
         return None
 
+    # -- build plans (see ..plan) ---------------------------------------------
+
+    def to_plan(self, path):
+        """Fields that describe ``path``'s content in a build plan, next to its
+        name. None unless overridden: the item is planned as an empty entry,
+        to publish into later."""
+        return {}
+
+    def plan_problems(self, item):
+        """What's wrong with a build plan ``item`` of this product, as messages."""
+        return []
+
+    def from_plan(self, path, item):
+        """Create ``path`` from a checked build plan ``item``. An empty file
+        unless overridden."""
+        with open(path, "wb"):
+            pass
+
 
 def new_path(directory, name, ext):
     """Validate a new item's name and return its path in ``directory``.
@@ -194,6 +212,13 @@ def all_products():
 def product_for(path):
     """The product that owns ``path``, or ``None`` if nothing does."""
     return next((p for p in all_products() if p.claims(path)), None)
+
+
+def product_for_name(name):
+    """The product that would own a file named ``name``, by its extension, or
+    ``None``. For files that don't exist yet."""
+    ext = ext_of(name)
+    return next((p for p in all_products() if ext and ext in p.extensions), None)
 
 
 def new_menu():

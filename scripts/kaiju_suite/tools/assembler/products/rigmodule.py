@@ -61,6 +61,23 @@ class RigModuleProduct(Product):
         created = module.build(params)
         return f"Built {module.name} {params['name']}: {', '.join(created.values())}"
 
+    def to_plan(self, path):
+        key, params = spec.read(path)
+        return {"module": key, "params": params}
+
+    def plan_problems(self, item):
+        key, params = item.get("module"), item.get("params", {})
+        try:
+            module = rig.get(key)
+        except LookupError:
+            return [f"no rig module {key!r}; use one of {', '.join(m.key for m in rig.all_modules())}"]
+        if not isinstance(params, dict):
+            return [f"params must be an object of parameter values, not {params!r}"]
+        return module.value_problems(params)
+
+    def from_plan(self, path, item):
+        spec.write(path, item["module"], item.get("params", {}))
+
     def panel(self, path):
         try:
             module, params = spec.load(path)

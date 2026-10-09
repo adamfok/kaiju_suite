@@ -64,6 +64,17 @@ class RigModule:
             found.extend(self.check(params))
         return found
 
+    def value_problems(self, params):
+        """Problems with the values in ``params`` alone, without the scene:
+        unknown keys and wrong types. Missing ones aren't checked, since they
+        default (and :meth:`problems` checks required ones before a build)."""
+        known = {p.key: p for p in self.params}
+        found = [f"{self.name} has no parameter {key!r}." for key in params if key not in known]
+        for key, value in params.items():
+            if key in known:
+                found.extend(_value_problems(known[key], value))
+        return found
+
     def build(self, params):
         """Check ``params``, then build as one undo step. Raises
         :class:`ParamError` listing the problems before changing anything."""

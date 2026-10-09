@@ -171,5 +171,18 @@ class ScriptProduct(Product):
     def before_replace(self, path):
         watch_in_script_editor(path)
 
+    def to_plan(self, path):
+        with open(path, encoding="utf-8") as f:
+            return {"content": f.read()}
+
+    def plan_problems(self, item):
+        if "content" in item and not isinstance(item["content"], str):
+            return [f"content must be text, not {item['content']!r}"]
+        return []
+
+    def from_plan(self, path, item):
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(item.get("content", ""))
+
 
 PRODUCT = ScriptProduct()
