@@ -12,7 +12,7 @@ them into Qt objects.
 import importlib
 import os
 import pkgutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from kaiju_suite.core.log import get_logger
 
@@ -35,14 +35,34 @@ class Action:
 
 
 @dataclass
-class Panel:
-    """What a double-click window shows: ``info`` lines, then one button per action.
+class Toggle:
+    """A checkbox in a :class:`Panel`'s list. ``fn(on)`` may return a message.
 
-    The window rebuilds it after every action, so it can reflect new state.
+    ``tooltip`` is shown on hover, for details that would clutter the list.
+    ``edit`` is an :class:`Action` for the row's "?" button, e.g. to set an
+    option, or ``None`` for no button.
+    """
+
+    label: str
+    checked: bool
+    fn: object
+    tooltip: str = ""
+    edit: Action = None
+
+
+@dataclass
+class Panel:
+    """What a double-click window shows: a list of ``toggles`` (checkboxes),
+    then ``info`` lines, then one button per action. ``run_buttons`` adds
+    Run and Show Log buttons for the item at the bottom.
+
+    The window rebuilds it after every change, so it can reflect new state.
     """
 
     info: list
     actions: list
+    toggles: list = field(default_factory=list)
+    run_buttons: bool = False
 
 
 @dataclass

@@ -1,14 +1,16 @@
-"""Checks (.chk): a build step that looks for rig problems and changes nothing.
+"""QC (.qc): a build step that looks for rig problems and changes nothing.
 
 The file stores which checks from :mod:`kaiju_suite.core.checks` are on and
 their options (e.g. the naming pattern), as a Kaiju data file::
 
-    {"kaiju": "check", "format": 1, "data": {"checks": {"naming": {"enabled": true, ...}, ...}}}
+    {"kaiju": "qc", "format": 1, "data": {"checks": {"naming": {"enabled": true, ...}, ...}}}
 
 An empty file runs every check with its defaults. **Run** runs the turned-on
 checks and logs each one's findings as a run-log warning, so the step ends
 with the Warning status and the build goes on. Double-click opens a window
-that lists the checks and turns them on or off, or sets the naming pattern.
+with a checkbox per check (hover one for what it looks for); a check with
+options has a "?" button on its row to edit them (Naming: its pattern), and
+Run and Show Log buttons sit at the bottom.
 **Publish** saves the settings as they are as the next version.
 """
 
@@ -18,14 +20,14 @@ from maya import cmds
 
 from kaiju_suite.core import checks, datafile
 from kaiju_suite.tools.assembler import runlog, versions
-from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, is_empty, new_path
+from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, Toggle, is_empty, new_path
 
-EXTENSION = ".chk"
-KIND = "check"
+EXTENSION = ".qc"
+KIND = "qc"
 
 
-def create_check(directory, name):
-    """Create a Check item with every check turned on and return its path."""
+def create_qc(directory, name):
+    """Create a QC item with every check turned on and return its path."""
     path = new_path(directory, name, EXTENSION)
     return write_settings(path, checks.defaults())
 
@@ -75,9 +77,8 @@ def _set(path, key, **values):
 
 
 def _toggle(path, check):
-    def fn():
-        on = not read_settings(path)[check.key]["enabled"]
-        _set(path, check.key, enabled=on)
+    def fn(on):
+        _set(path, check.key, enabled=bool(on))
         return f"Turned {'on' if on else 'off'} {check.label} in {os.path.basename(path)}"
 
     return fn
@@ -94,14 +95,14 @@ def _set_pattern(path, check):
     return fn
 
 
-class CheckProduct(Product):
-    name = "Check"
+class QCProduct(Product):
+    name = "QC"
     extensions = (EXTENSION,)
     order = 145
     menu_slot = (6, 0)
     runnable = True
     versioned = True
-    creators = (Creator("Check", lambda directory, name, _ext: create_check(directory, name)),)
+    creators = (Creator("QC", lambda directory, name, _ext: create_qc(directory, name)),)
 
     def run(self, path):
         results = checks.run(read_settings(path))
@@ -129,16 +130,14 @@ class CheckProduct(Product):
             settings = read_settings(path)
         except ValueError as e:
             return Panel([str(e)], [])
-        info, actions = [], []
+        toggles = []
         for check in checks.CHECKS:
-            on = settings[check.key]["enabled"]
-            info.append(f"{check.label}: {'on' if on else 'off'} - {check.description}")
-            actions.append(Action(f"Turn {'Off' if on else 'On'} {check.label}", _toggle(path, check)))
+            tooltip, edit = check.description, None
             if "pattern" in check.options:
-                info.append(f"    Pattern: {settings[check.key]['pattern']}")
-                actions.append(Action(f"Set {check.label} Pattern...", _set_pattern(path, check)))
-        info.append(versions.summary(path))
-        return Panel(info, actions)
+                tooltip += f"\nPattern: {settings[check.key]['pattern']}"
+                edit = Action(f"Set {check.label} Pattern...", _set_pattern(path, check))
+            toggles.append(Toggle(check.label, settings[check.key]["enabled"], _toggle(path, check), tooltip, edit))
+        return Panel([versions.summary(path)], [], toggles, run_buttons=True)
 
 
-PRODUCT = CheckProduct()
+PRODUCT = QCProduct()
