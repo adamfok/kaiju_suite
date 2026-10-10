@@ -93,8 +93,9 @@ mayapy -m pytest tests
 ## Trying a branch in Maya
 Point a Maya version's line in your `kaiju_suite.mod` (in `Documents\maya\modules`) at a `kaiju_suite-dev` folder next to the main checkout. Then link that folder to whichever worktree you want to try, with no copying:
 ```
+.\dev\use-worktree.ps1                   # list the worktrees (* = linked now) and pick one by number
 .\dev\use-worktree.ps1 feature/my-tool   # link the worktree that has that branch
-.\dev\use-worktree.ps1                   # link the main checkout again
+.\dev\use-worktree.ps1 main              # link the main checkout again
 .\dev\use-worktree.ps1 -Show             # say what's linked now
 ```
 `kaiju_suite-dev` is a directory junction (no admin rights needed). If it's a plain folder, e.g. an old copy, it's renamed to `kaiju_suite-dev.old-<time>`, not deleted. Then click **Kaiju → Reload Kaiju Suite** or restart Maya. Switch away from a worktree before removing it, or the link breaks until you switch.

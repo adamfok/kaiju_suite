@@ -39,11 +39,11 @@ def repo(tmp_path):
     return tmp_path
 
 
-def run(repo, *args):
+def run(repo, *args, answer=""):
     return subprocess.run(
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
          "-File", str(repo / "repo" / "dev" / "use-worktree.ps1"), *args],
-        capture_output=True, text=True,
+        capture_output=True, text=True, input=answer + "\n",
     )
 
 
@@ -63,10 +63,40 @@ def test_links_branch_worktree(repo):
     assert (link / "marker.txt").read_text() == "feature"
 
 
-def test_no_branch_links_main_checkout(repo):
-    result = run(repo)
+def test_main_links_main_checkout(repo):
+    result = run(repo, "main")
     assert result.returncode == 0, result.stderr
     assert same(repo / "kaiju_suite-dev", repo / "repo")
+
+
+def test_no_branch_lists_worktrees_and_links_the_picked_one(repo):
+    result = run(repo, answer="2")
+    assert result.returncode == 0, result.stderr
+    assert "1  main" in result.stdout
+    assert "2  feature/x" in result.stdout
+    assert same(repo / "kaiju_suite-dev", repo / "wt-x")
+
+
+def test_list_marks_the_linked_worktree(repo):
+    assert run(repo, "feature/x").returncode == 0
+    result = run(repo)
+    lines = result.stdout.splitlines()
+    assert any("feature/x" in line and "*" in line for line in lines)
+    assert not any("1  main" in line and "*" in line for line in lines)
+
+
+def test_empty_answer_changes_nothing(repo):
+    assert run(repo, "feature/x").returncode == 0
+    result = run(repo, answer="")
+    assert result.returncode == 0, result.stderr
+    assert same(repo / "kaiju_suite-dev", repo / "wt-x")
+
+
+def test_bad_number_fails_and_changes_nothing(repo):
+    assert run(repo, "feature/x").returncode == 0
+    result = run(repo, answer="9")
+    assert result.returncode != 0
+    assert same(repo / "kaiju_suite-dev", repo / "wt-x")
 
 
 def test_switching_keeps_the_old_worktrees_files(repo):
