@@ -249,7 +249,7 @@ class OutputProduct(Product):
     name = "Output"
     extensions = (EXTENSION,)
     order = 150
-    menu_slot = (6, 0)  # its own group, last: usually the build's last step
+    menu_slot = (6, 1)  # last, after Check: usually the build's last step
     runnable = True
     versioned = True
     creators = (Creator("Output", lambda directory, name, _ext: create_output(directory, name)),)

@@ -32,8 +32,8 @@ class AttributesProduct(data.DataProduct):
     utility = "Attribute Manager"
     kind = "attributes"
     extension = ".attr"
-    order = 115
-    menu_slot = (4, 2)
+    order = 117
+    menu_slot = (4, 5)
 
     def selection_problems(self):
         if not cmds.ls(selection=True):

@@ -97,7 +97,7 @@ def _set_pattern(path, check):
 class CheckProduct(Product):
     name = "Check"
     extensions = (EXTENSION,)
-    order = 150
+    order = 145
     menu_slot = (6, 0)
     runnable = True
     versioned = True

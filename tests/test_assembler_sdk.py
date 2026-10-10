@@ -156,7 +156,7 @@ def test_sdk_is_discovered_and_owns_sdk(tmp_path):
     assert sdk.PRODUCT.name == "Set Driven Keys"
     assert sdk.PRODUCT.kind == "sdk"
     assert sdk.PRODUCT.extensions == (".sdk",)
-    assert sdk.PRODUCT.order == 115
+    assert sdk.PRODUCT.order == 112
     assert sdk.PRODUCT.menu_slot == (4, 2)
     assert sdk.PRODUCT.runnable and sdk.PRODUCT.versioned
     path = sdk.PRODUCT.creators[0].fn(str(tmp_path), "foot", None)

@@ -137,15 +137,16 @@ def test_product_is_discovered_and_owns_psd(tmp_path):
     assert product.kind == "pose_correctives"
     assert product.extensions == (".psd",)
     assert product.runnable and product.versioned
-    assert product.menu_slot == (3, 3)
+    assert product.menu_slot == (3, 5)
     path = product.creators[0].fn(str(tmp_path), "correctives", None)
     assert path == str(tmp_path / "correctives.psd") and os.path.getsize(path) == 0
     assert products.product_for(path) is product
 
 
-def test_new_menu_puts_it_after_blendshapes():
+def test_new_menu_puts_it_in_the_blendshapes_group():
     names = [entry[0].name if entry else None for entry in products.new_menu()]
-    assert names.index("Pose Correctives") == names.index("BlendShapes") + 1
+    group = names[names.index("BlendShapes"):]
+    assert "Pose Correctives" in group[: group.index(None)]
 
 
 # -- publish ----------------------------------------------------------------

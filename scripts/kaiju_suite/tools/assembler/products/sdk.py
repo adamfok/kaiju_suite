@@ -184,7 +184,7 @@ class SetDrivenKeysProduct(data.DataProduct):
     name = "Set Driven Keys"
     kind = "sdk"
     extension = ".sdk"
-    order = 115
+    order = 112
     menu_slot = (4, 2)
 
     def selection_problems(self):

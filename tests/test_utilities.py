@@ -18,6 +18,8 @@ UTILITIES = {
     "Attributes": "Attribute Manager",
     "ControlShape": "ControlShape Tool",
     "Constraints": "Constraint Tool",
+    "Deformers": "Deformer Tool",
+    "Wrap": "Wrap Tool",
     "Rig Module": "Rig Module Editor",
 }
 
@@ -70,7 +72,7 @@ def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
 
 
 # Data products with no utility tool: double-click shows their Info window.
-NO_UTILITY = ("Curves",)
+NO_UTILITY = ("Curves", "Pose Correctives", "Set Driven Keys", "Connections", "Sets & Layers", "Check", "Output")
 
 
 @pytest.mark.parametrize("product_name", NO_UTILITY)

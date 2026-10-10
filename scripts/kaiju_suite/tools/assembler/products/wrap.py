@@ -276,8 +276,8 @@ class WrapProduct(data.DataProduct):
     utility = "Wrap Tool"
     kind = "wrap"
     extension = ".wrap"
-    order = 85
-    menu_slot = (3, 3)
+    order = 84
+    menu_slot = (3, 4)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True)

@@ -279,8 +279,8 @@ class ConnectionsProduct(data.DataProduct):
     name = "Connections"
     kind = "connections"
     extension = ".conn"
-    order = 150
-    menu_slot = (6, 2)
+    order = 116
+    menu_slot = (4, 4)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True)

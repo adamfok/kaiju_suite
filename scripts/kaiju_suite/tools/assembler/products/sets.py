@@ -89,8 +89,8 @@ class SetsProduct(data.DataProduct):
     name = "Sets & Layers"
     kind = "sets"
     extension = ".sets"
-    order = 115
-    menu_slot = (4, 2)
+    order = 118
+    menu_slot = (4, 6)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True)

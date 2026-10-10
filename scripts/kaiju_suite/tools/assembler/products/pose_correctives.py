@@ -231,8 +231,8 @@ class PoseCorrectivesProduct(data.DataProduct):
     name = "Pose Correctives"
     kind = "pose_correctives"
     extension = ".psd"
-    order = 85
-    menu_slot = (3, 3)
+    order = 86
+    menu_slot = (3, 5)
 
     def _problems(self, selection):
         if not selection:

@@ -207,8 +207,8 @@ class ConstraintsProduct(data.DataProduct):
     utility = "Constraint Tool"
     kind = "constraints"
     extension = ".cnst"
-    order = 115
-    menu_slot = (4, 2)
+    order = 114
+    menu_slot = (4, 3)
 
     def selection_problems(self):
         selection = cmds.ls(selection=True, long=True)

@@ -338,7 +338,7 @@ class DeformersProduct(data.DataProduct):
     utility = "Deformer Tool"
     kind = "deformers"
     extension = ".dfm"
-    order = 85
+    order = 82
     menu_slot = (3, 3)
 
     def selection_problems(self):
