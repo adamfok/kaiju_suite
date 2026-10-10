@@ -1,7 +1,9 @@
 """Mesh (.mesh): polygon meshes saved as data and rebuilt as new meshes.
 
 Publish saves the selected meshes: name, parent name, local transform,
-object-space points, topology, UV sets and hard edges. Run always creates
+object-space points, topology, UV sets, hard edges, locked (user) normals
+and color sets (vertex colors). Files saved before normals and color sets
+were added still load, without them. Run always creates
 new meshes (with ``MFnMesh.create``) and never changes existing ones: a name
 that's taken gets the next free one (``body`` → ``body1``, shape
 ``body1Shape``). Each new mesh gets ``initialShadingGroup``, and goes under
@@ -75,7 +77,40 @@ def _record(transform):
     record["hard_edges"] = sorted(
         sorted(fn.getEdgeVertices(e)) for e in range(fn.numEdges) if not fn.isEdgeSmooth(e)
     )
+    record["normals"] = _locked_normals(fn, counts, connects)
+    record["color_sets"] = _color_sets(fn)
     return record
+
+
+def _locked_normals(fn, counts, connects):
+    """The locked (user) normals as ``[face, vertex, x, y, z]``, one per
+    face-vertex that has one."""
+    _, normal_ids = fn.getNormalIds()
+    normals = fn.getNormals()
+    locked, i = [], 0
+    for face, count in enumerate(counts):
+        for _ in range(count):
+            normal_id = normal_ids[i]
+            if fn.isNormalLocked(normal_id):
+                n = normals[normal_id]
+                locked.append([face, connects[i], n.x, n.y, n.z])
+            i += 1
+    return locked
+
+
+def _color_sets(fn):
+    """Every color set, current first, with its representation (RGB, RGBA,
+    A as ``MFnMesh`` numbers it) and one RGBA color per face-vertex, in face
+    order; face-vertices with no color are ``None``."""
+    current = fn.currentColorSetName()
+    names = [current] + [n for n in fn.getColorSetNames() if n != current] if current else []
+    sets = []
+    for name in names:
+        colors = []
+        for c in fn.getFaceVertexColors(name):
+            colors.append(None if (c.r, c.g, c.b, c.a) == (-1, -1, -1, -1) else [c.r, c.g, c.b, c.a])
+        sets.append({"name": name, "representation": int(fn.getColorRepresentation(name)), "colors": colors})
+    return sets
 
 
 def _build_shape(transform, record):
@@ -104,10 +139,38 @@ def _build_shape(transform, record):
     if uv_sets:
         fn.setCurrentUVSetName(uv_sets[0]["name"])
 
+    # Older files have no normals or color sets. Setting normals hardens
+    # edges, so the edge smoothing is set after them.
+    normals = record.get("normals") or []
+    if normals:
+        fn.setFaceVertexNormals(
+            [om.MVector(*n[2:]) for n in normals], [n[0] for n in normals], [n[1] for n in normals]
+        )
+
     hard = {tuple(pair) for pair in record["hard_edges"]}
     edges = list(range(fn.numEdges))
     fn.setEdgeSmoothings(edges, [tuple(sorted(fn.getEdgeVertices(e))) not in hard for e in edges])
     fn.cleanupEdgeSmoothing()
+
+    color_sets = record.get("color_sets") or []
+    for color_set in color_sets:
+        name, rep = color_set["name"], color_set["representation"]
+        fn.createColorSet(name, False, rep)
+        # One color per distinct value; -1 leaves a face-vertex without one.
+        index, colors, ids = {}, [], []
+        for color in color_set["colors"]:
+            if color is None:
+                ids.append(-1)
+                continue
+            key = tuple(color)
+            if key not in index:
+                index[key] = len(colors)
+                colors.append(om.MColor(color))
+            ids.append(index[key])
+        fn.setColors(colors, name, rep)
+        fn.assignColors(ids, name)
+    if color_sets:
+        fn.setCurrentColorSetName(color_sets[0]["name"])
     fn.updateSurface()
     return fn.fullPathName()
 

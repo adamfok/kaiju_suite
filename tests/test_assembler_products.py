@@ -175,7 +175,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "Scene", "Folder", "Separator",
         None,
-        "Mesh", "Joints", "ControlShape",
+        "Mesh", "Material", "Joints", "ControlShape",
         None,
         "SkinCluster", "DeltaMush", "BlendShapes",
         None,
