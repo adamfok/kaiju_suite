@@ -9,7 +9,8 @@ scene keeps its own name. Usually the last step, so Run All ends with a
 file to hand over.
 
 Right-click Publish opens a save-file browser and saves the picked path as
-the entry's next version; the Info window turns the clean-ups on and off,
+the entry's next version, stored portably with :mod:`kaiju_suite.core.paths`
+(relative to the folder holding the entry, or ``$ASSET/...``); the Info window turns the clean-ups on and off,
 each change a version too. No Qt here.
 """
 
@@ -17,7 +18,7 @@ import os
 
 from maya import cmds, mel
 
-from kaiju_suite.core import datafile
+from kaiju_suite.core import datafile, paths
 from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, ext_of, is_empty, new_path
@@ -98,14 +99,31 @@ def _write(target, data):
     datafile.write(target, KIND, data)
 
 
+def build_root(path):
+    """The folder relative output paths in the entry at ``path`` are
+    relative to: the folder holding the entry."""
+    return os.path.dirname(os.path.abspath(path))
+
+
+def target(path):
+    """The file the entry at ``path`` saves to, as an absolute path (unless
+    it uses a variable that isn't set), or ``None`` if it's empty."""
+    current = settings(path)
+    return None if current is None else paths.resolve(current["path"], build_root(path))
+
+
 def set_output(path, out_path, delete_unused=False, hide_joints=False):
-    """Make the entry at ``path`` save to ``out_path`` (stored as given) with
-    these clean-ups, as its next version. Returns a message, e.g.
-    ``Published Output rig.out v002``."""
+    """Make the entry at ``path`` save to ``out_path`` with these clean-ups,
+    as its next version. ``out_path`` is stored portably: relative to the
+    entry's folder when under it, else ``$ASSET/...`` when under that, else
+    absolute; relative text is taken as relative to the entry's folder.
+    Returns a message, e.g. ``Published Output rig.out v002``."""
     data = _normalized(out_path, delete_unused, hide_joints)
     found = problems(data)
     if found:
         raise ValueError("; ".join(found))
+    root = build_root(path)
+    data["path"] = paths.to_portable(paths.resolve(out_path, root), root)
     return versions.export_into(path, lambda target: _write(target, data))
 
 
@@ -143,7 +161,7 @@ def _start_dir(path):
         current = settings(path)
     except ValueError:
         current = None
-    folder = os.path.dirname(current["path"]) if current else ""
+    folder = os.path.normpath(os.path.dirname(paths.resolve(current["path"], build_root(path)))) if current else ""
     return folder if folder and os.path.isdir(folder) else os.path.dirname(path)
 
 
@@ -227,7 +245,7 @@ def run_output(path):
     if current is None:
         runlog.warning(f"{os.path.basename(path)} has no output file set: nothing saved. Publish it to pick one.")
         return None
-    out_path = current["path"]
+    out_path = paths.resolve(current["path"], build_root(path))
     format_name(out_path)
     # Check FBX can be written before cleaning anything up.
     if ext_of(out_path) == ".fbx":
@@ -284,8 +302,10 @@ class OutputProduct(Product):
             return Panel([str(e)], [])
         if current is None:
             return Panel(["Not set up: publish it to pick where to save. A build skips it until then."], [])
+        saves_to = paths.resolve(current["path"], build_root(path))
         info = [
-            f"Saves to: {current['path']}",
+            f"Saves to: {saves_to}",
+            *([f"Stored as: {current['path']}"] if current["path"] != saves_to else []),
             f"Format: {format_name(current['path'])}",
             f"Delete unused nodes: {_on_off(current['delete_unused'])}",
             f"Hide joints: {_on_off(current['hide_joints'])}",

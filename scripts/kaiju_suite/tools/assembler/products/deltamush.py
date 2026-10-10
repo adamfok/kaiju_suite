@@ -187,7 +187,8 @@ def _compare_record(old, new):
         if deltas:
             vertices = data.plural(count, "vertex", "vertices")
             lines.append(f"weights changed on {len(deltas)} of {vertices} (largest change {compare.num(max(deltas))})")
-    skip = ("name", "mesh", "vertex_count", "weights")
+    # points: rest positions saved for remapping after a topology change.
+    skip = ("name", "mesh", "vertex_count", "points", "weights")
     lines.extend(compare.changes(*({k: v for k, v in r.items() if k not in skip} for r in (old, new))))
     return lines
 

@@ -236,7 +236,8 @@ def _compare_record(old, new):
         lines.append(f"added influences {', '.join(added)}")
     if removed:
         lines.append(f"removed influences {', '.join(removed)}")
-    skip = ("mesh", "influences", "vertex_count", "weights", "blend_weights")
+    # points: rest positions saved for remapping after a topology change, not skin data.
+    skip = ("mesh", "influences", "vertex_count", "points", "weights", "blend_weights")
     count = new["vertex_count"]
     if old["vertex_count"] != count:
         lines.append(f"vertex count {old['vertex_count']} → {count}, weights not compared")

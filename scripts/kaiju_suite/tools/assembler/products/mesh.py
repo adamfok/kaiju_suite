@@ -194,9 +194,14 @@ def _compare_record(old, new):
         lines.append("UVs changed")
     if old.get("hard_edges") != new.get("hard_edges"):
         lines.append("hard edges changed")
+    # Files published before normals and colors were saved have neither: same as none.
+    if (old.get("normals") or []) != (new.get("normals") or []):
+        lines.append("normals changed")
+    if (old.get("color_sets") or []) != (new.get("color_sets") or []):
+        lines.append("vertex colors changed")
     if old.get("parent") != new.get("parent"):
         lines.append(f"parent {old.get('parent') or 'world'} → {new.get('parent') or 'world'}")
-    skip = {"name", "points", "uv_sets", "hard_edges", "parent", *topology}
+    skip = {"name", "points", "uv_sets", "hard_edges", "normals", "color_sets", "parent", *topology}
     for key in dict.fromkeys([*old, *new]):
         if key not in skip and old.get(key) != new.get(key):
             lines.append(f"{key} changed")

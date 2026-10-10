@@ -185,6 +185,28 @@ def test_mesh_reports_changed_topology():
     assert mesh.PRODUCT.compare(old, new) == ["body: topology changed (3 → 4 vertices, 1 → 1 faces)"]
 
 
+
+def test_skin_ignores_the_rest_points_saved_for_topology_changes():
+    old = {"meshes": [_skin_record("body", [[[0, 1.0]]])]}
+    new = {"meshes": [_skin_record("body", [[[0, 1.0]]], points=[[0.0, 1.0, 0.0]])]}
+    assert skin.PRODUCT.compare(old, new) == ["No changes."]
+
+
+def test_deltamush_ignores_the_rest_points_saved_for_topology_changes():
+    old = {"deltamush": [_mush([[0, 0.5]])]}
+    new = {"deltamush": [_mush([[0, 0.5]], points=[[0.0, 1.0, 0.0]])]}
+    assert deltamush.PRODUCT.compare(old, new) == ["No changes."]
+
+
+def test_mesh_reports_normals_and_vertex_colors():
+    tri = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
+    old = {"meshes": [_mesh("body", tri)]}  # published before normals and colors were saved
+    assert mesh.PRODUCT.compare(old, {"meshes": [_mesh("body", tri, normals=[], color_sets=[])]}) == ["No changes."]
+    new = {"meshes": [_mesh("body", tri, normals=[[0, [0.0, 0.0, 1.0]]], color_sets=[{"name": "c"}])]}
+    lines = mesh.PRODUCT.compare(old, new)
+    assert "body: normals changed" in lines
+    assert "body: vertex colors changed" in lines
+
 # -- comparing versions -------------------------------------------------------
 
 

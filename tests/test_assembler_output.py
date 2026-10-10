@@ -103,10 +103,42 @@ def test_set_output_saves_settings_as_a_version_with_a_header(tmp_path):
     assert [v.number for v in versions.list_versions(path)] == [1]
 
 
-def test_path_is_stored_as_given(tmp_path):
+def test_relative_text_is_stored_as_given(tmp_path):
     path = output.create_output(str(tmp_path), "rig")
     output.set_output(path, "out/hero.ma")
     assert output.settings(path)["path"] == "out/hero.ma"
+    assert output.target(path) == (tmp_path / "out" / "hero.ma").as_posix()
+
+
+def test_a_path_in_the_build_folder_is_stored_relative(tmp_path):
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, str(tmp_path / "deliver" / "hero.mb"))
+    assert output.settings(path)["path"] == "deliver/hero.mb"
+
+
+def test_a_path_under_asset_is_stored_with_the_variable(tmp_path, monkeypatch):
+    asset = tmp_path / "asset"
+    monkeypatch.setenv("ASSET", str(asset))
+    (tmp_path / "build").mkdir()
+    path = output.create_output(str(tmp_path / "build"), "rig")
+    output.set_output(path, str(asset / "rigs" / "hero.ma"))
+    assert output.settings(path)["path"] == "$ASSET/rigs/hero.ma"
+    assert output.target(path) == (asset / "rigs" / "hero.ma").as_posix()
+
+
+def test_run_saves_next_to_a_moved_build_folder(new_scene, tmp_path):
+    _rig()
+    build = tmp_path / "build"
+    build.mkdir()
+    path = output.create_output(str(build), "rig")
+    output.set_output(path, str(build / "deliver" / "hero.ma"))
+    moved = tmp_path / "moved"
+    os.rename(build, moved)
+
+    output.PRODUCT.run(str(moved / "rig.out"))
+
+    assert (moved / "deliver" / "hero.ma").is_file()
+    assert not (build / "deliver").exists()
 
 
 @pytest.mark.parametrize("bad", ("hero.obj", "hero", ""))
@@ -156,7 +188,7 @@ def test_publish_picks_a_path_and_keeps_the_options(tmp_path, picked):
     message = output.PRODUCT.publish(path).fn()
 
     assert message == "Published Output rig.out v002"
-    assert output.settings(path) == {"path": picked.answer, "delete_unused": False, "hide_joints": True}
+    assert output.settings(path) == {"path": "deliver/b.fbx", "delete_unused": False, "hide_joints": True}
     assert picked.opened_in == [str(tmp_path)]
 
 
