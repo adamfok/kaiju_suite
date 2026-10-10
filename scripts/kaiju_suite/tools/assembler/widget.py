@@ -569,7 +569,9 @@ class AssemblerWindow(ToolWindow):
                 new_menu.addSeparator()
             else:
                 owner, creator = entry
-                new_menu.addAction(creator.label, lambda o=owner, c=creator: self._create(o, c, directory))
+                # "&&" keeps Qt from reading the "&" in "Sets & Layers" as a shortcut key.
+                label = creator.label.replace("&", "&&")
+                new_menu.addAction(label, lambda o=owner, c=creator: self._create(o, c, directory))
 
         menu.addSeparator()
         if self.selected_paths():
