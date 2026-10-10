@@ -32,12 +32,17 @@ from kaiju_suite.tools.assembler.products import product_for_name
 KIND = "buildPlan"
 
 
-def export_plan(root, include_folder=False):
+def _plan_fields(entry):
+    return entry.product.to_plan(entry.path)
+
+
+def export_plan(root, include_folder=False, fields=_plan_fields):
     """The plan of everything under ``root``, in build order. With
     ``include_folder``, the plan holds ``root`` itself (its name and whether
     it's enabled) with everything in it, so importing it re-creates the
-    folder."""
-    items = _export(logic.scan(root))
+    folder. ``fields(entry)`` gives a file item's content; folder versions
+    pass their own to add each item's version (see ..folder_versions)."""
+    items = _export(logic.scan(root), fields)
     if include_folder:
         folder = {"name": os.path.basename(os.path.normpath(root))}
         if not logic.is_enabled(root):
@@ -47,16 +52,16 @@ def export_plan(root, include_folder=False):
     return {"items": items}
 
 
-def _export(entries):
+def _export(entries, fields):
     items = []
     for entry in entries:
         item = {"name": entry.name}
         if not entry.enabled:
             item["enabled"] = False
         if entry.is_dir:
-            item["items"] = _export(entry.children)
+            item["items"] = _export(entry.children, fields)
         else:
-            item.update(entry.product.to_plan(entry.path))
+            item.update(fields(entry))
         items.append(item)
     return items
 

@@ -210,12 +210,39 @@ def test_delete_removes_history(tmp_path):
     assert not os.path.exists(versions.history_dir(path))
 
 
-def test_pasted_file_starts_without_history(tmp_path):
+def test_pasted_file_keeps_its_history(tmp_path):
+    path = _write(tmp_path / "build.py", "a = 1\n")
+    versions.save_version(path)
+    _write(path, "a = 2\n")
+    versions.save_version(path)
+    versions.restore_version(path, 1)
+
+    (copy,) = logic.paste_paths([path], str(tmp_path), None)
+    assert os.path.basename(copy) == "build_copy.py"
+    assert _numbers(copy) == [2, 1]
+    assert versions.tree_label(copy) == ("v001", False)
+    assert versions.base_version(copy).number == 1
+    assert _numbers(path) == [2, 1]
+
+
+def test_pasted_file_keeps_its_history_in_another_folder(tmp_path):
+    path = _write(tmp_path / "build.py", "a = 1\n")
+    versions.save_version(path)
+    os.makedirs(tmp_path / "other")
+
+    (copy,) = logic.paste_paths([path], str(tmp_path / "other"), None)
+    assert os.path.basename(copy) == "build.py"
+    assert versions.tree_label(copy) == ("v001", True)
+
+
+def test_pasted_copy_history_is_separate_from_the_original(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
     versions.save_version(path)
 
     (copy,) = logic.paste_paths([path], str(tmp_path), None)
-    assert versions.list_versions(copy) == []
+    _write(copy, "a = 2\n")
+    versions.save_version(copy)
+    assert _numbers(copy) == [2, 1]
     assert _numbers(path) == [1]
 
 
@@ -228,6 +255,21 @@ def test_pasted_folder_keeps_its_contents_history(tmp_path):
 
 
 # -- publish ----------------------------------------------------------------
+
+
+def test_publishing_an_older_version_saves_it_as_the_latest(tmp_path):
+    path = _write(tmp_path / "build.py", "a = 1\n")
+    versions.save_version(path)
+    _write(path, "a = 2\n")
+    versions.save_version(path)
+    versions.restore_version(path, 1)
+
+    assert versions.publish(path) == "Published Script build.py v003"
+    assert _numbers(path) == [3, 2, 1]
+    assert _read(versions.list_versions(path)[0].path) == "a = 1\n"
+    assert versions.tree_label(path) == ("v003", True)
+    assert versions.base_version(path).number == 3
+    assert versions.publish(path) == "build.py is already published as v003"
 
 
 def test_publishing_a_script_saves_it_as_it_is(tmp_path):
@@ -466,6 +508,15 @@ def test_export_into_same_content_adds_no_version(tmp_path):
     assert _numbers(path) == [1]
 
 
+def test_export_into_content_of_an_older_version_saves_it_as_the_latest(tmp_path):
+    path = _write(tmp_path / "build.py", "")
+    versions.export_into(path, _writer("a = 1\n"))
+    versions.export_into(path, _writer("a = 2\n"))
+    assert versions.export_into(path, _writer("a = 1\n")) == "Published Script build.py v003"
+    assert _numbers(path) == [3, 2, 1]
+    assert versions.tree_label(path) == ("v003", True)
+
+
 def test_failed_export_into_changes_nothing(tmp_path):
     path = _write(tmp_path / "build.py", "legacy\n")
 
@@ -493,3 +544,13 @@ def test_products_have_no_publish_warnings_by_default(tmp_path):
 
 def test_publish_warnings_are_empty_for_unclaimed_paths(tmp_path):
     assert versions.publish_warnings(str(tmp_path / "x.txt")) == []
+
+
+def test_paste_replaces_stale_history_left_under_the_new_name(tmp_path):
+    path = _write(tmp_path / "build.py", "a = 1\n")
+    versions.save_version(path)
+    os.makedirs(tmp_path / "other")
+    _write(os.path.join(versions.history_dir(str(tmp_path / "other" / "build.py")), "v009.py"), "old\n")
+
+    (copy,) = logic.paste_paths([path], str(tmp_path / "other"), None)
+    assert _numbers(copy) == [1]

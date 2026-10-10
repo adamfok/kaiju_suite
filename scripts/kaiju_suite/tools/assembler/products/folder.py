@@ -2,8 +2,9 @@
 what's inside; disabling one makes Run All skip all of it. Double-clicking
 one opens it in the system file browser (Explorer on Windows).
 
-Publishing a folder records the version of every item in it; restoring a
-folder version sets them all back to it (see ..versions)."""
+Publishing a folder records its build plan with the version of every item
+in it; restoring a folder version rebuilds the folder to match, adding and
+removing items as needed (see ..folder_versions)."""
 
 import os
 import subprocess
@@ -40,7 +41,7 @@ class FolderProduct(Product):
     order = 20
     menu_slot = (1, 1)
     can_disable = True  # Run All skips a disabled folder and everything in it
-    versioned = True  # its versions record its items' versions
+    versioned = True  # its versions record its build plan and items' versions
     creators = (Creator("Folder", lambda directory, name, _ext: create_folder(directory, name)),)
 
     def claims(self, path):
