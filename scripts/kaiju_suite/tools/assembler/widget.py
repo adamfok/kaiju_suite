@@ -541,7 +541,7 @@ class AssemblerWindow(ToolWindow):
         product = products.product_for(path) if path else None
         if product:
             for action in product.actions(path):
-                menu.addAction(action.label, lambda a=action: self._do(a.fn, a.confirm))
+                menu.addAction(action.label, lambda a=action: self._do_and_refresh(a))
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))

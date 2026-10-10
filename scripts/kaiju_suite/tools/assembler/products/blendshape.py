@@ -303,6 +303,9 @@ class BlendShapeProduct(data.DataProduct):
         count = sum(len(r["targets"]) for r in records)
         return f"Built {data.plural(len(records), 'blendShape')} with {data.plural(count, 'target')}"
 
+    def nodes(self, payload):
+        return [r["mesh"] for r in payload["blendshapes"]]
+
     def describe(self, payload):
         records = payload["blendshapes"]
         count = sum(len(r["targets"]) for r in records)

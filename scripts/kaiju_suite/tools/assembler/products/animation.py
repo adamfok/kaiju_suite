@@ -198,6 +198,9 @@ class AnimationProduct(data.DataProduct):
         keys = sum(len(r["keys"]) for r in records)
         return f"Keyed {data.plural(len(records), 'attribute')} ({data.plural(keys, 'key')})"
 
+    def nodes(self, payload):
+        return [r["node"] for r in payload["curves"]]
+
     def describe(self, payload):
         records = payload["curves"]
         nodes = len({r["node"] for r in records})

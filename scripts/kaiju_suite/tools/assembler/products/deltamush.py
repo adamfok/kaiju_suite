@@ -214,6 +214,9 @@ class DeltaMushProduct(data.DataProduct):
         noun = "deltaMush" if len(created) == 1 else "deltaMush nodes"
         return f"Created {noun} {', '.join(created)} on {meshes}"
 
+    def nodes(self, payload):
+        return [r["mesh"] for r in payload["deltamush"]]
+
     def describe(self, payload):
         records = payload["deltamush"]
         count = len(_groups(records))
