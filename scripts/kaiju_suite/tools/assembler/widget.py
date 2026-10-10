@@ -64,7 +64,7 @@ class _AssemblerTree(QtWidgets.QTreeWidget):
 
     def __init__(self, window):
         super().__init__()
-        self.window = window
+        self.owner = window
         # Name (without extension), current version, product type. Name and Version
         # widths are adjustable and remembered; Type fills the rest.
         self.setHeaderLabels(["Name", "Version", "Type"])
@@ -98,7 +98,7 @@ class _AssemblerTree(QtWidgets.QTreeWidget):
 
     def dropEvent(self, event):
         # Don't call super: the tree is rebuilt from disk instead.
-        srcs = self.window.selected_paths()
+        srcs = self.owner.selected_paths()
         if not srcs:
             return
         Indicator = QtWidgets.QAbstractItemView.DropIndicatorPosition
@@ -107,13 +107,13 @@ class _AssemblerTree(QtWidgets.QTreeWidget):
         target = target_item.data(0, PATH_ROLE) if target_item else None
 
         if not target or position == Indicator.OnViewport:
-            directory, index = self.window.root_dir(), None
+            directory, index = self.owner.root_dir(), None
         elif position == Indicator.OnItem and os.path.isdir(target):
             directory, index = target, None
         else:
             # Above or below an item (or onto a file): its folder, next to it.
             parent = target_item.parent()
-            directory = parent.data(0, PATH_ROLE) if parent else self.window.root_dir()
+            directory = parent.data(0, PATH_ROLE) if parent else self.owner.root_dir()
             index = (parent or self.invisibleRootItem()).indexOfChild(target_item)
             if position != Indicator.AboveItem:
                 index += 1
@@ -123,7 +123,7 @@ class _AssemblerTree(QtWidgets.QTreeWidget):
             logic.place(srcs, directory, index)
         except Exception as e:
             _warn(str(e))
-        self.window.populate()
+        self.owner.populate()
 
 
 class _NameDialog(QtWidgets.QDialog):

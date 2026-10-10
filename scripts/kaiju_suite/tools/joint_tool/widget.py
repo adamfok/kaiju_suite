@@ -62,11 +62,11 @@ class JointToolWindow(ToolWindow):
         layout.addLayout(axes)
 
         options = QtWidgets.QHBoxLayout()
-        self.children = self._check("Children", "children", True, "Orient every joint below the selected ones too.")
+        self.children_check = self._check("Children", "children", True, "Orient every joint below the selected ones too.")
         self.zero_end = self._check(
             "Zero end joints", "zero_end", True, "End joints get a zero joint orient, lining up with their parent."
         )
-        options.addWidget(self.children)
+        options.addWidget(self.children_check)
         options.addWidget(self.zero_end)
         options.addStretch()
         layout.addLayout(options)
@@ -165,7 +165,7 @@ class JointToolWindow(ToolWindow):
             aim=self.aim.currentData(),
             up=self.up.currentData(),
             world_up=self.world_up.currentData(),
-            children=self.children.isChecked(),
+            children=self.children_check.isChecked(),
             zero_end=self.zero_end.isChecked(),
         )
         if done is not None:
