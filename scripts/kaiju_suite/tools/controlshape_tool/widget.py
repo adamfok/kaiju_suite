@@ -78,12 +78,12 @@ class ControlShapeToolWindow(ToolWindow):
         layout.addWidget(self.presets)
 
         options = QtWidgets.QHBoxLayout()
-        self.size = _spin(settings.get(SETTINGS_KEY, "size", 1.0), 0.01, 1000, 0.5)
+        self.size_spin = _spin(settings.get(SETTINGS_KEY, "size", 1.0), 0.01, 1000, 0.5)
         self.keep_size = QtWidgets.QCheckBox("Keep size")
         self.keep_size.setToolTip("Replace scales the preset to the size of the shapes it replaces.")
         self.keep_size.setChecked(bool(settings.get(SETTINGS_KEY, "keep_size", 1)))
         options.addWidget(QtWidgets.QLabel("Size"))
-        options.addWidget(self.size)
+        options.addWidget(self.size_spin)
         options.addWidget(self.keep_size)
         options.addStretch()
         layout.addLayout(options)
@@ -175,12 +175,12 @@ class ControlShapeToolWindow(ToolWindow):
         layout.addLayout(swatches)
 
         width_row = QtWidgets.QHBoxLayout()
-        self.width = _spin(settings.get(SETTINGS_KEY, "width", 2.0), -1, 20, 0.5, decimals=1)
-        self.width.setToolTip("-1 uses Maya's default line width.")
+        self.width_spin = _spin(settings.get(SETTINGS_KEY, "width", 2.0), -1, 20, 0.5, decimals=1)
+        self.width_spin.setToolTip("-1 uses Maya's default line width.")
         set_width = QtWidgets.QPushButton("Set Line Width")
         set_width.clicked.connect(self._line_width)
         width_row.addWidget(QtWidgets.QLabel("Line width"))
-        width_row.addWidget(self.width)
+        width_row.addWidget(self.width_spin)
         width_row.addWidget(set_width)
         layout.addLayout(width_row)
         return box
@@ -219,11 +219,11 @@ class ControlShapeToolWindow(ToolWindow):
         records = self._preset()
         if records is None:
             return
-        settings.set(SETTINGS_KEY, "size", self.size.value())
+        settings.set(SETTINGS_KEY, "size", self.size_spin.value())
         name = self.presets.currentItem().text()
         nodes = logic.transforms(selected())
         made = [
-            logic.create_control(f"{short_name(node) if node else name}_ctrl", records, self.size.value(), at=node)
+            logic.create_control(f"{short_name(node) if node else name}_ctrl", records, self.size_spin.value(), at=node)
             for node in nodes or [None]
         ]
         cmds.select(made)
@@ -322,5 +322,5 @@ class ControlShapeToolWindow(ToolWindow):
     def _line_width(self):
         nodes = self._controls()
         if nodes:
-            settings.set(SETTINGS_KEY, "width", self.width.value())
-            logic.set_line_width(nodes, self.width.value())
+            settings.set(SETTINGS_KEY, "width", self.width_spin.value())
+            logic.set_line_width(nodes, self.width_spin.value())
