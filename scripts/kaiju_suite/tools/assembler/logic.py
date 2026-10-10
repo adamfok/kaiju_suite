@@ -371,6 +371,16 @@ def _anchor(current, index, moving):
     return next((n for n in current[index:] if n not in moving), None)
 
 
+def item_names(directory):
+    """Names of the items :func:`scan` shows in ``directory``, in its order."""
+    return _ordered_names(directory)
+
+
+def set_layout(directory, order, disabled):
+    """Save exactly ``order`` as ``directory``'s order and ``disabled`` as its disabled items."""
+    _save_meta(directory, {"order": list(order), "disabled": list(disabled)})
+
+
 def append_to_order(directory, names):
     """Put ``names``, already in ``directory``, last in its order, in the given order."""
     _insert_order(directory, _ordered_names(directory), list(names), None)

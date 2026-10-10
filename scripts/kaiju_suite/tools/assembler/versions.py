@@ -5,14 +5,13 @@ An item's versions live in ``<folder>/.versions/<item name>/v001<ext>``,
 current version, so the tree, order and builds never see the history
 (scan() skips dot-names). No Qt here.
 
-A folder's versions are records, ``v001.json``, ..., of the version each
-item inside it was at when it was published (see :func:`folder_state`).
-The folder is at a version while its items match that record exactly;
-restoring one sets every item back to the version in the record.
+A folder's versions, ``v001.json``, ..., are build plans of it with the
+version each item inside was at when it was published. The folder is at a
+version while it matches that exactly; restoring one rebuilds it (see
+..folder_versions).
 """
 
 import filecmp
-import json
 import os
 import re
 import shutil
@@ -91,10 +90,10 @@ def list_versions(path):
 def current_version(path):
     """The saved :class:`Version` whose content matches ``path`` now, or
     ``None`` if the file has changed since (or has no versions). A folder's
-    current version is the one recording what its items are at now."""
+    current version is the one it was last published as or restored to, while
+    it still matches it: same items, order, disabled ones and item versions."""
     if os.path.isdir(path):
-        state = folder_state(path)
-        return next((v for v in list_versions(path) if _items_of(v) == state), None)
+        return _folder_versions().current(path)
     if not os.path.isfile(path) or os.path.getsize(path) == 0:
         return None
     return next((v for v in list_versions(path) if filecmp.cmp(path, v.path, shallow=False)), None)
@@ -106,8 +105,8 @@ def save_version(path):
     Returns ``None`` without saving if the file is empty or already matches
     a saved version, so repeated saves don't pile up copies.
 
-    A folder saves a record of its items' versions instead (see
-    :func:`folder_state`); it raises if an item has unpublished changes.
+    A folder saves its build plan with its items' versions instead (see
+    ..folder_versions); it raises if an item has unpublished changes.
     """
     if os.path.isdir(path):
         return _save_folder_version(path)
@@ -118,8 +117,14 @@ def save_version(path):
 
     number, target = _next_target(path)
     shutil.copy2(path, target)
-    _set_base(path, number)
+    set_base(path, number)
     return list_versions(path)[0]
+
+
+def _folder_versions():
+    from kaiju_suite.tools.assembler import folder_versions  # lazily: it imports logic, which imports this
+
+    return folder_versions
 
 
 def _ext(path):
@@ -153,7 +158,10 @@ def _walk(folder, prefix=""):
             yield prefix + name, path
 
 
-def _item_state(path):
+def item_state(path):
+    """What the item ``path`` is at now: a version number, :data:`UNPUBLISHED`,
+    or ``None`` (folders, items that aren't versioned, empty ones). A folder
+    version records this for each item in it."""
     product = product_for(path)
     if os.path.isdir(path) or not product.versioned:
         return None
@@ -163,16 +171,9 @@ def _item_state(path):
     return UNPUBLISHED if _unsaved(path, None) else None
 
 
-def folder_state(folder):
-    """What the items under ``folder`` are at now, by relative path: a
-    version number, :data:`UNPUBLISHED`, or ``None`` (subfolders, items
-    that aren't versioned, empty ones). A folder version records this."""
-    return {rel: _item_state(path) for rel, path in _walk(folder)}
-
-
 def unpublished_items(folder):
     """Relative paths of the items under ``folder`` with unpublished changes."""
-    return [rel for rel, state in folder_state(folder).items() if state == UNPUBLISHED]
+    return [rel for rel, path in _walk(folder) if item_state(path) == UNPUBLISHED]
 
 
 def folder_publish_problems(folder):
@@ -183,71 +184,16 @@ def folder_publish_problems(folder):
     return [f"Publish these first, they have changes not published yet: {', '.join(unpublished)}"]
 
 
-def _items_of(version):
-    """The item versions a folder ``version`` recorded, or ``None`` if unreadable."""
-    try:
-        with open(version.path, encoding="utf-8") as f:
-            items = json.load(f)["items"]
-    except (OSError, ValueError, KeyError, TypeError):
-        return None
-    return items if isinstance(items, dict) else None
-
-
 def _save_folder_version(folder):
     problems = folder_publish_problems(folder)
     if problems:
         raise ValueError(f"Can't publish {os.path.basename(folder)}. {problems[0]}")
-    state = folder_state(folder)
-    if not state or current_version(folder) is not None:
+    if not any(True for _ in _walk(folder)) or current_version(folder) is not None:
         return None
     number, target = _next_target(folder)
-    with open(target, "w", encoding="utf-8") as f:
-        json.dump({"items": state}, f, indent=2, sort_keys=True)
-    _set_base(folder, number)
+    _folder_versions().save(folder, target)
+    set_base(folder, number)
     return list_versions(folder)[0]
-
-
-def _restore_folder(folder, version):
-    """Set each item in ``folder`` to the version ``version`` recorded.
-
-    Checks every recorded version still exists before changing anything.
-    Items deleted since are reported; items added since are left as they are.
-    """
-    items = _items_of(version)
-    if items is None:
-        raise ValueError(f"Can't read {version.tag} of {os.path.basename(folder)}")
-    targets, missing = [], []
-    for rel, number in items.items():
-        if not isinstance(number, int):
-            continue
-        path = os.path.join(folder, *rel.split("/"))
-        if not os.path.isfile(path):
-            missing.append(rel)
-        elif not any(v.number == number for v in list_versions(path)):
-            raise FileNotFoundError(f"{rel} has no version v{number:03d} any more")
-        else:
-            targets.append((path, number))
-
-    for path, number in targets:
-        current = current_version(path)
-        if current is None or current.number != number:
-            restore_version(path, number)
-    _set_base(folder, version.number)
-
-    message = f"Restored {os.path.basename(folder)} to {version.tag}"
-    if missing:
-        message += f". Not found, so not restored: {', '.join(missing)}"
-    added = [rel for rel in folder_state(folder) if rel not in items]
-    if added:
-        message += f". Not in {version.tag}, so left as they are: {', '.join(added)}"
-    return message
-
-
-def _lost_by_switching(folder, version):
-    """Items under ``folder`` whose unpublished changes restoring ``version`` would replace."""
-    items = _items_of(version) or {}
-    state = folder_state(folder)
-    return [rel for rel, number in items.items() if isinstance(number, int) and state.get(rel) == UNPUBLISHED]
 
 
 # -- publishing and restoring -------------------------------------------------
@@ -327,12 +273,12 @@ def restore_version(path, number):
     if version is None:
         raise FileNotFoundError(f"{os.path.basename(path)} has no version {number}")
     if os.path.isdir(path):
-        return _restore_folder(path, version)
+        return _folder_versions().restore(path, version)
     product = product_for(path)
     if product is not None:
         product.before_replace(path)
     shutil.copy2(version.path, path)
-    _set_base(path, number)
+    set_base(path, number)
     return f"Restored {os.path.basename(path)} to {version.tag}"
 
 
@@ -349,7 +295,8 @@ def base_version(path):
     return next((v for v in found if v.number == number), found[0] if found else None)
 
 
-def _set_base(path, number):
+def set_base(path, number):
+    """Record that ``path``'s content now builds on version ``number`` (see :func:`base_version`)."""
     with open(os.path.join(history_dir(path), BASE_FILE), "w", encoding="utf-8") as f:
         f.write(str(number))
 
@@ -413,18 +360,18 @@ def summary(path):
 
 def _describe(path, version):
     if os.path.isdir(path):
-        count = sum(isinstance(n, int) for n in (_items_of(version) or {}).values())
+        count = _folder_versions().item_count(version)
         return f"{version.tag}  {_when(version.mtime)}, {count} item{'s' if count != 1 else ''}"
     return f"{version.tag}  {_when(version.mtime)}, {version.size / 1024:.1f} KB"
 
 
 def _restore_action(path, version, unsaved):
     """Switching between saved versions loses nothing, so it only asks when
-    the file has changes no version holds (for a folder: when items it
-    would switch have them)."""
+    the file has changes no version holds (for a folder: when items in it
+    have them, since restoring replaces or removes every item)."""
     confirm = None
     if os.path.isdir(path):
-        lost = _lost_by_switching(path, version)
+        lost = _folder_versions().lost_by_restoring(path)
         if lost:
             confirm = (
                 f"Switch {os.path.basename(path)} to {version.tag}?"
