@@ -5,6 +5,11 @@ per-vertex weight map (sparse: only weights that aren't 1.0). Run finds the
 meshes by name, replaces a deltaMush of the same name, and creates the new one
 after the mesh's existing deformers, so it sits on top of skin. Missing
 meshes are skipped with a warning.
+
+Publish also saves each mesh's rest point positions. If a mesh's vertex
+count changed since, Run gives each vertex the weight of the saved vertex
+closest to it and logs a warning. Files from before points were saved still
+need the same vertex count.
 """
 
 from maya import cmds
@@ -89,7 +94,19 @@ def _record(node, transform, shape):
         value = kind(cmds.getAttr(f"{node}.{attr}"))
         record[attr] = round(value, _DIGITS) if kind is float else value
     record["weights"] = _read_weights(node, _geometry_index(node, shape), vertex_count)
+    record["points"] = data.saved_points(transform)
     return record
+
+
+def _remapped(record, transform):
+    """``record``, or a copy with its weights moved onto the mesh's current
+    vertices by closest point if the vertex count changed."""
+    mapping = data.vertex_remap(record, transform, f"{record['name']} on {record['mesh']}", "deltaMush weights")
+    if mapping is None:
+        return record
+    saved = {vertex: weight for vertex, weight in record["weights"]}
+    weights = [[v, saved[m]] for v, m in enumerate(mapping) if m in saved]
+    return dict(record, vertex_count=len(mapping), weights=weights)
 
 
 def _check(records):
@@ -109,9 +126,9 @@ def _check(records):
         transform = transforms.get(record["mesh"])
         if transform is None:
             continue
-        count = cmds.polyEvaluate(_shape(transform), vertex=True)
-        if count != record["vertex_count"]:
-            problems.append(f"{record['mesh']} has {count} vertices, the file has {record['vertex_count']}")
+        problem = data.count_problem(record, transform, record["mesh"])
+        if problem:
+            problems.append(problem)
     if problems:
         raise RuntimeError(f"Can't apply DeltaMush: {'; '.join(dict.fromkeys(problems))}")
 
@@ -186,6 +203,7 @@ class DeltaMushProduct(data.DataProduct):
         missing = data.skip_missing([r["mesh"] for r in records], "meshes")
         records = [r for r in records if r["mesh"] not in missing]
         transforms = _check(records)
+        records = [_remapped(r, transforms[r["mesh"]]) for r in records]
         created = []
         for name, group in _groups(records).items():
             created.append(_rebuild(name, group, transforms))

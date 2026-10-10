@@ -10,8 +10,12 @@ influences aren't all there, is skipped with a warning. It checks every
 other mesh first (the vertex counts match) and raises before changing
 anything. Then, per mesh, it removes the mesh's existing skinCluster, binds
 exactly the file's influences under the saved name, and sets every weight
-in one ``MFnSkinCluster.setWeights`` call. Remapping weights onto a changed
-mesh is not supported: the vertex count must match.
+in one ``MFnSkinCluster.setWeights`` call.
+
+Publish also saves each mesh's rest point positions. If a mesh's vertex
+count changed since, Run gives each vertex the weights of the saved vertex
+closest to it and logs a warning. Files from before points were saved still
+need the same vertex count.
 
 ``setWeights`` isn't on Maya's undo queue. Undo still reverts a Run (removing
 the new skinCluster takes its weights with it), but redo rebinds with Maya's
@@ -99,6 +103,7 @@ def _record(mesh):
         "skinCluster": cluster,
         "influences": influences,
         "vertex_count": count,
+        "points": data.saved_points(mesh),
     }
     record["skinningMethod"] = int(cmds.getAttr(f"{cluster}.skinningMethod"))
     record["normalizeWeights"] = int(cmds.getAttr(f"{cluster}.normalizeWeights"))
@@ -146,11 +151,24 @@ def _check(records):
         if not _shape(mesh):
             problems.append(f"{record['mesh']} has no mesh shape")
             continue
-        count = cmds.polyEvaluate(mesh, vertex=True)
-        if count != record["vertex_count"]:
-            problems.append(f"{record['mesh']} has {count} vertices, the file has {record['vertex_count']}")
+        problem = data.count_problem(record, mesh, record["mesh"])
+        if problem:
+            problems.append(problem)
     if problems:
         raise RuntimeError(f"Can't apply skin weights: {'; '.join(problems)}.")
+
+
+def _remapped(record):
+    """``record``, or a copy with its per-vertex data moved onto the mesh's
+    current vertices by closest point if the vertex count changed."""
+    mesh = _unique(record["mesh"], "mesh")
+    mapping = data.vertex_remap(record, mesh, record["mesh"], "skin weights")
+    if mapping is None:
+        return record
+    record = dict(record, vertex_count=len(mapping), weights=[record["weights"][m] for m in mapping])
+    if "blend_weights" in record:
+        record["blend_weights"] = [record["blend_weights"][m] for m in mapping]
+    return record
 
 
 def _apply_record(record):
@@ -226,7 +244,7 @@ class SkinProduct(data.DataProduct):
         _check(records)
         clusters = []
         for record in records:
-            clusters.append(_apply_record(record))
+            clusters.append(_apply_record(_remapped(record)))
             runlog.info(
                 f"{record['mesh']}: bound {clusters[-1]} to {data.plural(len(record['influences']), 'influence')}"
             )
