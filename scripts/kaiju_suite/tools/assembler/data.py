@@ -18,6 +18,7 @@ import os
 
 from maya import cmds
 
+from kaiju_suite.core import matching
 from kaiju_suite.core.datafile import FORMAT, DataFormatError, read, write  # noqa: F401 (re-exported)
 from kaiju_suite.core.nodes import unique_name  # noqa: F401 (re-exported)
 from kaiju_suite.core.undo import undo_chunk
@@ -116,6 +117,45 @@ def outside_parents(records):
 def plural(count, word, plural=None):
     """``plural(2, "mesh", "meshes")`` → ``"2 meshes"``; ``plural`` defaults to ``word + "s"``."""
     return f"{count} {word if count == 1 else (plural or word + 's')}"
+
+
+# -- changed topology -------------------------------------------------------
+
+# Decimals kept for saved point positions.
+_POINT_DECIMALS = 6
+
+
+def saved_points(mesh):
+    """``mesh``'s rest positions (object space, before deformers), rounded,
+    to save with per-vertex data so it can be remapped later; see
+    :func:`vertex_remap`."""
+    return [[round(c, _POINT_DECIMALS) for c in p] for p in matching.rest_points(mesh)]
+
+
+def count_problem(record, mesh, label):
+    """Why ``record`` can't go onto ``mesh``, or ``None``: its vertex count
+    differs and the file has no saved points to remap by (files published
+    before points were saved)."""
+    count = matching.vertex_count(mesh)
+    if count == record["vertex_count"] or record.get("points"):
+        return None
+    return f"{label} has {count} vertices, the file has {record['vertex_count']}"
+
+
+def vertex_remap(record, mesh, label, what):
+    """``None`` if ``mesh`` has the vertex count saved in ``record``. Else,
+    for each vertex of ``mesh``, the saved vertex closest to it (matching
+    ``mesh``'s rest positions to the record's saved ``points``), with a
+    warning that ``what`` were remapped."""
+    count = matching.vertex_count(mesh)
+    if count == record["vertex_count"]:
+        return None
+    mapping = matching.closest_indices(record["points"], matching.rest_points(mesh))
+    runlog.warning(
+        f"{label}: the vertex count changed from {record['vertex_count']} to {count}; "
+        f"remapped {what} by closest point"
+    )
+    return mapping
 
 
 # -- the product base class -------------------------------------------------
