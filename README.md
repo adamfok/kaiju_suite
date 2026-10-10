@@ -71,6 +71,14 @@ To add a module:
 
 Nothing else needs registering. See `rig/modules/simple_ik.py` for a working example, and `rig/modules/root.py` for one that needs no joints. `rig/helpers.py` has the shared pieces: checking a module's name, a node, a parent or a joint chain (`name_problems`, `node_problems`, `parent_problems`, `chain_problems`), and building groups, control curves (`circle`, `diamond`, `box`), a pole vector's position (`pole_position`), their color (`set_color`) and keeping the selection (`kept_selection`).
 
+## Headless Assembler build
+Build an Assembler folder from `mayapy` with no UI, e.g. for batch rebuilds or automatic rig checks:
+```
+set PYTHONPATH=<kaiju_suite>/scripts
+mayapy -m kaiju_suite.tools.assembler.headless <build_folder> [--new-scene] [--save out.ma]
+```
+It runs the folder's enabled items like **Run All** (stopping at the first failure, and saving each step's log next to it as usual), prints each step's status and messages, and exits 0 if no step failed, 1 if one did, and 2 if the folder doesn't exist. `--new-scene` starts from an empty scene; `--save` saves the scene (`.ma` or `.mb`) only if no step failed. From Python already inside Maya or `maya.standalone`, `kaiju_suite.tools.assembler.headless.build(folder, new_scene=True, save=None)` does the same and returns the result: `result.ok`, and `result.steps`, each with its `name`, `status` (`success`, `warning`, `error` or `not run`) and `messages` (`(level, text)` pairs).
+
 ## Tests
 ```
 mayapy -m pip install --user pytest   # once
