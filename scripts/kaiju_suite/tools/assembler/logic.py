@@ -327,7 +327,7 @@ def paste_paths(paths, directory, index):
 
     names, taken = [], {n.lower() for n in os.listdir(directory)}
     for src in srcs:
-        name = _free_name(os.path.basename(src), taken)
+        name = free_name(os.path.basename(src), taken)
         taken.add(name.lower())
         names.append(name)
 
@@ -352,7 +352,7 @@ def _top_level(paths):
     return [p for p in srcs if not any(p.startswith(o + os.sep) for o in srcs)]
 
 
-def _free_name(name, taken):
+def free_name(name, taken):
     """``name``, or ``name_copy``, ``name_copy2``... if it's in ``taken`` (lowercase)."""
     if name.lower() not in taken:
         return name
@@ -470,69 +470,3 @@ def _save_log(path, run, status, product, seconds):
 def run_folder(folder):
     """Run every enabled item under ``folder``; see :func:`run_steps`."""
     return run_steps(collect_steps(folder))
-
-
-# -- rebuild / run up to here / run from here ---------------------------------
-
-
-class UnsavedChangesError(RuntimeError):
-    """:func:`rebuild` would discard unsaved changes to the scene."""
-
-
-def steps_up_to(root, path):
-    """The steps :func:`collect_steps` gives for ``root``, up to and including
-    ``path`` (an item, or a folder with all its steps). ``path`` is included
-    even if it, or a folder it's in, is disabled, since it was picked
-    directly. Raises :class:`ValueError` if ``path`` isn't under ``root``."""
-    before, own, _after = _split_steps(root, path)
-    return before + own
-
-
-def steps_from(root, path):
-    """Like :func:`steps_up_to`, but ``path`` and every step after it."""
-    _before, own, after = _split_steps(root, path)
-    return own + after
-
-
-def _split_steps(root, path):
-    """``root``'s steps as (before ``path``, ``path``'s own, after it)."""
-    key = os.path.normcase(os.path.normpath(path))
-    before, own, after = [], None, []
-
-    def walk(folder, live):
-        nonlocal own
-        for entry in scan(folder):
-            entry_key = os.path.normcase(os.path.normpath(entry.path))
-            if entry_key == key:
-                if entry.is_dir:
-                    own = collect_steps(entry.path)
-                else:
-                    own = [entry.path] if entry.product is not None and entry.product.runnable else []
-            elif entry.is_dir and key.startswith(entry_key + os.sep):
-                # The picked item is in here: look for it even if disabled.
-                walk(entry.path, live and entry.enabled)
-            elif live and entry.enabled:
-                steps = after if own is not None else before
-                if entry.is_dir:
-                    steps.extend(collect_steps(entry.path))
-                elif entry.product is not None and entry.product.runnable:
-                    steps.append(entry.path)
-
-    walk(root, True)
-    if own is None:
-        raise ValueError(f"Not in the build folder: {path}")
-    return before, own, after
-
-
-def rebuild(paths, discard_changes=False, on_status=None):
-    """Start a new, empty scene, then run ``paths`` (see :func:`run_steps`).
-
-    Raises :class:`UnsavedChangesError`, changing nothing, if the scene has
-    unsaved changes, unless ``discard_changes`` is true. Returns ``paths``.
-    """
-    from maya import cmds
-
-    if not discard_changes and cmds.file(query=True, modified=True):
-        raise UnsavedChangesError("The scene has unsaved changes.")
-    cmds.file(new=True, force=True)
-    return run_steps(paths, on_status=on_status)

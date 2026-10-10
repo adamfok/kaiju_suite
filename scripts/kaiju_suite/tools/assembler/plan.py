@@ -119,28 +119,32 @@ def _item_problems(item, name, seen):
 
 def import_plan(plan, root):
     """Create ``plan``'s items in ``root``, after what's already there, and
-    return their paths. They start with no versions.
+    return their paths. They start with no versions. An item whose name is
+    taken in ``root`` gets a free one, as Paste does (``setup_copy.py``).
 
-    Checks everything first (see :func:`plan_problems`, and that no name is
-    taken in ``root``) and raises :class:`ValueError` listing every problem
-    before creating anything. If creating fails part-way, what was created is
-    removed again.
+    Checks everything first (see :func:`plan_problems`) and raises
+    :class:`ValueError` listing every problem before creating anything. If
+    creating fails part-way, what was created is removed again.
     """
     if not os.path.isdir(root):
         raise FileNotFoundError(f"Folder not found: {root}")
     problems = plan_problems(plan)
-    if not problems:
-        taken = {n.lower() for n in os.listdir(root)}
-        clashes = [i["name"] for i in plan["items"] if i["name"].lower() in taken]
-        if clashes:
-            problems.append(f"Already in {os.path.basename(root) or root}: {', '.join(clashes)}")
     if problems:
         raise ValueError("Can't import the build plan:\n" + "\n".join(f"- {p}" for p in problems))
 
+    existing = {n.lower() for n in os.listdir(root)}
+    # A new name mustn't take one the plan uses further on, either.
+    taken = existing | {i["name"].lower() for i in plan["items"]}
+    names = []
+    for item in plan["items"]:
+        name = logic.free_name(item["name"], taken) if item["name"].lower() in existing else item["name"]
+        taken.add(name.lower())
+        names.append(name)
+
     created = []
     try:
-        for item in plan["items"]:
-            path = os.path.join(root, item["name"])
+        for item, name in zip(plan["items"], names):
+            path = os.path.join(root, name)
             created.append(path)
             _create(item, path)
     except Exception:
@@ -148,7 +152,7 @@ def import_plan(plan, root):
             if os.path.exists(path):
                 logic.delete_path(path)
         raise
-    logic.append_to_order(root, [i["name"] for i in plan["items"]])
+    logic.append_to_order(root, names)
     for item, path in zip(plan["items"], created):
         if not item.get("enabled", True):
             logic.set_enabled(path, False)

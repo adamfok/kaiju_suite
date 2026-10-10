@@ -339,10 +339,10 @@ class AssemblerWindow(ToolWindow):
                 font.setStrikeOut(True)
                 item.setFont(0, font)
                 item.setForeground(0, DISABLED_COLOR)
-                item.setToolTip(0, "Disabled: skipped by Run All")
+                item.setToolTip(0, "Disabled: skipped when its folder runs")
             elif inside_disabled:
                 item.setForeground(0, DISABLED_COLOR)
-                item.setToolTip(0, "In a disabled folder: skipped by Run All")
+                item.setToolTip(0, "In a disabled folder: skipped when its folder runs")
             self._show_status(item)
             if entry.is_dir:
                 self._add_entries(item, entry.children, inside_disabled or bool(disabled))
@@ -541,17 +541,14 @@ class AssemblerWindow(ToolWindow):
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
-        if is_file and product and product.runnable:
-            menu.addAction("Run up to Here (New Scene)", lambda: self._run_up_to(path))
-            menu.addAction("Run from Here", lambda: self._run_from(path))
         if product and product.runnable and is_file:
             show_log = menu.addAction("Show Log", lambda: self._show_log(path))
             if not runlog.exists(path):
                 show_log.setEnabled(False)
                 show_log.setText("Show Log (not run yet)")
         if not is_file:
-            label = f"Run '{os.path.basename(directory)}'" if path else "Run All"
-            menu.addAction(label, lambda: self._run_folder(directory))
+            if path:
+                menu.addAction(f"Run '{os.path.basename(directory)}'", lambda: self._run_folder(directory))
             plan_menu = menu.addMenu("Build")
             # A folder's plan holds the folder itself; the whole tree's, just its contents.
             plan_menu.addAction("Export...", lambda: self._export_plan(directory, include_folder=bool(path)))
@@ -652,12 +649,12 @@ class AssemblerWindow(ToolWindow):
         self._status.clear()
         self.populate()
 
-    def _run(self, paths, report_title=None, run=logic.run_steps):
+    def _run(self, paths, report_title=None):
         """Run ``paths``; with ``report_title``, show a build report after."""
         self._refresh()
         recorder = report.Recorder(paths, forward=self._set_status)
         try:
-            run(paths, on_status=recorder)
+            logic.run_steps(paths, on_status=recorder)
         except logic.StepError as e:
             log.exception("Step %s failed", e.path)
             done = paths.index(e.path)
@@ -680,7 +677,7 @@ class AssemblerWindow(ToolWindow):
         if not paths:
             _warn("Nothing enabled to run in this folder.")
             return
-        self._run(paths, report_title=f"Build Report: {os.path.basename(folder) or 'Run All'}")
+        self._run(paths, report_title=f"Build Report: {os.path.basename(folder)}")
 
     def _show_report(self, title, results):
         """Show the build report, replacing the one from the last run."""
@@ -693,54 +690,6 @@ class AssemblerWindow(ToolWindow):
         self._report = ReportDialog(self, title, results, self._show_log)
         self._report.show()
         self._report.raise_()
-
-    def _confirm_new_scene(self):
-        """Whether a new scene may replace this one: asks first if it has
-        unsaved changes."""
-        if not cmds.file(query=True, modified=True):
-            return True
-        Button = QtWidgets.QMessageBox.StandardButton
-        answer = QtWidgets.QMessageBox.question(
-            self,
-            "Discard Changes?",
-            "The scene has unsaved changes. Discard them and start a new scene?",
-            Button.Yes | Button.No,
-            Button.No,
-        )
-        return answer == Button.Yes
-
-    def _run_in_new_scene(self, paths):
-        if not paths:
-            _warn("Nothing enabled to run.")
-            return
-        if not self._confirm_new_scene():
-            return
-        self._run(
-            paths,
-            report_title="Build Report: Run up to Here",
-            run=lambda p, on_status: logic.rebuild(p, discard_changes=True, on_status=on_status),
-        )
-
-    def _steps(self, pick, path):
-        try:
-            return pick(self.root_dir(), path)
-        except ValueError as e:
-            _warn(str(e))
-            return None
-
-    def _run_up_to(self, path):
-        paths = self._steps(logic.steps_up_to, path)
-        if paths is not None:
-            self._run_in_new_scene(paths)
-
-    def _run_from(self, path):
-        paths = self._steps(logic.steps_from, path)
-        if paths is None:
-            return
-        if not paths:
-            _warn("Nothing enabled to run.")
-            return
-        self._run(paths)
 
     def _set_enabled(self, paths, enabled):
         try:
