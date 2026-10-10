@@ -4,7 +4,8 @@ Publish saves the time-based anim curves (``animCurveTL/TA/TU/TT``) wired
 straight into the selected nodes' attributes: for each animated attribute
 the curve type, pre/post infinity and weighted tangents, and for each key its
 time, value, tangent types, angles and weights, breakdown flag and tangent
-and weight locks. Driven keys (``animCurveU*``) aren't saved, nor are curves
+and weight locks. Driven keys (``animCurveU*``) aren't saved (Set Driven Keys,
+``products/sdk.py``, saves those), nor are curves
 reaching an attribute through another node (a pairBlend, say).
 
 Nodes are saved by their shortest unique name and found by it on Run.
@@ -25,6 +26,7 @@ them.
 
 from maya import cmds
 
+from kaiju_suite.core import keys
 from kaiju_suite.tools.assembler import data, runlog
 
 CURVE_TYPES = ("animCurveTL", "animCurveTA", "animCurveTU", "animCurveTT")
@@ -49,43 +51,6 @@ def _animated(node):
     return sorted(pairs)
 
 
-def _keys(curve):
-    times = cmds.keyframe(curve, query=True, timeChange=True) or []
-    values = cmds.keyframe(curve, query=True, valueChange=True) or []
-    breakdowns = set(cmds.keyframe(curve, query=True, breakdown=True) or [])
-    tangents = {
-        flag: cmds.keyTangent(curve, query=True, **{flag: True}) or []
-        for flag in (
-            "inTangentType",
-            "outTangentType",
-            "inAngle",
-            "outAngle",
-            "inWeight",
-            "outWeight",
-            "lock",
-            "weightLock",
-        )
-    }
-    keys = []
-    for i, (time, value) in enumerate(zip(times, values)):
-        keys.append(
-            {
-                "time": time,
-                "value": value,
-                "inTangentType": tangents["inTangentType"][i],
-                "outTangentType": tangents["outTangentType"][i],
-                "inAngle": tangents["inAngle"][i],
-                "outAngle": tangents["outAngle"][i],
-                "inWeight": tangents["inWeight"][i],
-                "outWeight": tangents["outWeight"][i],
-                "breakdown": time in breakdowns,
-                "lock": bool(tangents["lock"][i]),
-                "weightLock": bool(tangents["weightLock"][i]),
-            }
-        )
-    return keys
-
-
 def _record(name, plug, attribute, curve):
     # setInfinity only answers queries through the animated plug, not the curve.
     return {
@@ -95,7 +60,7 @@ def _record(name, plug, attribute, curve):
         "preInfinity": cmds.setInfinity(plug, query=True, preInfinite=True)[0],
         "postInfinity": cmds.setInfinity(plug, query=True, postInfinite=True)[0],
         "weightedTangents": bool(cmds.keyTangent(curve, query=True, weightedTangents=True)[0]),
-        "keys": _keys(curve),
+        "keys": keys.read_keys(curve),
     }
 
 
@@ -129,38 +94,12 @@ def _check(records):
 
 def _apply_curve(plug, record):
     cmds.cutKey(plug, clear=True)
-    keys = record["keys"]
-    if not keys:
+    saved = record["keys"]
+    if not saved:
         return
-    for key in keys:
+    for key in saved:
         cmds.setKeyframe(plug, time=key["time"], value=key["value"])
-    # Weighted first: switching it later would reset the weights.
-    cmds.keyTangent(plug, edit=True, weightedTangents=record["weightedTangents"])
-    for key in keys:
-        t = (key["time"], key["time"])
-        # Unlocked, so the in and out sides can be set apart; locks go back after.
-        cmds.keyTangent(plug, edit=True, time=t, lock=False)
-        if record["weightedTangents"]:
-            cmds.keyTangent(plug, edit=True, time=t, weightLock=False)
-            cmds.keyTangent(
-                plug,
-                edit=True,
-                time=t,
-                inAngle=key["inAngle"],
-                outAngle=key["outAngle"],
-                inWeight=key["inWeight"],
-                outWeight=key["outWeight"],
-            )
-        else:
-            cmds.keyTangent(plug, edit=True, time=t, inAngle=key["inAngle"], outAngle=key["outAngle"])
-        cmds.keyTangent(
-            plug, edit=True, time=t, inTangentType=key["inTangentType"], outTangentType=key["outTangentType"]
-        )
-        cmds.keyTangent(plug, edit=True, time=t, lock=key["lock"])
-        if record["weightedTangents"]:
-            cmds.keyTangent(plug, edit=True, time=t, weightLock=key["weightLock"])
-        if key["breakdown"]:
-            cmds.keyframe(plug, edit=True, time=t, breakdown=True)
+    keys.set_tangents(plug, saved, record["weightedTangents"])
     cmds.setInfinity(plug, preInfinite=record["preInfinity"], postInfinite=record["postInfinity"])
 
 
