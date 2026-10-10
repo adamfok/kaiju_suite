@@ -20,6 +20,8 @@ log = get_logger(__name__)
 
 
 LAST_GROUP = 99
+# The right-click submenu that lists the item types (see :func:`new_menu`).
+NEW_MENU_LABEL = "New Component"
 
 
 @dataclass

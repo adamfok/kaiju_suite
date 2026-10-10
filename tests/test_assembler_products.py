@@ -172,9 +172,7 @@ def _menu_labels():
 
 def test_new_menu_groups_products_with_dividers():
     assert _menu_labels() == [
-        "Script",
-        None,
-        "Scene",
+        "Script", "Scene",
         None,
         "Mesh", "Material", "Joints", "ControlShape", "Curves",
         None,
@@ -188,6 +186,17 @@ def test_new_menu_groups_products_with_dividers():
     ]
     assert "Simple IK" in _menu_labels()
     assert folder.PRODUCT.creators[0].choices is None
+
+
+def test_script_and_scene_share_a_group_with_no_divider_between():
+    labels = _menu_labels()
+    assert labels[:3] == ["Script", "Scene", None]
+
+
+def test_new_menu_is_labelled_new_component():
+    # Folder and Separator stay top level as "New Folder" / "New Separator";
+    # the submenu of item types is "New Component".
+    assert products.NEW_MENU_LABEL == "New Component"
 
 
 def test_folder_and_separator_are_top_level_not_in_the_new_menu():
