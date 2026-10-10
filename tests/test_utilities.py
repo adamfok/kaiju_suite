@@ -15,7 +15,6 @@ UTILITIES = {
     "Material": "Material Tool",
     "Pose": "Pose Tool",
     "Animation": "Animation Tool",
-    "Attributes": "Attribute Manager",
     "ControlShape": "ControlShape Tool",
     "Constraints": "Constraint Tool",
     "Deformers": "Deformer Tool",
@@ -41,7 +40,15 @@ def test_there_is_no_scene_tool():
 
 
 # Full tools that double as a product's utility keep their own menu category.
-ELSEWHERE = {"Attribute Manager": "Rigging"}
+ELSEWHERE = {}
+
+# Tools that were removed; nothing should register them any more.
+REMOVED = ["Rig Validator", "Offset & Snap Tool", "Attribute Manager", "Space Switch Tool", "Selection Sets"]
+
+
+@pytest.mark.parametrize("name", REMOVED)
+def test_removed_tools_are_gone(name):
+    assert registry.find(name) is None
 
 
 def test_utilities_sit_under_the_utilities_menu():
@@ -76,7 +83,7 @@ def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
 
 
 # Data products with no utility tool: double-click shows their Info window.
-NO_UTILITY = ("Curves", "Pose Correctives", "Set Driven Keys", "Connections", "Sets & Layers", "Check", "Output")
+NO_UTILITY = ("Curves", "Pose Correctives", "Set Driven Keys", "Connections", "Sets & Layers", "Check", "Attributes", "Output")
 
 
 @pytest.mark.parametrize("product_name", NO_UTILITY)

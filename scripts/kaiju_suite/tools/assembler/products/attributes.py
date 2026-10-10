@@ -29,7 +29,6 @@ def _check(records):
 
 class AttributesProduct(data.DataProduct):
     name = "Attributes"
-    utility = "Attribute Manager"
     kind = "attributes"
     extension = ".attr"
     order = 117
