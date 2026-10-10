@@ -52,7 +52,7 @@ def test_discover_finds_every_product_in_order():
         "Script", "Folder", "Scene", "Joints", "Mesh", "Curves", "SkinCluster",
         "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives", "Material", "Pose", "Animation",
         "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers", "ControlShape", "Separator",
-        "Rig Module", "Check", "Output",
+        "Rig Module", "QC", "Output",
     ]
     exts = [ext for p in found for ext in p.extensions]
     assert len(exts) == len(set(exts)), "two products claim the same extension"
@@ -184,7 +184,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         *(module.name for module in rig.all_modules()),
         None,
-        "Check", "Output",
+        "QC", "Output",
     ]
     assert "Simple IK" in _menu_labels()
     assert folder.PRODUCT.creators[0].choices is None

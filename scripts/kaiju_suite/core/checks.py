@@ -2,7 +2,7 @@
 
 Each :class:`Check` returns a list of problem messages, one per node, each
 starting with the node's name (e.g. ``pCube1: doesn't match ...``); an empty
-list means it found nothing. The Assembler's Check items run them as a build
+list means it found nothing. The Assembler's QC items run them as a build
 step. No Qt here.
 
 Settings say which checks to run and with what options, keyed by check::

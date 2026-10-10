@@ -83,7 +83,7 @@ def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
 
 
 # Data products with no utility tool: double-click shows their Info window.
-NO_UTILITY = ("Curves", "Pose Correctives", "Set Driven Keys", "Connections", "Sets & Layers", "Check", "Attributes", "Output")
+NO_UTILITY = ("Curves", "Pose Correctives", "Set Driven Keys", "Connections", "Sets & Layers", "QC", "Attributes", "Output")
 
 
 @pytest.mark.parametrize("product_name", NO_UTILITY)

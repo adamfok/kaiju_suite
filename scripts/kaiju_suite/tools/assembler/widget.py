@@ -159,15 +159,17 @@ class _PanelDialog(QtWidgets.QDialog):
     """Non-modal window showing the :class:`products.Panel` that ``make_panel()`` returns.
 
     Rebuilt after every button press so it shows the item's new state.
+    ``path`` is the item the Run and Show Log buttons act on, if any.
     """
 
-    def __init__(self, window, title, make_panel):
+    def __init__(self, window, title, make_panel, path=None):
         super().__init__(window)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
         self.setWindowTitle(title)
         self.setMinimumWidth(320)
         self._window = window
         self._make_panel = make_panel
+        self._path = path
         self._body = QtWidgets.QVBoxLayout(self)
         self._build()
 
@@ -183,6 +185,32 @@ class _PanelDialog(QtWidgets.QDialog):
             _warn(str(e))
             self.close()
             return
+        if panel.toggles:
+            checklist = QtWidgets.QListWidget()
+            height = 2 * checklist.frameWidth()
+            for toggle in panel.toggles:
+                row = QtWidgets.QWidget()
+                row.setToolTip(toggle.tooltip)
+                layout = QtWidgets.QHBoxLayout(row)
+                layout.setContentsMargins(4, 1, 4, 1)
+                box = QtWidgets.QCheckBox(toggle.label)
+                box.setChecked(toggle.checked)
+                box.toggled.connect(lambda on, t=toggle: self._toggled(t, on))
+                layout.addWidget(box)
+                layout.addStretch()
+                if toggle.edit:
+                    edit = QtWidgets.QToolButton(text="?")
+                    edit.setToolTip(toggle.edit.label)
+                    edit.clicked.connect(lambda _=False, a=toggle.edit: self._press(a))
+                    layout.addWidget(edit)
+                item = QtWidgets.QListWidgetItem()
+                item.setFlags(QtCore.Qt.ItemFlag.NoItemFlags)  # the checkbox does the clicking
+                item.setSizeHint(row.sizeHint())
+                checklist.addItem(item)
+                checklist.setItemWidget(item, row)
+                height += row.sizeHint().height()
+            checklist.setFixedHeight(height)  # every row shows, no scroll bar
+            self._body.addWidget(checklist)
         for line in panel.info:
             label = QtWidgets.QLabel(line)
             label.setWordWrap(True)
@@ -191,11 +219,34 @@ class _PanelDialog(QtWidgets.QDialog):
             btn = QtWidgets.QPushButton(action.label)
             btn.clicked.connect(lambda _=False, a=action: self._press(a))
             self._body.addWidget(btn)
+        if panel.run_buttons and self._path:
+            buttons = QtWidgets.QWidget()  # a widget, so the next rebuild removes it
+            layout = QtWidgets.QHBoxLayout(buttons)
+            layout.setContentsMargins(0, 8, 0, 0)
+            run = QtWidgets.QPushButton("Run")
+            run.clicked.connect(self._run)
+            layout.addWidget(run)
+            show_log = QtWidgets.QPushButton("Show Log")
+            show_log.clicked.connect(lambda: self._window._show_log(self._path))
+            if not runlog.exists(self._path):
+                show_log.setEnabled(False)
+                show_log.setToolTip("Not run yet")
+            layout.addWidget(show_log)
+            self._body.addWidget(buttons)
+
+    def _run(self):
+        self._window._run([self._path])
+        self._build()  # Show Log is enabled once there is a log
 
     def _press(self, action):
         self._window._do(action.fn, action.confirm)
         self._window.populate()  # the version column may have changed
         self._build()
+
+    def _toggled(self, toggle, on):
+        self._window._do(lambda: toggle.fn(on))
+        self._window.populate()
+        self._build()  # also puts the box back if the change failed
 
 
 class _LogDialog(QtWidgets.QDialog):
@@ -468,7 +519,10 @@ class AssemblerWindow(ToolWindow):
         self._show_info(product, path)
 
     def _show_info(self, product, path):
-        self._show_panel(("product", path), os.path.basename(path), lambda: product.panel(path))
+        title = os.path.basename(path)
+        self._show_panel(
+            ("product", path), title, None, lambda: _PanelDialog(self, title, lambda: product.panel(path), path)
+        )
 
     def _show_versions(self, path):
         title = f"Versions of {os.path.basename(path)}"

@@ -78,7 +78,7 @@ def test_new_output_is_an_empty_entry(tmp_path):
 
 def test_output_is_last_in_the_new_menu_after_check():
     labels = [None if e is None else e[1].label for e in products.new_menu()]
-    assert labels[-3:] == [None, "Check", "Output"]
+    assert labels[-3:] == [None, "QC", "Output"]
     (creator,) = output.PRODUCT.creators
     assert creator.choices is None and not creator.open_after
 
