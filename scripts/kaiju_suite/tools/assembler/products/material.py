@@ -340,7 +340,7 @@ class MaterialProduct(data.DataProduct):
     kind = "material"
     extension = ".mat"
     order = 90
-    menu_slot = None  # not in the New menu for now
+    menu_slot = (2, 0)  # with Mesh; its higher order puts it just after Mesh
 
     def selection_problems(self):
         if not cmds.ls(selection=True):
@@ -399,6 +399,13 @@ class MaterialProduct(data.DataProduct):
         if reused:
             message += f" (used existing: {', '.join(reused)})"
         return message
+
+    def nodes(self, payload):
+        # A mesh assigned whole was published whole; otherwise only the
+        # faces in the file were, so gather just those again.
+        members = [m for ms in payload["assignments"].values() for m in ms]
+        whole = {m for m in members if "." not in m}
+        return sorted({m for m in members if m in whole or _mesh_of(m) not in whole})
 
     def describe(self, payload):
         sgs = payload["shading_engines"]

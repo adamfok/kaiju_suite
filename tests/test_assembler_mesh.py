@@ -264,3 +264,103 @@ def test_panel_describes_the_meshes(new_scene, tmp_path):
     cube = _cube()
     path, _ = _publish(tmp_path, cube)
     assert mesh.PRODUCT.panel(path).info == ["1 mesh", "body"]
+
+
+# -- normals and vertex colors ----------------------------------------------
+
+
+def _normals_and_colors(transform):
+    """Locked face-vertex normals and every color set (current first),
+    rounded so they compare across a file."""
+    fn = _fn(_shape(transform))
+    counts, connects = fn.getVertices()
+    _, normal_ids = fn.getNormalIds()
+    normals = fn.getNormals()
+    locked, i = [], 0
+    for face, count in enumerate(counts):
+        for _ in range(count):
+            if fn.isNormalLocked(normal_ids[i]):
+                n = normals[normal_ids[i]]
+                locked.append((face, connects[i], round(n.x, 4), round(n.y, 4), round(n.z, 4)))
+            i += 1
+    current = fn.currentColorSetName()
+    names = [current] + [s for s in fn.getColorSetNames() if s != current] if current else []
+    color_sets = []
+    for name in names:
+        colors = [tuple(round(c, 4) for c in (col.r, col.g, col.b, col.a)) for col in fn.getFaceVertexColors(name)]
+        color_sets.append((name, fn.getColorRepresentation(name), colors))
+    return {"locked": sorted(locked), "color_sets": color_sets}
+
+
+def _cube_with_normals_and_colors(name="body"):
+    """The test cube plus two locked vertex normals and two color sets:
+    ``paint`` (RGBA, every vertex colored, current) and ``mask`` (RGB, one
+    vertex colored)."""
+    node = _cube(name)
+    cmds.polyNormalPerVertex(f"{node}.vtx[0]", xyz=(0.0, 1.0, 0.0))
+    cmds.polyNormalPerVertex(f"{node}.vtx[5]", xyz=(1.0, 0.0, 0.0))
+    cmds.polyColorSet(node, create=True, colorSet="paint", representation="RGBA")
+    cmds.polyColorSet(node, currentColorSet=True, colorSet="paint")
+    cmds.polyColorPerVertex(f"{node}.vtx[*]", rgb=(0.2, 0.4, 0.6), alpha=0.5)
+    cmds.polyColorPerVertex(f"{node}.vtx[2]", rgb=(1.0, 0.0, 0.0), alpha=1.0)
+    cmds.polyColorSet(node, create=True, colorSet="mask", representation="RGB")
+    cmds.polyColorSet(node, currentColorSet=True, colorSet="mask")
+    cmds.polyColorPerVertex(f"{node}.vtx[1]", rgb=(0.0, 1.0, 0.0))
+    cmds.polyColorSet(node, currentColorSet=True, colorSet="paint")
+    cmds.delete(node, constructionHistory=True)
+    return node
+
+
+def test_round_trip_restores_locked_normals_and_color_sets(new_scene, tmp_path):
+    cube = _cube_with_normals_and_colors()
+    expected = _normals_and_colors(cube)
+    assert expected["locked"] and [s[0] for s in expected["color_sets"]] == ["paint", "mask"]
+    geometry = _geometry(cube)
+    path, _ = _publish(tmp_path, cube)
+
+    cmds.file(new=True, force=True)
+    logic.run_steps([path])
+
+    assert _normals_and_colors("|body") == expected
+    assert _geometry("|body") == geometry
+    assert cmds.polyColorSet("|body", query=True, currentColorSet=True) == ["paint"]
+
+
+def test_mesh_without_locked_normals_or_colors_saves_none(new_scene, tmp_path):
+    cube = _cube()
+    path, _ = _publish(tmp_path, cube)
+    saved = data.read(path, "mesh")["meshes"][0]
+    assert saved["normals"] == [] and saved["color_sets"] == []
+
+    cmds.file(new=True, force=True)
+    mesh.PRODUCT.run(path)
+    assert _normals_and_colors("|body") == {"locked": [], "color_sets": []}
+
+
+def test_old_files_without_normals_or_colors_still_load(new_scene, tmp_path):
+    cube = _cube_with_normals_and_colors()
+    geometry = _geometry(cube)
+    path, _ = _publish(tmp_path, cube)
+    payload = data.read(path, "mesh")
+    for record in payload["meshes"]:
+        del record["normals"], record["color_sets"]
+    data.write(path, "mesh", payload)
+
+    cmds.file(new=True, force=True)
+    mesh.PRODUCT.run(path)
+    assert _geometry("|body") == geometry
+    assert _normals_and_colors("|body") == {"locked": [], "color_sets": []}
+
+
+def test_one_undo_reverts_a_run_with_normals_and_colors(new_scene, tmp_path):
+    cube = _cube_with_normals_and_colors()
+    path, _ = _publish(tmp_path, cube)
+    cmds.file(new=True, force=True)
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    mesh.PRODUCT.run(path)
+    assert cmds.ls(type="mesh")
+    cmds.undo()
+    assert not cmds.ls(type="mesh")
+    assert not cmds.ls("body")

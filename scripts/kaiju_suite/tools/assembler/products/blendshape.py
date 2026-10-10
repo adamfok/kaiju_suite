@@ -11,6 +11,11 @@ checks the other base meshes have the saved vertex count, then
 replaces any blendShape with the same name by a new one made at the front of
 the deformer chain (under a skin, whatever order the steps run in), and
 writes the targets straight into its ``inputTarget`` attributes.
+
+Publish also saves the base mesh's rest point positions. If its vertex
+count changed since, Run gives each vertex the deltas and weights of the
+saved vertex closest to it and logs a warning. Files from before points
+were saved still need the same vertex count.
 """
 
 import re
@@ -158,6 +163,7 @@ def _record(node, transform, shape):
         "name": short_name(node),
         "mesh": short_name(transform),
         "vertex_count": cmds.polyEvaluate(shape, vertex=True),
+        "points": data.saved_points(transform),
         "envelope": cmds.getAttr(f"{node}.envelope"),
         "base_weights": _sparse(f"{target_root}.baseWeights"),
         "targets": targets,
@@ -189,14 +195,42 @@ def _check(records):
         if problem:
             problems.append(problem)
             continue
-        count = cmds.polyEvaluate(mesh, vertex=True)
-        if count != record["vertex_count"]:
-            problems.append(f"{record['mesh']} has {count} vertices, {record['name']} needs {record['vertex_count']}")
+        problem = data.count_problem(record, mesh, record["mesh"])
+        if problem:
+            problems.append(problem)
         name = record["name"]
         if cmds.objExists(name) and cmds.nodeType(name) != "blendShape":
             problems.append(f"{name} is already the name of a {cmds.nodeType(name)} node")
     if problems:
         raise RuntimeError(f"Can't apply blendShapes: {'; '.join(problems)}.")
+
+
+def _remap_sparse(values, mapping):
+    """``{"index": value}`` moved onto new vertices: each takes its saved match's value."""
+    return {str(v): values[str(m)] for v, m in enumerate(mapping) if str(m) in values}
+
+
+def _remapped(record):
+    """``record``, or a copy with its deltas and weights moved onto the
+    mesh's current vertices by closest point if the vertex count changed."""
+    mesh, _ = _find_mesh(record["mesh"])
+    mapping = data.vertex_remap(record, mesh, f"{record['name']} on {record['mesh']}", "blendShape deltas")
+    if mapping is None:
+        return record
+    targets = []
+    for target in record["targets"]:
+        items = []
+        for item in target["items"]:
+            saved = dict(zip(item["indices"], item["deltas"]))
+            indices = [v for v, m in enumerate(mapping) if m in saved]
+            items.append(dict(item, indices=indices, deltas=[saved[mapping[v]] for v in indices]))
+        targets.append(dict(target, items=items, weights=_remap_sparse(target["weights"], mapping)))
+    return dict(
+        record,
+        vertex_count=len(mapping),
+        targets=targets,
+        base_weights=_remap_sparse(record["base_weights"], mapping),
+    )
 
 
 def _build(record):
@@ -264,10 +298,13 @@ class BlendShapeProduct(data.DataProduct):
         records = [r for r in records if r["mesh"] not in missing]
         _check(records)
         for record in records:
-            _build(record)
+            _build(_remapped(record))
             runlog.info(f"{record['name']}: built on {record['mesh']}, {data.plural(len(record['targets']), 'target')}")
         count = sum(len(r["targets"]) for r in records)
         return f"Built {data.plural(len(records), 'blendShape')} with {data.plural(count, 'target')}"
+
+    def nodes(self, payload):
+        return [r["mesh"] for r in payload["blendshapes"]]
 
     def describe(self, payload):
         records = payload["blendshapes"]

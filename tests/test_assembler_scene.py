@@ -103,8 +103,9 @@ def test_point_to_saves_the_path_as_a_version(new_scene, tmp_path, ext):
     assert scene.point_to(path, source) == "Published Scene hero.scene v001"
     assert os.path.normcase(scene.target(path)) == os.path.normcase(os.path.abspath(source))
     assert _numbers(path) == [1]
+    # Under the entry's folder, so it's stored relative to it.
     with open(path, encoding="utf-8") as f:
-        assert json.load(f)["path"] == scene.target(path)
+        assert json.load(f)["path"] == f"files/hero_v1{ext}"
 
 
 def test_point_to_rejects_non_maya_files_and_changes_nothing(tmp_path):
@@ -231,6 +232,119 @@ def test_cancelling_the_browser_changes_nothing(tmp_path, picked):
     assert versions.publish_action(path).fn() is None
     assert os.path.getsize(path) == 0
     assert versions.list_versions(path) == []
+
+
+# -- portable paths -------------------------------------------------------------
+
+
+def _stored(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)["path"]
+
+
+def _write(path, stored):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"path": stored}, f)
+
+
+def test_build_root_is_the_entrys_folder(tmp_path):
+    os.makedirs(tmp_path / "build")
+    path = scene.create_scene(str(tmp_path / "build"), "hero")
+    assert os.path.normcase(scene.build_root(path)) == os.path.normcase(str(tmp_path / "build"))
+
+
+def test_a_file_outside_the_build_folder_is_stored_absolute(new_scene, tmp_path, monkeypatch):
+    monkeypatch.delenv("ASSET", raising=False)
+    source = _maya_file(tmp_path / "shared" / "hero.ma", "hero")
+    os.makedirs(tmp_path / "build")
+    path = scene.create_scene(str(tmp_path / "build"), "hero")
+    scene.point_to(path, source)
+    assert os.path.isabs(_stored(path))
+    assert os.path.normcase(scene.target(path)) == os.path.normcase(os.path.abspath(source))
+
+
+def test_a_file_under_asset_is_stored_with_the_variable(new_scene, tmp_path, monkeypatch):
+    monkeypatch.setenv("ASSET", str(tmp_path / "assets"))
+    source = _maya_file(tmp_path / "assets" / "model" / "hero.ma", "hero")
+    os.makedirs(tmp_path / "build")
+    path = scene.create_scene(str(tmp_path / "build"), "hero")
+    scene.point_to(path, source)
+    assert _stored(path) == "$ASSET/model/hero.ma"
+
+    # Another machine: same variable name, different place.
+    moved = tmp_path / "other_machine"
+    os.makedirs(moved)
+    os.replace(tmp_path / "assets", moved / "assets")
+    monkeypatch.setenv("ASSET", str(moved / "assets"))
+    logic.run_steps([path])
+    assert cmds.objExists("hero")
+
+
+def test_point_to_accepts_text_with_a_variable(new_scene, tmp_path, monkeypatch):
+    monkeypatch.setenv("ASSET", str(tmp_path / "assets"))
+    _maya_file(tmp_path / "assets" / "hero.mb", "hero")
+    path = scene.create_scene(str(tmp_path), "hero")
+    scene.point_to(path, "$ASSET/hero.mb")
+    assert _stored(path) == "$ASSET/hero.mb"
+    assert scene.target(path).endswith("hero.mb") and os.path.isfile(scene.target(path))
+
+
+def test_old_absolute_entries_still_run(new_scene, tmp_path):
+    source = _maya_file(tmp_path / "files" / "hero.ma", "hero")
+    path = scene.create_scene(str(tmp_path), "hero")
+    _write(path, os.path.abspath(source).replace("\\", "/"))
+    assert os.path.normcase(scene.target(path)) == os.path.normcase(os.path.abspath(source))
+    logic.run_steps([path])
+    assert cmds.objExists("hero")
+
+
+def test_moving_the_build_folder_still_runs(new_scene, tmp_path):
+    old = tmp_path / "old_place" / "build"
+    source = _maya_file(old / "files" / "hero.ma", "hero")
+    path = scene.create_scene(str(old), "hero")
+    scene.point_to(path, source)
+
+    new = tmp_path / "new_place" / "build"
+    os.makedirs(new.parent)
+    os.replace(old, new)
+    moved = str(new / "hero.scene")
+    assert os.path.normcase(os.path.normpath(scene.target(moved))) == os.path.normcase(str(new / "files" / "hero.ma"))
+    logic.run_steps([moved])
+    assert cmds.objExists("hero")
+
+
+def test_versions_keep_the_relative_path(new_scene, tmp_path):
+    first = _maya_file(tmp_path / "files" / "a.ma", "first")
+    second = _maya_file(tmp_path / "files" / "b.ma", "second")
+    path = scene.create_scene(str(tmp_path), "hero")
+    scene.point_to(path, first)
+    scene.point_to(path, second)
+    versions.restore_version(path, 1)
+    assert _stored(path) == "files/a.ma"
+
+
+def test_missing_relative_file_names_both_paths(new_scene, tmp_path):
+    path = scene.create_scene(str(tmp_path), "hero")
+    _write(path, "files/gone.ma")
+    with pytest.raises(logic.StepError) as info:
+        logic.run_steps([path])
+    message = str(info.value.__cause__ or info.value)
+    assert "files/gone.ma" in message and os.path.normcase(str(tmp_path)) in os.path.normcase(message).replace("/", os.sep)
+
+
+def test_info_shows_the_stored_path_and_where_it_resolves(new_scene, tmp_path):
+    source = _maya_file(tmp_path / "files" / "hero.ma", "hero")
+    path = scene.create_scene(str(tmp_path), "hero")
+    scene.point_to(path, source)
+    info = " ".join(scene.PRODUCT.panel(path).info)
+    assert "files/hero.ma" in info and scene.target(path) in info
+
+
+def test_build_plan_keeps_the_stored_path(new_scene, tmp_path):
+    source = _maya_file(tmp_path / "files" / "hero.ma", "hero")
+    path = scene.create_scene(str(tmp_path), "hero")
+    scene.point_to(path, source)
+    assert scene.PRODUCT.to_plan(path) == {"path": "files/hero.ma"}
 
 
 # -- info ---------------------------------------------------------------------

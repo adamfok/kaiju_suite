@@ -20,7 +20,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 
-from kaiju_suite.tools.assembler.products import Action, Panel, product_for
+from kaiju_suite.tools.assembler.products import Action, Panel, Product, product_for
 
 HISTORY_DIR = ".versions"
 # In an item's history folder: the number of the version its content builds on.
@@ -496,3 +496,52 @@ def panel(path):
         if current is None or v.number != current.number
     ]
     return Panel([summary(path)], actions)
+
+
+# -- comparing ----------------------------------------------------------------
+
+
+def can_compare(path):
+    """Whether ``path`` gets Versions ▸ Compare With: a file of a product
+    that can compare two of its versions (see ``Product.compare_files``)."""
+    product = product_for(path)
+    return (
+        product is not None
+        and os.path.isfile(path)
+        and type(product).compare_files is not Product.compare_files
+    )
+
+
+def compare_choices(path):
+    """The versions to compare ``path`` with, newest first: every one but the
+    version the file is at now."""
+    current = current_version(path)
+    return [v for v in list_versions(path) if current is None or v.number != current.number]
+
+
+def compare_menu(path, limit=MENU_LIMIT):
+    """Entries for the Compare With submenu: ``(label, version number)`` of
+    the newest ``limit`` :func:`compare_choices`."""
+    return [(_describe(path, v), v.number) for v in compare_choices(path)[:limit]]
+
+
+def compare_panel(path, number):
+    """A :class:`Panel` saying what changed from version ``number`` to
+    ``path`` as it is now; the first line names the two."""
+    version = next((v for v in list_versions(path) if v.number == number), None)
+    if version is None:
+        raise FileNotFoundError(f"{os.path.basename(path)} has no version {number}")
+    current = current_version(path)
+    empty = os.path.getsize(path) == 0
+    if current is not None:
+        now = f"current ({current.tag})"
+    else:
+        now = "current (empty)" if empty else "current (not published)"
+    if empty:
+        lines = ["The current file is empty."]
+    else:
+        try:
+            lines = product_for(path).compare_files(version.path, path)
+        except (OSError, ValueError) as e:
+            lines = [f"Can't compare: {e}"]
+    return Panel([f"{version.tag} → {now}", *lines], [])

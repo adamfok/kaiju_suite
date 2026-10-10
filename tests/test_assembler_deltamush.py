@@ -240,10 +240,62 @@ def test_all_meshes_missing_is_a_warning_not_an_error(new_scene, tmp_path):
     assert not cmds.ls(type="deltaMush")
 
 
+def _without_points(path):
+    """Rewrite ``path`` as an older file, saved before point positions were."""
+    payload = data.read(path, "deltamush")
+    for record in payload["deltamush"]:
+        del record["points"]
+    data.write(path, "deltamush", payload)
+
+
+def _object_points(mesh):
+    flat = cmds.xform(f"{mesh}.vtx[*]", query=True, objectSpace=True, translation=True)
+    return [tuple(flat[i : i + 3]) for i in range(0, len(flat), 3)]
+
+
+def _nearest(points, p):
+    return min(range(len(points)), key=lambda i: sum((a - b) ** 2 for a, b in zip(points[i], p)))
+
+
+def test_publish_saves_the_point_positions(new_scene, tmp_path):
+    mesh = _mesh()
+    rest = _object_points(mesh)
+    _mush(mesh)
+    path, _ = _publish(tmp_path, mesh)
+
+    # Rest positions, not the smoothed ones.
+    (record,) = data.read(path, "deltamush")["deltamush"]
+    assert len(record["points"]) == 26
+    for saved, point in zip(record["points"], rest):
+        assert saved == pytest.approx(point, abs=1e-5)
+
+
+def test_changed_topology_remaps_weights_by_closest_point(new_scene, tmp_path):
+    mesh = _mesh()
+    old_points = _object_points(mesh)
+    _mush(mesh)
+    old_weights = _weights("body_dm", mesh)
+    path, _ = _publish(tmp_path, mesh)
+
+    cmds.file(new=True, force=True)
+    mesh = cmds.polyCube(name="body", width=2, height=4, depth=2, sx=3, sy=3, sz=3, ch=False)[0]  # 56 vertices
+    new_points = _object_points(mesh)
+    with runlog.capture() as run:
+        deltamush.PRODUCT.run(path)
+
+    (warning,) = run.warnings
+    assert "body" in warning and "closest point" in warning and "26" in warning and "56" in warning
+    assert _settings("body_dm") == SETTINGS
+    expected = [old_weights[_nearest(old_points, p)] for p in new_points]
+    assert _weights("body_dm", mesh) == expected
+    assert 0.25 in expected and 0.0 in expected
+
+
 def test_vertex_count_mismatch_raises_and_changes_nothing(new_scene, tmp_path):
     mesh = _mesh()
     _mush(mesh)
     path, _ = _publish(tmp_path, mesh)
+    _without_points(path)
 
     cmds.file(new=True, force=True)
     mesh = cmds.polyCube(name="body", ch=False)[0]  # 8 vertices, not 26

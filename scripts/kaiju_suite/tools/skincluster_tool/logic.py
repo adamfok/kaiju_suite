@@ -3,7 +3,8 @@
 Copy Skin puts a source mesh's weights on target meshes, matching vertices
 by closest point, by UV or by vertex ID (topology). A target without a
 skinCluster is bound to the source's influences; a skinned target gets any
-it's missing, at zero weight. Every edit goes through undoable Maya
+it's missing, at zero weight. The matching modes and vertex matching live in
+:mod:`kaiju_suite.core.matching`, shared with the Assembler. Every edit goes through undoable Maya
 commands, so each function is one undo step.
 """
 
@@ -13,10 +14,10 @@ from maya import cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
+from kaiju_suite.core import matching
+from kaiju_suite.core.matching import MODE_LABELS, MODES  # noqa: F401 (re-exported for the widget)
 from kaiju_suite.core.undo import undoable
 
-MODES = ("closest_point", "uv", "topology")
-MODE_LABELS = {"closest_point": "Closest Point", "uv": "UV", "topology": "Topology"}
 # Decimals compared when grouping vertices with the same weights.
 _DECIMALS = 6
 
@@ -58,10 +59,6 @@ def _require_skin(mesh):
     if not cluster:
         raise ValueError(f"{_short(mesh)} has no skinCluster.")
     return cluster
-
-
-def _uv_set(mesh):
-    return cmds.polyUVSet(mesh, query=True, currentUVSet=True)[0]
 
 
 # -- copy -------------------------------------------------------------------
@@ -118,9 +115,11 @@ def _normalized(pairs):
 
 
 def _copy_by_topology(source, source_cluster, target, cluster):
-    """Give each target vertex the weights of the source vertex with the same ID."""
+    """Give each target vertex the weights of the source vertex with the same
+    ID (see :func:`core.matching.vertex_map`)."""
     names, source_rows = _weights(source, source_cluster)
-    _set_rows(target, cluster, {v: list(zip(names, row)) for v, row in enumerate(source_rows)})
+    mapping = matching.vertex_map(source, target, "topology")
+    _set_rows(target, cluster, {v: list(zip(names, source_rows[s])) for v, s in enumerate(mapping)})
 
 
 @undoable
@@ -129,19 +128,17 @@ def copy_skin(source, targets, mode="closest_point"):
     vertices by ``mode`` (one of :data:`MODES`); returns the targets'
     skinClusters. Raises ``ValueError`` before changing anything if the
     source has no skin, or a target can't take the weights."""
-    if mode not in MODES:
-        raise ValueError(f"Unknown copy mode {mode!r}; use one of {', '.join(MODES)}.")
+    matching.check_mode(mode)
     source_cluster = _require_skin(source)
     targets = [t for t in cmds.ls(targets, long=True) if t != cmds.ls(source, long=True)[0]]
     if not targets:
         raise ValueError("No target meshes. Select the source mesh first, then the targets.")
     if mode == "topology":
-        count = cmds.polyEvaluate(source, vertex=True)
-        counts = {t: cmds.polyEvaluate(t, vertex=True) for t in targets}
-        wrong = [f"{_short(t)} ({n})" for t, n in counts.items() if n != count]
+        wrong = matching.count_mismatches(source, targets)
         if wrong:
             raise ValueError(
-                f"Copying by topology needs the same vertex count as {_short(source)} ({count}): {', '.join(wrong)}."
+                f"Copying by topology needs the same vertex count as {_short(source)} "
+                f"({matching.vertex_count(source)}): {', '.join(wrong)}."
             )
 
     clusters = []
@@ -150,7 +147,7 @@ def copy_skin(source, targets, mode="closest_point"):
         if mode == "topology":
             _copy_by_topology(source, source_cluster, target, cluster)
         else:
-            kwargs = {"uvSpace": (_uv_set(source), _uv_set(target))} if mode == "uv" else {}
+            kwargs = {"uvSpace": (matching.uv_set(source), matching.uv_set(target))} if mode == "uv" else {}
             cmds.copySkinWeights(
                 sourceSkin=source_cluster,
                 destinationSkin=cluster,

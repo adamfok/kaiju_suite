@@ -49,9 +49,10 @@ def with_json(monkeypatch):
 def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
-        "Script", "Folder", "Scene", "Joints", "Mesh", "SkinCluster",
-        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "ControlShape", "Separator",
-        "Rig Module",
+        "Script", "Folder", "Scene", "Joints", "Mesh", "Curves", "SkinCluster",
+        "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives", "Material", "Pose", "Animation",
+        "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers", "ControlShape", "Separator",
+        "Rig Module", "Check", "Output",
     ]
     exts = [ext for p in found for ext in p.extensions]
     assert len(exts) == len(set(exts)), "two products claim the same extension"
@@ -175,13 +176,15 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "Scene", "Folder", "Separator",
         None,
-        "Mesh", "Joints", "ControlShape",
+        "Mesh", "Material", "Joints", "ControlShape", "Curves",
         None,
-        "SkinCluster", "DeltaMush", "BlendShapes",
+        "SkinCluster", "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives",
         None,
-        "Pose", "Animation",
+        "Pose", "Animation", "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers",
         None,
         *(module.name for module in rig.all_modules()),
+        None,
+        "Check", "Output",
     ]
     assert "Simple IK" in _menu_labels()
     assert folder.PRODUCT.creators[0].choices is None

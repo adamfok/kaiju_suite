@@ -5,7 +5,8 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import logic, plan, products, runlog, versions
+from kaiju_suite.tools.assembler import logic, plan, products, report, runlog, versions
+from kaiju_suite.tools.assembler.report_widget import ReportDialog
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -247,7 +248,11 @@ class AssemblerWindow(ToolWindow):
         self.browse_btn.setFixedSize(28, 28)
         self.browse_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
         self.browse_btn.clicked.connect(self._browse)
+        rebuild_btn = QtWidgets.QPushButton("Rebuild")
+        rebuild_btn.setToolTip("New scene, then Run All")
+        rebuild_btn.clicked.connect(lambda: self._rebuild(self.root_dir()))
         top.addWidget(self.search)
+        top.addWidget(rebuild_btn)
         top.addWidget(refresh_btn)
         top.addWidget(self.browse_btn)
         self.layout.addLayout(top)
@@ -536,10 +541,13 @@ class AssemblerWindow(ToolWindow):
         product = products.product_for(path) if path else None
         if product:
             for action in product.actions(path):
-                menu.addAction(action.label, lambda a=action: self._do(a.fn, a.confirm))
+                menu.addAction(action.label, lambda a=action: self._do_and_refresh(a))
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
+        if path and (not is_file or (product and product.runnable)):
+            menu.addAction("Run up to Here (New Scene)", lambda: self._run_up_to(path))
+            menu.addAction("Run from Here", lambda: self._run_from(path))
         if product and product.runnable and is_file:
             show_log = menu.addAction("Show Log", lambda: self._show_log(path))
             if not runlog.exists(path):
@@ -548,6 +556,8 @@ class AssemblerWindow(ToolWindow):
         if not is_file:
             label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All"
             menu.addAction(label, lambda: self._run_folder(directory))
+            if not path:
+                menu.addAction("Rebuild (New Scene + Run All)", lambda: self._rebuild(directory))
             plan_menu = menu.addMenu("Build Plan")
             plan_menu.addAction("Export...", lambda: self._export_plan(directory))
             plan_menu.addAction("Import...", lambda: self._import_plan(directory))
@@ -569,7 +579,9 @@ class AssemblerWindow(ToolWindow):
                 new_menu.addSeparator()
             else:
                 owner, creator = entry
-                new_menu.addAction(creator.label, lambda o=owner, c=creator: self._create(o, c, directory))
+                # "&&" keeps Qt from reading the "&" in "Sets & Layers" as a shortcut key.
+                label = creator.label.replace("&", "&&")
+                new_menu.addAction(label, lambda o=owner, c=creator: self._create(o, c, directory))
 
         menu.addSeparator()
         if self.selected_paths():
@@ -605,7 +617,18 @@ class AssemblerWindow(ToolWindow):
         if more:
             submenu.addSeparator()
             submenu.addAction("Show More...", lambda: self._show_versions(path))
+        if versions.can_compare(path):
+            entries = versions.compare_menu(path)
+            submenu.addSeparator()
+            compare_menu = submenu.addMenu("Compare With")
+            compare_menu.setEnabled(bool(entries))
+            for label, number in entries:
+                compare_menu.addAction(label, lambda n=number: self._show_compare(path, n))
         submenu.setToolTipsVisible(True)
+
+    def _show_compare(self, path, number):
+        title = f"Compare {os.path.basename(path)}"
+        self._show_panel(("compare", path, number), title, lambda: versions.compare_panel(path, number))
 
     def _do_and_refresh(self, action):
         self._do(action.fn, action.confirm)
@@ -634,10 +657,12 @@ class AssemblerWindow(ToolWindow):
         self._status.clear()
         self.populate()
 
-    def _run(self, paths):
+    def _run(self, paths, report_title=None, run=logic.run_steps):
+        """Run ``paths``; with ``report_title``, show a build report after."""
         self._refresh()
+        recorder = report.Recorder(paths, forward=self._set_status)
         try:
-            logic.run_steps(paths, on_status=self._set_status)
+            run(paths, on_status=recorder)
         except logic.StepError as e:
             log.exception("Step %s failed", e.path)
             done = paths.index(e.path)
@@ -646,6 +671,8 @@ class AssemblerWindow(ToolWindow):
             return
         finally:
             self._reload_logs(paths)
+            if report_title:
+                self._show_report(report_title, recorder.results)
         warned = [p for p in paths if self._status.get(p) == logic.WARNING]
         if warned:
             names = ", ".join(os.path.basename(p) for p in warned)
@@ -657,6 +684,72 @@ class AssemblerWindow(ToolWindow):
         paths = logic.collect_steps(folder)
         if not paths:
             _warn("Nothing enabled to run in this folder.")
+            return
+        self._run(paths, report_title=f"Build Report: {os.path.basename(folder) or 'Run All'}")
+
+    def _show_report(self, title, results):
+        """Show the build report, replacing the one from the last run."""
+        old = getattr(self, "_report", None)
+        if old is not None:
+            try:
+                old.close()
+            except RuntimeError:  # already closed and deleted
+                pass
+        self._report = ReportDialog(self, title, results, self._show_log)
+        self._report.show()
+        self._report.raise_()
+
+    def _confirm_new_scene(self):
+        """Whether a new scene may replace this one: asks first if it has
+        unsaved changes."""
+        if not cmds.file(query=True, modified=True):
+            return True
+        Button = QtWidgets.QMessageBox.StandardButton
+        answer = QtWidgets.QMessageBox.question(
+            self,
+            "Discard Changes?",
+            "The scene has unsaved changes. Discard them and start a new scene?",
+            Button.Yes | Button.No,
+            Button.No,
+        )
+        return answer == Button.Yes
+
+    def _run_in_new_scene(self, paths):
+        if not paths:
+            _warn("Nothing enabled to run.")
+            return
+        if not self._confirm_new_scene():
+            return
+        self._run(
+            paths,
+            report_title="Build Report: Rebuild",
+            run=lambda p, on_status: logic.rebuild(p, discard_changes=True, on_status=on_status),
+        )
+
+    def _rebuild(self, root):
+        if not root or not os.path.isdir(root):
+            _warn("Select a snippets folder first.")
+            return
+        self._run_in_new_scene(logic.collect_steps(root))
+
+    def _steps(self, pick, path):
+        try:
+            return pick(self.root_dir(), path)
+        except ValueError as e:
+            _warn(str(e))
+            return None
+
+    def _run_up_to(self, path):
+        paths = self._steps(logic.steps_up_to, path)
+        if paths is not None:
+            self._run_in_new_scene(paths)
+
+    def _run_from(self, path):
+        paths = self._steps(logic.steps_from, path)
+        if paths is None:
+            return
+        if not paths:
+            _warn("Nothing enabled to run.")
             return
         self._run(paths)
 

@@ -263,9 +263,71 @@ def test_missing_mesh_is_skipped_with_a_warning(new_scene, tmp_path):
     assert not cmds.ls(type="skinCluster")
 
 
+def _without_points(path):
+    """Rewrite ``path`` as an older file, saved before point positions were."""
+    payload = data.read(path, "skin")
+    for record in payload["meshes"]:
+        del record["points"]
+    data.write(path, "skin", payload)
+
+
+def _nearest(points, p):
+    return min(range(len(points)), key=lambda i: sum((a - b) ** 2 for a, b in zip(points[i], p)))
+
+
+def _object_points(mesh):
+    flat = cmds.xform(f"{mesh}.vtx[*]", query=True, objectSpace=True, translation=True)
+    return [tuple(flat[i : i + 3]) for i in range(0, len(flat), 3)]
+
+
+def test_file_holds_the_point_positions(new_scene, tmp_path):
+    joints, mesh, cluster = _rig()
+    path, _ = _publish(tmp_path, mesh)
+
+    (saved,) = data.read(path, "skin")["meshes"]
+    assert len(saved["points"]) == _vertex_count(mesh)
+    for saved_point, point in zip(saved["points"], _object_points(mesh)):
+        assert saved_point == pytest.approx(point, abs=1e-5)
+
+
+def test_changed_topology_remaps_weights_by_closest_point(new_scene, tmp_path):
+    joints, mesh, cluster = _rig()
+    old_points = _object_points(mesh)
+    old_weights = _weights(mesh, cluster)
+    path, _ = _publish(tmp_path, mesh)
+
+    cmds.file(new=True, force=True)
+    _skeleton()
+    mesh = cmds.polyCylinder(name="leg", height=8, subdivisionsX=12, subdivisionsY=5, constructionHistory=False)[0]
+    with runlog.capture() as run:
+        skin.PRODUCT.run(path)
+
+    (warning,) = run.warnings
+    assert "leg" in warning and "closest point" in warning
+    assert str(len(old_points)) in warning and str(_vertex_count(mesh)) in warning
+    cluster = _skin_cluster(mesh)
+    assert cluster == "leg_skin"
+    expected = [old_weights[_nearest(old_points, p)] for p in _object_points(mesh)]
+    _same_weights(_weights(mesh, cluster), expected)
+
+
+def test_old_file_without_points_still_round_trips(new_scene, tmp_path):
+    joints, mesh, cluster = _rig()
+    before = _weights(mesh, cluster)
+    path, _ = _publish(tmp_path, mesh)
+    _without_points(path)
+
+    mesh = _rebuild()
+    with runlog.capture() as run:
+        skin.PRODUCT.run(path)
+    assert run.warnings == []
+    _same_weights(_weights(mesh, _skin_cluster(mesh)), before)
+
+
 def test_vertex_count_mismatch_raises_and_changes_nothing(new_scene, tmp_path):
     joints, mesh, cluster = _rig()
     path, _ = _publish(tmp_path, mesh)
+    _without_points(path)
 
     cmds.file(new=True, force=True)
     joints = _skeleton()
@@ -295,6 +357,7 @@ def test_one_bad_mesh_stops_the_others_too(new_scene, tmp_path):
     other = _mesh("arm")
     _bind(other, joints, name="arm_skin")
     path, _ = _publish(tmp_path, mesh, other)
+    _without_points(path)
 
     cmds.file(new=True, force=True)
     _skeleton()

@@ -18,9 +18,11 @@ import os
 
 from maya import cmds
 
+from kaiju_suite.core import matching
 from kaiju_suite.core.datafile import FORMAT, DataFormatError, read, write  # noqa: F401 (re-exported)
 from kaiju_suite.core.nodes import unique_name  # noqa: F401 (re-exported)
 from kaiju_suite.core.undo import undo_chunk
+from kaiju_suite.tools.assembler import compare as compare_payloads
 from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, is_empty, new_path
 
@@ -88,6 +90,28 @@ def require_unique(names):
         raise RuntimeError(f"Several nodes have the same name, can't tell which to use: {'; '.join(ambiguous)}")
 
 
+def resolve_nodes(names):
+    """Find each of ``names`` in the scene, for gathering again.
+
+    Returns ``(paths, problems)``: the long path of each name that matches
+    exactly one node, in order without repeats, and messages naming the ones
+    that are missing or match several nodes. A component such as
+    ``body.f[0:9]`` is found by its node and keeps its component.
+    """
+    paths, missing, ambiguous = [], [], []
+    for name in dict.fromkeys(names):
+        node, dot, component = name.partition(".")
+        matches = cmds.ls(node, long=True) or []
+        if not matches:
+            missing.append(name)
+        elif len(matches) > 1:
+            ambiguous.append(f"Several nodes are called {node}, can't tell which to use: {', '.join(matches)}")
+        else:
+            paths.append(matches[0] + dot + component)
+    problems = [f"Missing in the scene: {', '.join(missing)}"] if missing else []
+    return paths, problems + list(dict.fromkeys(ambiguous))
+
+
 def parent_of(path):
     """The long path of ``path``'s parent, or ``None`` under the world."""
     found = cmds.listRelatives(path, parent=True, fullPath=True)
@@ -118,6 +142,45 @@ def plural(count, word, plural=None):
     return f"{count} {word if count == 1 else (plural or word + 's')}"
 
 
+# -- changed topology -------------------------------------------------------
+
+# Decimals kept for saved point positions.
+_POINT_DECIMALS = 6
+
+
+def saved_points(mesh):
+    """``mesh``'s rest positions (object space, before deformers), rounded,
+    to save with per-vertex data so it can be remapped later; see
+    :func:`vertex_remap`."""
+    return [[round(c, _POINT_DECIMALS) for c in p] for p in matching.rest_points(mesh)]
+
+
+def count_problem(record, mesh, label):
+    """Why ``record`` can't go onto ``mesh``, or ``None``: its vertex count
+    differs and the file has no saved points to remap by (files published
+    before points were saved)."""
+    count = matching.vertex_count(mesh)
+    if count == record["vertex_count"] or record.get("points"):
+        return None
+    return f"{label} has {count} vertices, the file has {record['vertex_count']}"
+
+
+def vertex_remap(record, mesh, label, what):
+    """``None`` if ``mesh`` has the vertex count saved in ``record``. Else,
+    for each vertex of ``mesh``, the saved vertex closest to it (matching
+    ``mesh``'s rest positions to the record's saved ``points``), with a
+    warning that ``what`` were remapped."""
+    count = matching.vertex_count(mesh)
+    if count == record["vertex_count"]:
+        return None
+    mapping = matching.closest_indices(record["points"], matching.rest_points(mesh))
+    runlog.warning(
+        f"{label}: the vertex count changed from {record['vertex_count']} to {count}; "
+        f"remapped {what} by closest point"
+    )
+    return mapping
+
+
 # -- the product base class -------------------------------------------------
 
 
@@ -127,7 +190,8 @@ class DataProduct(Product):
     Subclasses set ``name``, ``kind`` (the header's ``kaiju`` value),
     ``extension`` (one, lower case, with the dot) and ``order``, and implement
     :meth:`gather`, :meth:`apply`, :meth:`selection_problems` and
-    :meth:`describe`. The rest (New, Run, Publish, versions, the double-click
+    :meth:`describe`, and optionally :meth:`nodes` for right-click **Update
+    from Scene**. The rest (New, Run, Publish, versions, the double-click
     panel) comes from here.
     """
 
@@ -168,7 +232,65 @@ class DataProduct(Product):
         """Info lines about a payload for the double-click panel."""
         return []
 
+    def nodes(self, payload):
+        """The names of the nodes (or components) ``payload`` was gathered
+        from, such that :meth:`gather` on them gathers the same kind of
+        payload again. Implementing it adds right-click **Update from Scene**;
+        products that don't, don't get it."""
+        raise NotImplementedError
+
+    # -- Update from Scene ---------------------------------------------------
+
+    @property
+    def can_update(self):
+        """Whether items get **Update from Scene** (the product implements :meth:`nodes`)."""
+        return type(self).nodes is not DataProduct.nodes
+
+    def _update_targets(self, path):
+        """``(paths, problems)`` for re-gathering ``path`` from the scene."""
+        if is_empty(path):
+            return [], [f"{os.path.basename(path)} is empty. Publish it from a selection first."]
+        try:
+            names = self.nodes(read(path, self.kind))
+        except (OSError, ValueError, KeyError) as e:
+            return [], [f"Can't read {os.path.basename(path)}: {e}"]
+        return resolve_nodes(names)
+
+    def update_problems(self, path):
+        """Why ``path`` can't be updated from the scene now, as messages:
+        nodes in its file that are missing or match several nodes."""
+        return self._update_targets(path)[1]
+
+    def update_from_scene(self, path):
+        """Gather again from the nodes named in ``path`` and publish the
+        result as its next version, whatever is selected. Raises, saving
+        nothing, if any of those nodes is missing or ambiguous."""
+        paths, problems = self._update_targets(path)
+        if problems:
+            raise RuntimeError(f"Can't update {os.path.basename(path)} from the scene. {' '.join(problems)}")
+        payload = self.gather(paths)
+        return versions.export_into(path, lambda target: write(target, self.kind, payload))
+
+    def actions(self, path):
+        if not self.can_update or is_empty(path):
+            return []
+        return [Action("Update from Scene", lambda: self.update_from_scene(path))]
+    def compare(self, old, new):
+        """What changed from payload ``old`` to ``new``, as lines for the
+        Compare With window. A structural summary of the JSON unless
+        overridden (see :mod:`.compare`)."""
+        return compare_payloads.structural(old, new)
+
     # -- Product -------------------------------------------------------------
+
+    def compare_files(self, old_path, new_path):
+        old, new = read(old_path, self.kind), read(new_path, self.kind)
+        try:
+            return self.compare(old, new)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            # A payload the product's own summary doesn't expect (e.g. an
+            # older format): fall back to the structural one.
+            return compare_payloads.structural(old, new)
 
     def create(self, directory, name, ext=None):
         """New ▸ <name>: an empty entry that a build skips until published into."""

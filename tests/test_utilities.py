@@ -15,7 +15,11 @@ UTILITIES = {
     "Material": "Material Tool",
     "Pose": "Pose Tool",
     "Animation": "Animation Tool",
+    "Attributes": "Attribute Manager",
     "ControlShape": "ControlShape Tool",
+    "Constraints": "Constraint Tool",
+    "Deformers": "Deformer Tool",
+    "Wrap": "Wrap Tool",
     "Rig Module": "Rig Module Editor",
 }
 
@@ -36,11 +40,15 @@ def test_there_is_no_scene_tool():
     assert registry.find("Scene Tool") is None
 
 
+# Full tools that double as a product's utility keep their own menu category.
+ELSEWHERE = {"Attribute Manager": "Rigging"}
+
+
 def test_utilities_sit_under_the_utilities_menu():
     found = {tool["name"]: tool for tool in registry.discover()}
 
     for name in UTILITIES.values():
-        assert found[name].get("category") == "Utilities", name
+        assert found[name].get("category") == ELSEWHERE.get(name, "Utilities"), name
 
 
 def test_discovering_utilities_does_not_load_their_windows():
@@ -67,13 +75,22 @@ def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
     assert logic.utility_for(_product(product_name)) is None
 
 
+# Data products with no utility tool: double-click shows their Info window.
+NO_UTILITY = ("Curves", "Pose Correctives", "Set Driven Keys", "Connections", "Sets & Layers", "Check", "Output")
+
+
+@pytest.mark.parametrize("product_name", NO_UTILITY)
+def test_data_products_without_a_utility(product_name):
+    assert logic.utility_for(_product(product_name)) is None
+
+
 def test_every_other_product_has_a_utility():
-    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Scene"}
+    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Scene", *NO_UTILITY}
 
     assert names == set(UTILITIES)
 
 
-@pytest.mark.parametrize("product_name", sorted(set(UTILITIES) | {"Scene"}))
+@pytest.mark.parametrize("product_name", sorted(set(UTILITIES) | {"Scene", *NO_UTILITY}))
 def test_products_with_an_info_window_get_right_click_info(product_name):
     assert logic.has_info(_product(product_name))
 

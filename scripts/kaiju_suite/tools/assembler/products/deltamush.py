@@ -5,6 +5,11 @@ per-vertex weight map (sparse: only weights that aren't 1.0). Run finds the
 meshes by name, replaces a deltaMush of the same name, and creates the new one
 after the mesh's existing deformers, so it sits on top of skin. Missing
 meshes are skipped with a warning.
+
+Publish also saves each mesh's rest point positions. If a mesh's vertex
+count changed since, Run gives each vertex the weight of the saved vertex
+closest to it and logs a warning. Files from before points were saved still
+need the same vertex count.
 """
 
 from maya import cmds
@@ -12,7 +17,7 @@ import maya.api.OpenMaya as om
 import maya.api.OpenMayaAnim as oma
 
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.tools.assembler import data, runlog
+from kaiju_suite.tools.assembler import compare, data, runlog
 
 # Saved settings, with the type each is stored as.
 _SETTINGS = (
@@ -89,7 +94,19 @@ def _record(node, transform, shape):
         value = kind(cmds.getAttr(f"{node}.{attr}"))
         record[attr] = round(value, _DIGITS) if kind is float else value
     record["weights"] = _read_weights(node, _geometry_index(node, shape), vertex_count)
+    record["points"] = data.saved_points(transform)
     return record
+
+
+def _remapped(record, transform):
+    """``record``, or a copy with its weights moved onto the mesh's current
+    vertices by closest point if the vertex count changed."""
+    mapping = data.vertex_remap(record, transform, f"{record['name']} on {record['mesh']}", "deltaMush weights")
+    if mapping is None:
+        return record
+    saved = {vertex: weight for vertex, weight in record["weights"]}
+    weights = [[v, saved[m]] for v, m in enumerate(mapping) if m in saved]
+    return dict(record, vertex_count=len(mapping), weights=weights)
 
 
 def _check(records):
@@ -109,9 +126,9 @@ def _check(records):
         transform = transforms.get(record["mesh"])
         if transform is None:
             continue
-        count = cmds.polyEvaluate(_shape(transform), vertex=True)
-        if count != record["vertex_count"]:
-            problems.append(f"{record['mesh']} has {count} vertices, the file has {record['vertex_count']}")
+        problem = data.count_problem(record, transform, record["mesh"])
+        if problem:
+            problems.append(problem)
     if problems:
         raise RuntimeError(f"Can't apply DeltaMush: {'; '.join(dict.fromkeys(problems))}")
 
@@ -152,6 +169,30 @@ def _rebuild(name, group, transforms):
     return node
 
 
+def _label(record):
+    return f"{record['name']} on {record['mesh']}"
+
+
+def _compare_record(old, new):
+    """What changed on one deltaMush's mesh, as lines without its name."""
+    lines = []
+    count = new["vertex_count"]
+    if old["vertex_count"] != count:
+        lines.append(f"vertex count {old['vertex_count']} → {count}, weights not compared")
+    else:
+        # Weights not saved are 1.0.
+        a, b = dict(map(tuple, old["weights"])), dict(map(tuple, new["weights"]))
+        deltas = [abs(a.get(v, 1.0) - b.get(v, 1.0)) for v in set(a) | set(b)]
+        deltas = [d for d in deltas if d]
+        if deltas:
+            vertices = data.plural(count, "vertex", "vertices")
+            lines.append(f"weights changed on {len(deltas)} of {vertices} (largest change {compare.num(max(deltas))})")
+    # points: rest positions saved for remapping after a topology change.
+    skip = ("name", "mesh", "vertex_count", "points", "weights")
+    lines.extend(compare.changes(*({k: v for k, v in r.items() if k not in skip} for r in (old, new))))
+    return lines
+
+
 class DeltaMushProduct(data.DataProduct):
     name = "DeltaMush"
     utility = "DeltaMush Tool"
@@ -186,6 +227,7 @@ class DeltaMushProduct(data.DataProduct):
         missing = data.skip_missing([r["mesh"] for r in records], "meshes")
         records = [r for r in records if r["mesh"] not in missing]
         transforms = _check(records)
+        records = [_remapped(r, transforms[r["mesh"]]) for r in records]
         created = []
         for name, group in _groups(records).items():
             created.append(_rebuild(name, group, transforms))
@@ -196,11 +238,21 @@ class DeltaMushProduct(data.DataProduct):
         noun = "deltaMush" if len(created) == 1 else "deltaMush nodes"
         return f"Created {noun} {', '.join(created)} on {meshes}"
 
+    def nodes(self, payload):
+        return [r["mesh"] for r in payload["deltamush"]]
+
     def describe(self, payload):
         records = payload["deltamush"]
         count = len(_groups(records))
         meshes = ", ".join(dict.fromkeys(r["mesh"] for r in records))
         return [f"{count} deltaMush node{'s' if count != 1 else ''}", f"Meshes: {meshes}"]
+
+    def compare(self, old, new):
+        added, removed, common = compare.match(old["deltamush"], new["deltamush"], _label)
+        lines = [f"Added: {name}" for name in added] + [f"Removed: {name}" for name in removed]
+        for name, a, b in common:
+            lines.extend(f"{name}: {line}" for line in _compare_record(a, b))
+        return compare.finish(lines)
 
 
 PRODUCT = DeltaMushProduct()

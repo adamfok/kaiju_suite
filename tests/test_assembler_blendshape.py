@@ -221,9 +221,64 @@ def test_missing_mesh_is_skipped_with_a_warning(new_scene, tmp_path):
     assert _blendshapes() == ["faceBS"]
 
 
+def _without_points(path):
+    """Rewrite ``path`` as an older file, saved before point positions were."""
+    payload = data.read(path, "blendshape")
+    for record in payload["blendshapes"]:
+        del record["points"]
+    data.write(path, "blendshape", payload)
+
+
+def test_file_holds_the_base_point_positions(new_scene, tmp_path):
+    base, node = _face_rig()
+    cmds.setAttr(f"{node}.envelope", 0)
+    rest = _points(base)
+    cmds.setAttr(f"{node}.envelope", 0.9)
+    path, _ = _publish(tmp_path, base)
+
+    (record,) = data.read(path, "blendshape")["blendshapes"]
+    assert len(record["points"]) == 25
+    for saved, point in zip(record["points"], rest):
+        assert saved == pytest.approx(point, abs=1e-4)
+
+
+def test_changed_topology_remaps_deltas_by_closest_point(new_scene, tmp_path):
+    # The 8x8 plane has a vertex at every vertex of the 4x4 one, plus new
+    # ones in between: those take the deltas of their closest old vertex.
+    base, node = _face_rig()
+    cmds.setAttr(f"{node}.envelope", 0)
+    old_rest = _points(base)
+    cmds.setAttr(f"{node}.envelope", 0.9)
+    before = _samples(base, node)
+    path, _ = _publish(tmp_path, base)
+
+    cmds.file(new=True, force=True)
+    face = cmds.polyPlane(name="face", subdivisionsX=8, subdivisionsY=8, constructionHistory=False)[0]
+    rest = _points(face)
+    with runlog.capture() as run:
+        blendshape.PRODUCT.run(path)
+
+    (warning,) = run.warnings
+    assert "face" in warning and "closest point" in warning and "25" in warning and "81" in warning
+    assert _blendshapes() == ["faceBS"]
+    assert cmds.listAttr("faceBS.weight", multi=True) == ["smile", "blink"]
+    after = _samples(face, "faceBS")
+    for new_index, point in enumerate(rest):
+        if point in old_rest:
+            old_index = old_rest.index(point)
+            for sample_before, sample_after in zip(before, after):
+                assert sample_after[new_index] == pytest.approx(sample_before[old_index], abs=1e-3)
+    # Per-vertex and base weights follow the vertices too.
+    old_12 = rest.index(old_rest[12])
+    assert cmds.getAttr(f"faceBS.inputTarget[0].baseWeights[{old_12}]") == pytest.approx(0.5)
+    old_3 = rest.index(old_rest[3])
+    assert cmds.getAttr(f"faceBS.inputTarget[0].inputTargetGroup[0].targetWeights[{old_3}]") == pytest.approx(0.25)
+
+
 def test_vertex_count_mismatch_raises_and_changes_nothing(new_scene, tmp_path):
     base, node = _face_rig()
     path, _ = _publish(tmp_path, base)
+    _without_points(path)
 
     cmds.file(new=True, force=True)
     face = cmds.polyPlane(name="face", subdivisionsX=2, subdivisionsY=2, constructionHistory=False)[0]

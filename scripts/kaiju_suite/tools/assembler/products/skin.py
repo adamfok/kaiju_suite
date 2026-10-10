@@ -10,8 +10,12 @@ influences aren't all there, is skipped with a warning. It checks every
 other mesh first (the vertex counts match) and raises before changing
 anything. Then, per mesh, it removes the mesh's existing skinCluster, binds
 exactly the file's influences under the saved name, and sets every weight
-in one ``MFnSkinCluster.setWeights`` call. Remapping weights onto a changed
-mesh is not supported: the vertex count must match.
+in one ``MFnSkinCluster.setWeights`` call.
+
+Publish also saves each mesh's rest point positions. If a mesh's vertex
+count changed since, Run gives each vertex the weights of the saved vertex
+closest to it and logs a warning. Files from before points were saved still
+need the same vertex count.
 
 ``setWeights`` isn't on Maya's undo queue. Undo still reverts a Run (removing
 the new skinCluster takes its weights with it), but redo rebinds with Maya's
@@ -22,7 +26,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
-from kaiju_suite.tools.assembler import data, runlog
+from kaiju_suite.tools.assembler import compare, data, runlog
 
 _WEIGHT_BLENDED = 2
 # Decimals kept for weights: well below what a skin can show, and it keeps
@@ -99,6 +103,7 @@ def _record(mesh):
         "skinCluster": cluster,
         "influences": influences,
         "vertex_count": count,
+        "points": data.saved_points(mesh),
     }
     record["skinningMethod"] = int(cmds.getAttr(f"{cluster}.skinningMethod"))
     record["normalizeWeights"] = int(cmds.getAttr(f"{cluster}.normalizeWeights"))
@@ -146,11 +151,24 @@ def _check(records):
         if not _shape(mesh):
             problems.append(f"{record['mesh']} has no mesh shape")
             continue
-        count = cmds.polyEvaluate(mesh, vertex=True)
-        if count != record["vertex_count"]:
-            problems.append(f"{record['mesh']} has {count} vertices, the file has {record['vertex_count']}")
+        problem = data.count_problem(record, mesh, record["mesh"])
+        if problem:
+            problems.append(problem)
     if problems:
         raise RuntimeError(f"Can't apply skin weights: {'; '.join(problems)}.")
+
+
+def _remapped(record):
+    """``record``, or a copy with its per-vertex data moved onto the mesh's
+    current vertices by closest point if the vertex count changed."""
+    mesh = _unique(record["mesh"], "mesh")
+    mapping = data.vertex_remap(record, mesh, record["mesh"], "skin weights")
+    if mapping is None:
+        return record
+    record = dict(record, vertex_count=len(mapping), weights=[record["weights"][m] for m in mapping])
+    if "blend_weights" in record:
+        record["blend_weights"] = [record["blend_weights"][m] for m in mapping]
+    return record
 
 
 def _apply_record(record):
@@ -192,6 +210,55 @@ def _apply_record(record):
     return cluster
 
 
+def _weights_by_name(record):
+    """Per vertex, ``{influence name: weight}``, so reordered influences compare equal."""
+    names = record["influences"]
+    return [{names[i]: w for i, w in row} for row in record["weights"]]
+
+
+def _changed_weights(old, new):
+    """How many vertices' weights differ between two records, and the largest difference."""
+    changed, largest = 0, 0.0
+    for a, b in zip(_weights_by_name(old), _weights_by_name(new)):
+        deltas = [abs(a.get(n, 0.0) - b.get(n, 0.0)) for n in set(a) | set(b)]
+        if any(deltas):
+            changed += 1
+            largest = max(largest, *deltas)
+    return changed, largest
+
+
+def _compare_record(old, new):
+    """What changed on one mesh's skin, as lines without the mesh name."""
+    lines = []
+    added = [n for n in new["influences"] if n not in old["influences"]]
+    removed = [n for n in old["influences"] if n not in new["influences"]]
+    if added:
+        lines.append(f"added influences {', '.join(added)}")
+    if removed:
+        lines.append(f"removed influences {', '.join(removed)}")
+    # points: rest positions saved for remapping after a topology change, not skin data.
+    skip = ("mesh", "influences", "vertex_count", "points", "weights", "blend_weights")
+    count = new["vertex_count"]
+    if old["vertex_count"] != count:
+        lines.append(f"vertex count {old['vertex_count']} → {count}, weights not compared")
+    else:
+        changed, largest = _changed_weights(old, new)
+        vertices = data.plural(count, "vertex", "vertices")
+        if changed:
+            lines.append(f"weights changed on {changed} of {vertices} (largest change {compare.num(largest)})")
+        if "blend_weights" in old and "blend_weights" in new:
+            changed, largest = compare.numeric_change(old["blend_weights"], new["blend_weights"])
+            if changed:
+                lines.append(
+                    f"blend weights changed on {changed} of {vertices} (largest change {compare.num(largest)})"
+                )
+        else:
+            skip = skip[:-1]  # turned on or off: the structural summary says so
+    rest = [{k: v for k, v in r.items() if k not in skip} for r in (old, new)]
+    lines.extend(compare.changes(*rest))
+    return lines
+
+
 class SkinProduct(data.DataProduct):
     name = "SkinCluster"
     utility = "SkinCluster Tool"
@@ -226,12 +293,15 @@ class SkinProduct(data.DataProduct):
         _check(records)
         clusters = []
         for record in records:
-            clusters.append(_apply_record(record))
+            clusters.append(_apply_record(_remapped(record)))
             runlog.info(
                 f"{record['mesh']}: bound {clusters[-1]} to {data.plural(len(record['influences']), 'influence')}"
             )
         message = f"Bound {data.plural(len(clusters), 'mesh', 'meshes')}"
         return f"{message}: {', '.join(clusters)}" if clusters else message
+
+    def nodes(self, payload):
+        return [r["mesh"] for r in payload["meshes"]]
 
     def describe(self, payload):
         records = payload["meshes"]
@@ -243,6 +313,17 @@ class SkinProduct(data.DataProduct):
                 f"{data.plural(r['vertex_count'], 'vertex', 'vertices')}"
             )
         return lines
+
+    def compare(self, old, new):
+        added, removed, common = compare.match(old["meshes"], new["meshes"], "mesh")
+        lines = []
+        if added:
+            lines.append(f"Added meshes: {', '.join(added)}")
+        if removed:
+            lines.append(f"Removed meshes: {', '.join(removed)}")
+        for name, a, b in common:
+            lines.extend(f"{name}: {line}" for line in _compare_record(a, b))
+        return compare.finish(lines)
 
 
 PRODUCT = SkinProduct()
