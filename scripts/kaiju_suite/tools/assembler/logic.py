@@ -310,9 +310,9 @@ def paste_paths(paths, directory, index):
 
     Works like :func:`place` but leaves the originals alone. A copy whose
     name is taken gets ``_copy`` (then ``_copy2``, ...) before its extension.
-    Copies keep their disabled state, and a copied folder keeps its contents'
-    order, disabled states and versions; a copied file starts with no versions. Everything is checked before anything is
-    copied. Returns the new paths.
+    Copies keep their disabled state and versions, and a copied folder keeps
+    its contents' order, disabled states and versions. Everything is checked
+    before anything is copied. Returns the new paths.
     """
     directory = os.path.normpath(directory)
     srcs = _top_level(paths)
@@ -338,6 +338,7 @@ def paste_paths(paths, directory, index):
             shutil.copytree(src, new)
         else:
             shutil.copy2(src, new)
+        versions.copy_history(src, new)
         if not is_enabled(src):
             set_enabled(new, False)
         new_paths.append(new)

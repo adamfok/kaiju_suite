@@ -242,6 +242,14 @@ def test_restore_adds_no_version(two_versions):
     assert _numbers(os.path.join(two_versions, "a.py")) == [2, 1]
 
 
+def test_publishing_an_older_folder_version_saves_it_as_the_latest(two_versions):
+    versions.restore_version(two_versions, 1)
+    assert versions.publish(two_versions) == "Published Folder rig v003"
+    assert _numbers(two_versions) == [3, 2, 1]
+    assert versions.tree_label(two_versions) == ("v003", True)
+    assert "already published as v003" in versions.publish(two_versions)
+
+
 def _names(folder):
     return [e.name for e in logic.scan(folder)]
 
@@ -412,6 +420,26 @@ def test_folder_history_follows_a_move(two_versions, tmp_path):
     os.makedirs(tmp_path / "chars")
     (new,) = logic.place([two_versions], str(tmp_path / "chars"), None)
     assert versions.tree_label(new) == ("v002", True)
+
+
+def test_pasted_folder_keeps_its_own_history(two_versions):
+    versions.restore_version(two_versions, 1)
+    (copy,) = logic.paste_paths([two_versions], os.path.dirname(two_versions), None)
+    assert os.path.basename(copy) == "rig_copy"
+    assert _numbers(copy) == [2, 1]
+    assert versions.tree_label(copy) == ("v001", False)
+    assert versions.tree_label(os.path.join(copy, "a.py")) == ("v001", False)
+
+
+def test_pasted_folder_can_switch_to_its_other_versions(two_versions):
+    versions.restore_version(two_versions, 1)
+    (copy,) = logic.paste_paths([two_versions], os.path.dirname(two_versions), None)
+
+    assert versions.restore_version(copy, 2) == "Restored rig_copy to v002"
+    assert _read(os.path.join(copy, "a.py")) == "a = 2\n"
+    assert _read(os.path.join(copy, "sub", "b.py")) == "b = 2\n"
+    assert versions.tree_label(copy) == ("v002", True)
+    assert _read(os.path.join(two_versions, "a.py")) == "a = 1\n"  # the original stays
 
 
 def test_deleting_a_folder_deletes_its_history(two_versions):
