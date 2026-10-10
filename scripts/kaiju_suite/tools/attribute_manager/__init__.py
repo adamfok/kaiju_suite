@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "Attribute Manager",
-    "category": "Utilities",
+    "category": "Rigging",
     "launch": show,
-    "description": "Utilities for Assembler Attributes items.",
+    "description": "Add, rename, reorder, lock/hide and delete custom attributes on many nodes at once.",
 }

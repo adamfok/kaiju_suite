@@ -40,11 +40,15 @@ def test_there_is_no_scene_tool():
     assert registry.find("Scene Tool") is None
 
 
+# Full tools that double as a product's utility keep their own menu category.
+ELSEWHERE = {"Attribute Manager": "Rigging"}
+
+
 def test_utilities_sit_under_the_utilities_menu():
     found = {tool["name"]: tool for tool in registry.discover()}
 
     for name in UTILITIES.values():
-        assert found[name].get("category") == "Utilities", name
+        assert found[name].get("category") == ELSEWHERE.get(name, "Utilities"), name
 
 
 def test_discovering_utilities_does_not_load_their_windows():
