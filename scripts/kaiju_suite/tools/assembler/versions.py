@@ -19,6 +19,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 
+from kaiju_suite.tools.assembler import compare
 from kaiju_suite.tools.assembler.products import Action, Panel, Product, product_for
 
 HISTORY_DIR = ".versions"
@@ -497,22 +498,41 @@ def compare_menu(path, limit=MENU_LIMIT):
 
 
 def compare_panel(path, number):
-    """A :class:`Panel` saying what changed from version ``number`` to
-    ``path`` as it is now; the first line names the two."""
+    """A :class:`Panel` comparing version ``number`` (left) with ``path`` as
+    it is now (right), side by side."""
     version = next((v for v in list_versions(path) if v.number == number), None)
     if version is None:
         raise FileNotFoundError(f"{os.path.basename(path)} has no version {number}")
+    if os.path.getsize(path) == 0:
+        return Panel(["The current file is empty."], [])
     current = current_version(path)
-    empty = os.path.getsize(path) == 0
-    if current is not None:
-        now = f"current ({current.tag})"
-    else:
-        now = "current (empty)" if empty else "current (not published)"
+    now = current.tag if current is not None else "not published"
+    return _compare_result(_describe(path, version), f"Current file ({now})", product_for(path), version.path, path)
+
+
+def can_compare_items(paths):
+    """Whether right-click Compare shows for the selected ``paths``: exactly
+    two files of one product that can compare (see :func:`can_compare`)."""
+    if len(paths) != 2 or not all(can_compare(p) for p in paths):
+        return False
+    first, second = (product_for(p) for p in paths)
+    return first is second
+
+
+def compare_items_panel(old_path, new_path):
+    """A :class:`Panel` comparing item ``old_path`` (left) with item
+    ``new_path`` (right), laid out like :func:`compare_panel`."""
+    empty = [os.path.basename(p) for p in (old_path, new_path) if os.path.getsize(p) == 0]
     if empty:
-        lines = ["The current file is empty."]
-    else:
-        try:
-            lines = product_for(path).compare_files(version.path, path)
-        except (OSError, ValueError) as e:
-            lines = [f"Can't compare: {e}"]
-    return Panel([f"{version.tag} → {now}", *lines], [])
+        return Panel([f"{name} is empty." for name in empty], [])
+    titles = (os.path.basename(p) for p in (old_path, new_path))
+    return _compare_result(*titles, product_for(new_path), old_path, new_path)
+
+
+def _compare_result(old_title, new_title, product, old_path, new_path):
+    try:
+        rows = product.compare_files(old_path, new_path)
+    except (OSError, ValueError) as e:
+        return Panel([f"Can't compare: {e}"], [])
+    info = [] if compare.has_changes(rows) else [compare.NO_CHANGES]
+    return Panel(info, [], diff=compare.Diff(old_title, new_title, rows))

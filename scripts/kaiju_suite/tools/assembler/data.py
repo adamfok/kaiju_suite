@@ -22,7 +22,7 @@ from kaiju_suite.core import matching
 from kaiju_suite.core.datafile import FORMAT, DataFormatError, read, write  # noqa: F401 (re-exported)
 from kaiju_suite.core.nodes import unique_name  # noqa: F401 (re-exported)
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.assembler import compare as compare_payloads
+from kaiju_suite.tools.assembler import compare
 from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, is_empty, new_path
 
@@ -275,22 +275,21 @@ class DataProduct(Product):
         if not self.can_update or is_empty(path):
             return []
         return [Action("Update from Scene", lambda: self.update_from_scene(path))]
-    def compare(self, old, new):
-        """What changed from payload ``old`` to ``new``, as lines for the
-        Compare With window. A structural summary of the JSON unless
-        overridden (see :mod:`.compare`)."""
-        return compare_payloads.structural(old, new)
+    def compare_view(self, payload):
+        """``payload`` as the side-by-side compare window shows it. As saved
+        unless overridden, e.g. to key weights by influence name so the same
+        weights in another order compare equal."""
+        return payload
 
     # -- Product -------------------------------------------------------------
 
     def compare_files(self, old_path, new_path):
-        old, new = read(old_path, self.kind), read(new_path, self.kind)
+        payloads = read(old_path, self.kind), read(new_path, self.kind)
         try:
-            return self.compare(old, new)
-        except (KeyError, TypeError, ValueError, AttributeError):
-            # A payload the product's own summary doesn't expect (e.g. an
-            # older format): fall back to the structural one.
-            return compare_payloads.structural(old, new)
+            payloads = [self.compare_view(p) for p in payloads]
+        except (KeyError, TypeError, ValueError, AttributeError, IndexError):
+            pass  # a payload the product doesn't expect (e.g. an older format): show it as saved
+        return compare.tree(*payloads)
 
     def create(self, directory, name, ext=None):
         """New ▸ <name>: an empty entry that a build skips until published into."""
