@@ -9,5 +9,5 @@ TOOL = {
     "name": "Animation Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler Animation items.",
+    "description": "Mirror and flip animation across sides.",
 }

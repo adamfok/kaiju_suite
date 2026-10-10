@@ -9,5 +9,5 @@ TOOL = {
     "name": "BlendShape Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler BlendShapes items.",
+    "description": "Sculpt corrective shapes on skinned meshes, drive them with pose readers, and manage targets.",
 }

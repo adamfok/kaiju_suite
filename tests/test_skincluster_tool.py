@@ -210,3 +210,183 @@ def test_clean_up_and_mirror_are_one_undo_step_each(new_scene):
 
         assert _all_weights(src) == before
         assert len(cmds.skinCluster(cluster, query=True, influence=True)) == 3
+
+
+# -- skin weights -----------------------------------------------------------
+
+
+def _three_joint_plane():
+    """A 2x1-face plane (6 vertices) on joints ``a``, ``b`` and ``c``.
+    Vertices 0-2 are at x = -1, 0, 1 (z = 1); vertices 3-5 behind them (z = -1)."""
+    joints = [_joint(name, x) for name, x in (("a", -1), ("b", 0), ("c", 1))]
+    plane = _plane("body", sx=2)
+    cluster = cmds.skinCluster(*joints, plane, toSelectedBones=True, maximumInfluences=3, obeyMaxInfluences=False)[0]
+    for v in range(6):
+        cmds.skinPercent(cluster, f"{plane}.vtx[{v}]", transformValue=[("a", 1.0)])
+    return plane, cluster
+
+
+def test_limit_influences_keeps_the_largest_and_renormalizes(new_scene):
+    plane, cluster = _three_joint_plane()
+    cmds.skinPercent(cluster, f"{plane}.vtx[0]", transformValue=[("a", 0.5), ("b", 0.3), ("c", 0.2)])
+    cmds.skinPercent(cluster, f"{plane}.vtx[1]", transformValue=[("a", 0.6), ("b", 0.4)])
+
+    logic.limit_influences([plane], 2)
+
+    assert _weights(plane, 0) == {"a": 0.625, "b": 0.375}
+    assert _weights(plane, 1) == {"a": 0.6, "b": 0.4}
+    assert _weights(plane, 2) == {"a": 1.0}
+
+
+def test_limit_influences_needs_at_least_one(new_scene):
+    plane, _ = _three_joint_plane()
+
+    with pytest.raises(ValueError):
+        logic.limit_influences([plane], 0)
+
+
+def test_normalize_makes_each_vertex_sum_to_one(new_scene):
+    plane, cluster = _three_joint_plane()
+    cmds.setAttr(f"{cluster}.normalizeWeights", 0)
+    cmds.skinPercent(cluster, f"{plane}.vtx[0]", transformValue=[("a", 0.2), ("b", 0.2)], normalize=False)
+    assert sum(_weights(plane, 0).values()) == pytest.approx(0.4)
+
+    logic.normalize([plane])
+
+    assert _weights(plane, 0) == {"a": 0.5, "b": 0.5}
+    assert _weights(plane, 1) == {"a": 1.0}
+
+
+def test_normalize_is_one_undo_step(new_scene):
+    cmds.undoInfo(state=True)
+    plane, cluster = _three_joint_plane()
+    cmds.setAttr(f"{cluster}.normalizeWeights", 0)
+    cmds.skinPercent(cluster, f"{plane}.vtx[0]", transformValue=[("a", 0.2), ("b", 0.2)], normalize=False)
+    before = _all_weights(plane)
+
+    logic.normalize([plane])
+    cmds.undo()
+
+    assert _all_weights(plane) == before
+
+
+def test_hammer_averages_each_vertex_from_its_neighbors(new_scene):
+    plane, cluster = _three_joint_plane()
+    # Vertex 1's neighbors are 0, 2 and 4.
+    cmds.skinPercent(cluster, f"{plane}.vtx[2]", transformValue=[("c", 1.0)])
+    cmds.skinPercent(cluster, f"{plane}.vtx[4]", transformValue=[("b", 1.0)])
+    cmds.skinPercent(cluster, f"{plane}.vtx[1]", transformValue=[("c", 1.0)])
+
+    logic.hammer([f"{plane}.vtx[1]"])
+
+    assert _weights(plane, 1) == {"a": 0.3333, "b": 0.3333, "c": 0.3333}
+    assert _weights(plane, 2) == {"c": 1.0}
+
+
+def test_hammer_needs_vertices(new_scene):
+    plane, _ = _three_joint_plane()
+
+    with pytest.raises(ValueError):
+        logic.hammer([plane])
+
+
+def test_copy_and_paste_a_vertex_weights(new_scene):
+    plane, cluster = _three_joint_plane()
+    cmds.skinPercent(cluster, f"{plane}.vtx[0]", transformValue=[("b", 0.7), ("c", 0.3)])
+
+    copied = logic.copy_vertex_weights(f"{plane}.vtx[0]")
+    logic.paste_vertex_weights(copied, [f"{plane}.vtx[3:4]", f"{plane}.e[2]"])
+
+    assert {k: round(w, 4) for k, w in copied.items()} == {"b": 0.7, "c": 0.3}
+    # Edge 2 runs between vertices 1 and 2.
+    for v in (1, 2, 3, 4):
+        assert _weights(plane, v) == {"b": 0.7, "c": 0.3}
+    assert _weights(plane, 5) == {"a": 1.0}
+
+
+def test_copy_vertex_weights_needs_one_vertex(new_scene):
+    plane, _ = _three_joint_plane()
+
+    with pytest.raises(ValueError):
+        logic.copy_vertex_weights(f"{plane}.vtx[0:1]")
+
+
+def test_paste_needs_the_influences_on_the_target(new_scene):
+    plane, cluster = _three_joint_plane()
+    cmds.skinPercent(cluster, f"{plane}.vtx[0]", transformValue=[("c", 1.0)])
+    copied = logic.copy_vertex_weights(f"{plane}.vtx[0]")
+    other = _plane("other", x=5)
+    cmds.skinCluster("a", "b", other, toSelectedBones=True)
+
+    with pytest.raises(ValueError) as info:
+        logic.paste_vertex_weights(copied, [f"{other}.vtx[0]"])
+
+    assert "c" in str(info.value)
+
+
+def test_add_influences(new_scene):
+    plane, cluster = _skinned_source()
+    extra = _joint("extra", 0)
+    before = _all_weights(plane)
+
+    added = logic.add_influences(plane, [extra, "left"])
+
+    assert added == ["extra"]
+    assert sorted(cmds.skinCluster(cluster, query=True, influence=True)) == ["extra", "left", "right"]
+    assert _all_weights(plane) == before
+
+
+def test_add_influences_needs_joints(new_scene):
+    plane, _ = _skinned_source()
+
+    with pytest.raises(ValueError):
+        logic.add_influences(plane, [])
+
+
+def test_remove_influences_keeps_weights_normalized(new_scene):
+    plane, cluster = _three_joint_plane()
+    cmds.skinPercent(cluster, f"{plane}.vtx[0]", transformValue=[("a", 0.5), ("b", 0.3), ("c", 0.2)])
+    cmds.skinPercent(cluster, f"{plane}.vtx[2]", transformValue=[("c", 1.0)])
+
+    removed = logic.remove_influences(plane, ["c"])
+
+    assert removed == ["c"]
+    assert sorted(cmds.skinCluster(cluster, query=True, influence=True)) == ["a", "b"]
+    assert _weights(plane, 0) == {"a": 0.625, "b": 0.375}
+    # Vertex 2 (x = 1) was only on c: it goes to the closest joint left, b (x = 0).
+    assert _weights(plane, 2) == {"b": 1.0}
+    for weights in _all_weights(plane):
+        assert sum(weights.values()) == pytest.approx(1.0, abs=1e-3)
+
+
+def test_remove_influences_cant_remove_them_all(new_scene):
+    plane, cluster = _skinned_source()
+
+    with pytest.raises(ValueError):
+        logic.remove_influences(plane, ["left", "right"])
+
+    assert len(cmds.skinCluster(cluster, query=True, influence=True)) == 2
+
+
+def test_skin_weight_edits_are_one_undo_step_each(new_scene):
+    cmds.undoInfo(state=True)
+    plane, cluster = _three_joint_plane()
+    cmds.skinPercent(cluster, f"{plane}.vtx[0]", transformValue=[("a", 0.5), ("b", 0.3), ("c", 0.2)])
+    cmds.skinPercent(cluster, f"{plane}.vtx[2]", transformValue=[("c", 1.0)])
+    extra = _joint("extra", 0)
+    before = _all_weights(plane)
+    copied = logic.copy_vertex_weights(f"{plane}.vtx[0]")
+
+    edits = (
+        lambda: logic.limit_influences([plane], 1),
+        lambda: logic.hammer([f"{plane}.vtx[1]", f"{plane}.vtx[2]"]),
+        lambda: logic.paste_vertex_weights(copied, [f"{plane}.vtx[5]"]),
+        lambda: logic.add_influences(plane, [extra]),
+        lambda: logic.remove_influences(plane, ["c"]),
+    )
+    for edit in edits:
+        edit()
+        cmds.undo()
+
+        assert _all_weights(plane) == before
+        assert sorted(cmds.skinCluster(cluster, query=True, influence=True)) == ["a", "b", "c"]
