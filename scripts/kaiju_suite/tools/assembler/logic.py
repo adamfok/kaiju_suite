@@ -305,6 +305,17 @@ def place(paths, directory, index):
     return new_paths
 
 
+def create_item(creator, directory, name, ext, index=None):
+    """Create a new item in ``directory`` with a product's ``creator`` and put
+    it at ``index``, a position in the folder's order before the item exists
+    (as in :func:`place`); ``None`` leaves it where new items go. Returns its path."""
+    current = _ordered_names(directory)
+    path = creator.fn(directory, name, ext)
+    if index is not None:
+        _insert_order(directory, current, [os.path.basename(path)], _anchor(current, index, set()))
+    return path
+
+
 def paste_paths(paths, directory, index):
     """Copy ``paths`` into ``directory`` and put the copies at ``index``.
 

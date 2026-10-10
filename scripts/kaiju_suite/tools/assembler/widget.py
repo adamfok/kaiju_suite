@@ -718,6 +718,9 @@ class AssemblerWindow(ToolWindow):
             self._add_versions_menu(menu.addMenu("Versions"), path)
         menu.addSeparator()
 
+        for owner, creator in products.top_menu():
+            label = f"New {creator.label}".replace("&", "&&")
+            menu.addAction(label, lambda o=owner, c=creator: self._create(o, c, item))
         new_menu = menu.addMenu("New")
         for entry in products.new_menu():
             if entry is None:
@@ -726,7 +729,7 @@ class AssemblerWindow(ToolWindow):
                 owner, creator = entry
                 # "&&" keeps Qt from reading the "&" in "Sets & Layers" as a shortcut key.
                 label = creator.label.replace("&", "&&")
-                new_menu.addAction(label, lambda o=owner, c=creator: self._create(o, c, directory))
+                new_menu.addAction(label, lambda o=owner, c=creator: self._create(o, c, item))
 
         menu.addSeparator()
         if self.selected_paths():
@@ -891,11 +894,16 @@ class AssemblerWindow(ToolWindow):
         self.populate()
         _notify(f"Imported {len(created)} item{'s' if len(created) != 1 else ''} from {os.path.basename(source)}")
 
-    def _create(self, product, creator, directory):
+    def _create(self, product, creator, item):
+        """Create into the folder ``item`` is, or below the file ``item`` is,
+        as Paste does."""
         title = f"New {creator.label}"
+        directory, index = self._drop_target(item)
+        if not directory or not os.path.isdir(directory):
+            return
 
         def create(name, ext):
-            path = creator.fn(directory, name, ext)
+            path = logic.create_item(creator, directory, name, ext, index)
             self.populate()
             if creator.open_after:
                 self._do(lambda: product.open(path))
@@ -923,15 +931,7 @@ class AssemblerWindow(ToolWindow):
         at the end of the snippets folder when ``item`` is ``None``."""
         if not self._clipboard:
             return
-        target = item.data(0, PATH_ROLE) if item else None
-        if target and os.path.isdir(target):
-            directory, index = target, None
-        elif target:
-            parent = item.parent()
-            directory = parent.data(0, PATH_ROLE) if parent else self.root_dir()
-            index = (parent or self.tree.invisibleRootItem()).indexOfChild(item) + 1
-        else:
-            directory, index = self.root_dir(), None
+        directory, index = self._drop_target(item)
         if not directory or not os.path.isdir(directory):
             return
         try:
@@ -942,6 +942,19 @@ class AssemblerWindow(ToolWindow):
         finally:
             self.populate()
         _notify(f"Pasted {os.path.basename(new[0])}" if len(new) == 1 else f"Pasted {len(new)} items")
+
+    def _drop_target(self, item):
+        """``(directory, index)`` for new items: inside the folder ``item`` is,
+        at its end; just below the file ``item`` is; at the end of the snippets
+        folder when ``item`` is ``None``."""
+        target = item.data(0, PATH_ROLE) if item else None
+        if target and os.path.isdir(target):
+            return target, None
+        if target:
+            parent = item.parent()
+            directory = parent.data(0, PATH_ROLE) if parent else self.root_dir()
+            return directory, (parent or self.tree.invisibleRootItem()).indexOfChild(item) + 1
+        return self.root_dir(), None
 
     def _rename(self, path):
         current = os.path.basename(path)
