@@ -51,6 +51,9 @@ After **Run All**, a Build Report window lists each step's status (OK / Warning 
 
 Nothing else needs registering. See `products/scene.py` for a working example.
 
+### Storing file paths (portable paths)
+A product that points to a file outside itself should store the path with `core/paths.py`, so the build folder still works when it's moved or opened on another machine. `paths.to_portable(path, root)` gives the text to store: relative to `root` (forward slashes) when the file is under it, else `$ASSET/...` when it's under the folder in the `ASSET` environment variable (pass `variables=` for others), else absolute; text that already starts with a variable is kept. `paths.resolve(stored, root)` turns that text back into a path: it expands variables and `~`, and joins relative text to `root`; absolute text, including entries written before this, is used as it is. Scene does this with `root` set to its **build folder**, the folder holding the `.scene` file (`scene.build_root(path)`): `scene.stored(path)` is the saved text and `scene.target(path)` the file it resolves to. Build plans export the stored text. The upcoming Output product should use the same helper the same way. Moving a Scene item into a different folder of the tree changes its build folder, so a relative path then points somewhere else: publish it again.
+
 ### Rig-data products (`DataProduct`)
 Products that save rig data from the scene and apply it back (Joints, Mesh, SkinCluster, DeltaMush, BlendShapes, Material, Pose, Animation, ControlShape) subclass `DataProduct` from `tools/assembler/data.py` instead of `Product`. Their files are JSON with a header, `{"kaiju": <kind>, "format": 1, "data": <payload>}`, which `data.read(path, kind)` checks and `data.write(path, kind, payload)` writes (deterministically, so publishing unchanged content adds no version).
 1. Set `name`, `kind` (the header's `kaiju` value), `extension` (one, lower case, with the dot) and `order`.

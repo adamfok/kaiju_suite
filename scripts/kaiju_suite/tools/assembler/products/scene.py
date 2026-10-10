@@ -5,6 +5,12 @@ Maya file itself stays where it is. Right-click Publish opens a file
 browser and saves the picked file as the entry's next version, so
 Versions can point it back to an earlier file. Double-clicking a scene,
 or right-click Info, shows the path.
+
+The path is stored portably (see :mod:`kaiju_suite.core.paths`):
+relative to the entry's build folder (the folder holding the ``.scene``
+file) when the Maya file is inside it, else as ``$ASSET/...`` when it's
+under the ``ASSET`` environment variable's folder, else absolute.
+Entries written before that hold absolute paths, which still work.
 """
 
 import json
@@ -12,6 +18,7 @@ import os
 
 from maya import cmds
 
+from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.assembler import versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, ext_of, is_empty, new_path
@@ -47,8 +54,22 @@ def create_scene(directory, name):
     return path
 
 
+def build_root(path):
+    """The build folder that relative paths in the entry at ``path`` are
+    relative to: the folder holding the entry."""
+    return os.path.dirname(os.path.abspath(path))
+
+
 def target(path):
-    """The Maya file the entry at ``path`` points to, or ``None`` if it's empty."""
+    """The Maya file the entry at ``path`` points to, as an absolute path
+    (unless it uses a variable that isn't set), or ``None`` if it's empty."""
+    text = stored(path)
+    return None if text is None else paths.resolve(text, build_root(path))
+
+
+def stored(path):
+    """The path text as saved in the entry at ``path`` (maybe relative or
+    with a variable), or ``None`` if it's empty."""
     if is_empty(path):
         return None
     with open(path, encoding="utf-8") as f:
@@ -66,15 +87,16 @@ def point_to(path, maya_file):
     version. Returns a message, e.g. ``Published Scene hero.scene v002``."""
     if ext_of(maya_file) not in MAYA_EXTENSIONS:
         raise ValueError(f"Not a Maya scene: {os.path.basename(maya_file)}")
-    if not os.path.isfile(maya_file):
+    root = build_root(path)
+    if not os.path.isfile(paths.resolve(maya_file, root)):
         raise FileNotFoundError(f"File not found: {maya_file}")
-    maya_file = os.path.abspath(maya_file).replace("\\", "/")
+    text = paths.to_portable(maya_file, root)
 
-    return versions.export_into(path, lambda entry: _write_entry(entry, maya_file))
+    return versions.export_into(path, lambda entry: _write_entry(entry, text))
 
 
 def _write_entry(entry, maya_file):
-    """Write the entry at ``entry`` pointing to ``maya_file``."""
+    """Write the entry at ``entry`` pointing to ``maya_file``, stored as given."""
     with open(entry, "w", encoding="utf-8") as f:
         json.dump({"path": maya_file}, f, indent=2)
 
@@ -128,7 +150,9 @@ class SceneProduct(Product):
         if maya_file is None:
             return
         if not os.path.isfile(maya_file):
-            raise FileNotFoundError(f"{os.path.basename(path)} points to a file that doesn't exist: {maya_file}")
+            text = stored(path)
+            shown = maya_file if text == maya_file else f"{text} ({maya_file})"
+            raise FileNotFoundError(f"{os.path.basename(path)} points to a file that doesn't exist: {shown}")
         import_scene(maya_file)
 
     def publish(self, path):
@@ -136,8 +160,10 @@ class SceneProduct(Product):
         return Action("Publish", lambda: publish_from_browser(path))
 
     def to_plan(self, path):
-        maya_file = target(path)
-        return {} if maya_file is None else {"path": maya_file}
+        # The stored text, so a relative path stays relative to the folder
+        # the plan is imported into.
+        text = stored(path)
+        return {} if text is None else {"path": text}
 
     def plan_problems(self, item):
         if "path" in item and not isinstance(item["path"], str):
@@ -158,6 +184,9 @@ class SceneProduct(Product):
         if maya_file is None:
             return Panel(["Not published yet: points to no file."], [])
         info = [f"Points to: {maya_file}", versions.summary(path)]
+        text = stored(path)
+        if text != maya_file:
+            info.insert(1, f"Stored as: {text}")
         if not os.path.isfile(maya_file):
             info.insert(1, "File not found: a build will stop here.")
         return Panel(info, [])
