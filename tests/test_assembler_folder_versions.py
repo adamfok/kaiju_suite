@@ -1,4 +1,5 @@
-"""Folder versions: a published folder records the version of every item in it."""
+"""Folder versions: a published folder records a build plan of what's in it,
+with the version every item was at, and restoring one rebuilds the folder."""
 
 import json
 import os
@@ -48,13 +49,28 @@ def test_folders_are_versioned():
     assert folder.PRODUCT.versioned
 
 
-def test_publish_saves_the_version_of_every_child(rig):
+def test_publish_saves_a_build_plan_with_every_childs_version(rig):
     version = versions.save_version(rig)
     assert version.number == 1
     assert os.path.dirname(version.path) == versions.history_dir(rig)
     with open(version.path, encoding="utf-8") as f:
         record = json.load(f)
-    assert record["items"] == {"a.py": 1, "sub": None, "sub/b.py": 1}
+    assert record["plan"] == {
+        "items": [
+            {"name": "sub", "items": [{"name": "b.py", "content": "b = 1\n", "version": 1}]},
+            {"name": "a.py", "content": "a = 1\n", "version": 1},
+        ]
+    }
+
+
+def test_the_saved_plan_records_order_and_disabled_items(rig):
+    logic.append_to_order(rig, ["sub"])  # a.py first now
+    logic.set_enabled(os.path.join(rig, "a.py"), False)
+    version = versions.save_version(rig)
+    with open(version.path, encoding="utf-8") as f:
+        items = json.load(f)["plan"]["items"]
+    assert [i["name"] for i in items] == ["a.py", "sub"]
+    assert items[0]["enabled"] is False
 
 
 def test_publish_message_names_the_folder(rig):
@@ -135,6 +151,50 @@ def test_unpublished_edits_in_a_child_star_the_folder(rig):
     assert versions.menu_status(rig) == "Has changes not published yet"
 
 
+def test_reordering_children_stars_the_folder(rig):
+    versions.save_version(rig)
+    logic.append_to_order(rig, ["sub"])
+    assert versions.tree_label(rig) == ("v001*", True)
+
+
+def test_disabling_a_child_stars_the_folder(rig):
+    versions.save_version(rig)
+    logic.set_enabled(os.path.join(rig, "a.py"), False)
+    assert versions.tree_label(rig) == ("v001*", True)
+
+
+def test_an_unreadable_record_is_never_current(rig):
+    version = versions.save_version(rig)
+    _write(version.path, "not json")
+    assert versions.current_version(rig) is None
+    assert versions.tree_label(rig) == ("v001*", True)
+
+
+def test_a_folder_stays_on_its_version_instead_of_jumping_to_a_matching_one(rig):
+    child = os.path.join(rig, "sub")
+    versions.save_version(child)  # child v001
+    versions.save_version(rig)  # rig v001
+    _published(os.path.join(child, "b.py"), "b = 2\n")
+    versions.save_version(child)  # child v002
+    versions.save_version(rig)  # rig v002
+    versions.restore_version(child, 1)
+    # Everything under rig matches its v001 again, but it was on v002.
+    assert versions.tree_label(rig) == ("v002*", True)
+    assert versions.menu_status(rig) == "Has changes not published yet"
+    versions.restore_version(child, 2)
+    assert versions.tree_label(rig) == ("v002", True)
+
+
+def test_publishing_a_folder_that_matches_an_older_version_saves_a_copy(two_versions):
+    rig = two_versions
+    versions.restore_version(os.path.join(rig, "a.py"), 1)
+    versions.restore_version(os.path.join(rig, "sub", "b.py"), 1)
+    assert versions.tree_label(rig) == ("v002*", True)
+    assert versions.publish(rig) == "Published Folder rig v003"
+    assert _numbers(rig) == [3, 2, 1]
+    assert versions.tree_label(rig) == ("v003", True)
+
+
 def test_undoing_the_change_clears_the_star(rig):
     versions.save_version(rig)
     later = _write(os.path.join(rig, "later.py"), "")
@@ -182,21 +242,118 @@ def test_restore_adds_no_version(two_versions):
     assert _numbers(os.path.join(two_versions, "a.py")) == [2, 1]
 
 
-def test_restore_leaves_children_added_since_alone(two_versions):
-    rig = two_versions
-    later = _write(os.path.join(rig, "later.py"), "x = 1\n")
-    message = versions.restore_version(rig, 1)
-    assert _read(later) == "x = 1\n"
-    assert "later.py" in message
-    assert versions.tree_label(rig) == ("v001*", False)
+def _names(folder):
+    return [e.name for e in logic.scan(folder)]
 
 
-def test_restore_reports_children_deleted_since(two_versions):
+def test_restore_removes_children_added_since_and_brings_them_back(two_versions):
     rig = two_versions
-    logic.delete_path(os.path.join(rig, "sub", "b.py"))
+    _published(os.path.join(rig, "later.py"), "x = 1\n")
+    versions.save_version(rig)  # v003 has later.py
     message = versions.restore_version(rig, 1)
-    assert _read(os.path.join(rig, "a.py")) == "a = 1\n"
+    assert _names(rig) == ["sub", "a.py"]
+    assert versions.tree_label(rig) == ("v001", False)
+    assert "Restored rig to v001" in message
+    # Version up again: later.py comes back from its kept history.
+    versions.restore_version(rig, 3)
+    assert _names(rig) == ["sub", "a.py", "later.py"]
+    assert _read(os.path.join(rig, "later.py")) == "x = 1\n"
+    assert versions.tree_label(os.path.join(rig, "later.py")) == ("v001", True)
+    assert versions.tree_label(rig) == ("v003", True)
+
+
+def test_restore_brings_back_children_deleted_since(two_versions):
+    rig = two_versions
+    logic.delete_path(os.path.join(rig, "sub", "b.py"))  # deletes its history too
+    message = versions.restore_version(rig, 2)
+    # Its plan content brings it back, though not its versions.
+    assert _read(os.path.join(rig, "sub", "b.py")) == "b = 2\n"
     assert "sub/b.py" in message
+
+
+def test_restore_creates_deleted_data_items_empty_and_says_so(rig):
+    _published(os.path.join(rig, "body.mesh"), "mesh data")
+    versions.save_version(rig)
+    logic.delete_path(os.path.join(rig, "body.mesh"))
+    message = versions.restore_version(rig, 1)
+    assert _read(os.path.join(rig, "body.mesh")) == ""
+    assert "body.mesh" in message
+
+
+def test_restore_switches_between_versions_with_different_subfolders(tmp_path):
+    root = str(tmp_path / "rig")
+    _published(os.path.join(root, "a.py"), "a = 1\n")
+    _published(os.path.join(root, "arms", "L.py"), "l = 1\n")
+    _published(os.path.join(root, "arms", "L.py"), "l = 2\n")
+    versions.save_version(root)  # v001: a.py, arms/L.py v2
+    logic.delete_path(os.path.join(root, "arms"))
+    _published(os.path.join(root, "legs", "R.py"), "r = 1\n")
+    versions.save_version(root)  # v002: a.py, legs/R.py
+
+    versions.restore_version(root, 1)
+    assert _names(root) == ["arms", "a.py"]
+    assert _read(os.path.join(root, "arms", "L.py")) == "l = 2\n"
+
+    versions.restore_version(root, 2)
+    assert _names(root) == ["legs", "a.py"]
+    assert _read(os.path.join(root, "legs", "R.py")) == "r = 1\n"
+    assert versions.tree_label(os.path.join(root, "legs", "R.py")) == ("v001", True)
+
+
+def test_a_removed_subfolder_keeps_its_items_histories(tmp_path):
+    root = str(tmp_path / "rig")
+    _published(os.path.join(root, "a.py"), "a = 1\n")
+    versions.save_version(root)  # v001 has no arms
+    _published(os.path.join(root, "arms", "L.py"), "l = 1\n")
+    _published(os.path.join(root, "arms", "L.py"), "l = 2\n")
+    versions.save_version(root)  # v002 has
+    versions.restore_version(root, 1)
+    assert not os.path.exists(os.path.join(root, "arms"))
+    versions.restore_version(root, 2)
+    assert _numbers(os.path.join(root, "arms", "L.py")) == [2, 1]
+    assert _read(os.path.join(root, "arms", "L.py")) == "l = 2\n"
+
+
+def test_restore_undoes_a_rename(rig):
+    versions.save_version(rig)
+    logic.rename_path(os.path.join(rig, "a.py"), "c")
+    versions.save_version(rig)
+    versions.restore_version(rig, 1)
+    assert _names(rig) == ["sub", "a.py"]
+    assert _read(os.path.join(rig, "a.py")) == "a = 1\n"
+    versions.restore_version(rig, 2)
+    assert _names(rig) == ["sub", "c.py"]
+    assert _numbers(os.path.join(rig, "c.py")) == [1]
+
+
+def test_restore_puts_back_order_and_disabled_state(rig):
+    versions.save_version(rig)
+    logic.append_to_order(rig, ["sub"])
+    logic.set_enabled(os.path.join(rig, "a.py"), False)
+    versions.save_version(rig)
+    versions.restore_version(rig, 1)
+    assert _names(rig) == ["sub", "a.py"]
+    assert logic.is_enabled(os.path.join(rig, "a.py"))
+    versions.restore_version(rig, 2)
+    assert _names(rig) == ["a.py", "sub"]
+    assert not logic.is_enabled(os.path.join(rig, "a.py"))
+
+
+def test_restore_resets_a_child_that_was_empty_then(rig):
+    _write(os.path.join(rig, "body.mesh"), "")
+    versions.save_version(rig)
+    _published(os.path.join(rig, "body.mesh"), "mesh data")
+    versions.save_version(rig)
+    versions.restore_version(rig, 1)
+    assert _read(os.path.join(rig, "body.mesh")) == ""
+    versions.restore_version(rig, 2)
+    assert _read(os.path.join(rig, "body.mesh")) == "mesh data"
+
+
+def test_restore_leaves_files_that_arent_items_alone(two_versions):
+    notes = _write(os.path.join(two_versions, "notes.txt"), "keep me")
+    versions.restore_version(two_versions, 1)
+    assert _read(notes) == "keep me"
 
 
 def test_restore_changes_nothing_if_a_child_version_is_missing(two_versions):
@@ -210,6 +367,13 @@ def test_restore_changes_nothing_if_a_child_version_is_missing(two_versions):
 def test_restore_unknown_folder_version_raises(rig):
     with pytest.raises(FileNotFoundError):
         versions.restore_version(rig, 5)
+
+
+def test_switching_asks_when_a_removed_child_has_unpublished_edits(two_versions):
+    rig = two_versions
+    _write(os.path.join(rig, "later.py"), "x = 1\n")
+    for action in versions.panel(rig).actions:
+        assert "later.py" in action.confirm and "lost" in action.confirm
 
 
 def test_switching_asks_only_when_child_edits_would_be_lost(two_versions):
