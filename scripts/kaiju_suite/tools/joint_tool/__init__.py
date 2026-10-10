@@ -9,5 +9,5 @@ TOOL = {
     "name": "Joint Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Utilities for Assembler Joints items.",
+    "description": "Orient, mirror, split and display joints.",
 }
