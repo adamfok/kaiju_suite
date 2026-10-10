@@ -1,4 +1,4 @@
-"""Folders: they hold and order other items, and nest. Run All on one runs
+"""Folders: they hold and order other items, and nest. Running one runs
 what's inside; disabling one makes Run All skip all of it. Double-clicking
 one opens it in the system file browser (Explorer on Windows).
 

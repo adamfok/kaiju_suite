@@ -73,7 +73,7 @@ need it; try option 1 to see if the results are worth it; then go to option 3 (o
    enabled, module params), with `logic.export_plan(root)` and `logic.import_plan(plan, root)`. This is
    what the AI writes, and also gives shareable templates for free.
    **Done:** `tools/assembler/plan.py` (`export_plan`, `import_plan`, `plan_problems`, `parse_plan`);
-   its docstring describes the format. Right-click ▸ Build Plan ▸ Export / Import in the Assembler.
+   its docstring describes the format. Right-click ▸ Build ▸ Export / Import in the Assembler.
 3. **Modules declare what they create.** Module B's `parent` often has to be a node that module A
    builds later (e.g. the Root module's control). Today that is only known after `create()` runs.
    Add a static `outputs(params)` (names like `{name}_ik_ctrl`) so a plan can be validated before

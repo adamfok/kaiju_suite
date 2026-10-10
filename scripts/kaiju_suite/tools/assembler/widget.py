@@ -248,11 +248,7 @@ class AssemblerWindow(ToolWindow):
         self.browse_btn.setFixedSize(28, 28)
         self.browse_btn.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
         self.browse_btn.clicked.connect(self._browse)
-        rebuild_btn = QtWidgets.QPushButton("Rebuild")
-        rebuild_btn.setToolTip("New scene, then Run All")
-        rebuild_btn.clicked.connect(lambda: self._rebuild(self.root_dir()))
         top.addWidget(self.search)
-        top.addWidget(rebuild_btn)
         top.addWidget(refresh_btn)
         top.addWidget(self.browse_btn)
         self.layout.addLayout(top)
@@ -545,7 +541,7 @@ class AssemblerWindow(ToolWindow):
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
-        if path and (not is_file or (product and product.runnable)):
+        if is_file and product and product.runnable:
             menu.addAction("Run up to Here (New Scene)", lambda: self._run_up_to(path))
             menu.addAction("Run from Here", lambda: self._run_from(path))
         if product and product.runnable and is_file:
@@ -554,12 +550,11 @@ class AssemblerWindow(ToolWindow):
                 show_log.setEnabled(False)
                 show_log.setText("Show Log (not run yet)")
         if not is_file:
-            label = f"Run All in '{os.path.basename(directory)}'" if path else "Run All"
+            label = f"Run '{os.path.basename(directory)}'" if path else "Run All"
             menu.addAction(label, lambda: self._run_folder(directory))
-            if not path:
-                menu.addAction("Rebuild (New Scene + Run All)", lambda: self._rebuild(directory))
-            plan_menu = menu.addMenu("Build Plan")
-            plan_menu.addAction("Export...", lambda: self._export_plan(directory))
+            plan_menu = menu.addMenu("Build")
+            # A folder's plan holds the folder itself; the whole tree's, just its contents.
+            plan_menu.addAction("Export...", lambda: self._export_plan(directory, include_folder=bool(path)))
             plan_menu.addAction("Import...", lambda: self._import_plan(directory))
         if toggles:
             enabled = [logic.is_enabled(p) for p in toggles]
@@ -722,15 +717,9 @@ class AssemblerWindow(ToolWindow):
             return
         self._run(
             paths,
-            report_title="Build Report: Rebuild",
+            report_title="Build Report: Run up to Here",
             run=lambda p, on_status: logic.rebuild(p, discard_changes=True, on_status=on_status),
         )
-
-    def _rebuild(self, root):
-        if not root or not os.path.isdir(root):
-            _warn("Select a snippets folder first.")
-            return
-        self._run_in_new_scene(logic.collect_steps(root))
 
     def _steps(self, pick, path):
         try:
@@ -765,7 +754,7 @@ class AssemblerWindow(ToolWindow):
         saved = settings.get(SETTINGS_KEY, "plan_dir", "")
         return saved if saved and os.path.isdir(saved) else self.root_dir()
 
-    def _export_plan(self, directory):
+    def _export_plan(self, directory, include_folder=False):
         name = os.path.basename(directory) or "build"
         target, _ = QtWidgets.QFileDialog.getSaveFileName(
             self, "Export Build Plan", os.path.join(self._plan_dir(), f"{name}.json"), _PLAN_FILTER
@@ -774,7 +763,7 @@ class AssemblerWindow(ToolWindow):
             return
         settings.set(SETTINGS_KEY, "plan_dir", os.path.dirname(target))
         try:
-            plan.save_plan(directory, target)
+            plan.save_plan(directory, target, include_folder)
         except Exception as e:
             log.exception("Build plan export failed")
             _warn(f"Failed to export the build plan: {e}")
