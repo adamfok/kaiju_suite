@@ -32,9 +32,19 @@ from kaiju_suite.tools.assembler.products import product_for_name
 KIND = "buildPlan"
 
 
-def export_plan(root):
-    """The plan of everything under ``root``, in build order."""
-    return {"items": _export(logic.scan(root))}
+def export_plan(root, include_folder=False):
+    """The plan of everything under ``root``, in build order. With
+    ``include_folder``, the plan holds ``root`` itself (its name and whether
+    it's enabled) with everything in it, so importing it re-creates the
+    folder."""
+    items = _export(logic.scan(root))
+    if include_folder:
+        folder = {"name": os.path.basename(os.path.normpath(root))}
+        if not logic.is_enabled(root):
+            folder["enabled"] = False
+        folder["items"] = items
+        items = [folder]
+    return {"items": items}
 
 
 def _export(entries):
@@ -161,9 +171,10 @@ def _create(item, path):
 # -- plan files ---------------------------------------------------------------
 
 
-def save_plan(root, path):
-    """Export ``root``'s plan to the file ``path``; returns ``path``."""
-    return datafile.write(path, KIND, export_plan(root))
+def save_plan(root, path, include_folder=False):
+    """Export ``root``'s plan (see :func:`export_plan`) to the file ``path``;
+    returns ``path``."""
+    return datafile.write(path, KIND, export_plan(root, include_folder))
 
 
 def load_plan(path):

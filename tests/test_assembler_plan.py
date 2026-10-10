@@ -77,6 +77,21 @@ def test_export_of_an_unreadable_rig_module_names_it(build):
         plan.export_plan(build)
 
 
+def test_export_can_include_the_folder_itself(build):
+    arms = os.path.join(build, "arms")
+    assert plan.export_plan(arms, include_folder=True) == {"items": [EXPECTED["items"][-1]]}
+
+
+def test_a_folder_exported_with_itself_is_imported_as_that_folder(build, tmp_path):
+    target = str(tmp_path / "target")
+    os.makedirs(target)
+    path = plan.save_plan(os.path.join(build, "arms"), str(tmp_path / "arms.json"), include_folder=True)
+    created = plan.import_plan(plan.load_plan(path), target)
+    assert created == [os.path.join(target, "arms")]
+    assert [e.name for e in logic.scan(created[0])] == ["body.mesh", "L_arm.rig"]
+    assert not logic.is_enabled(created[0])
+
+
 # -- import -------------------------------------------------------------------
 
 
