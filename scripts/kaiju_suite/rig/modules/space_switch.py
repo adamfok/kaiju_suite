@@ -17,8 +17,7 @@ translate and rotate must be free to constrain. Leave it blank to insert a
 new ``<control>_space_grp`` between the control and its parent, at the
 parent's position (the world origin if the control has no parent).
 ``default_space`` is the label the enum starts at and resets to; blank is
-the first space. Switching without a pop is :func:`kaiju_suite.rig.space_switch.switch`
-(the Space Switch Tool).
+the first space. Switching without a pop is :func:`kaiju_suite.rig.space_switch.switch`.
 """
 
 from maya import cmds
