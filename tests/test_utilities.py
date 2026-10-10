@@ -17,6 +17,7 @@ UTILITIES = {
     "Animation": "Animation Tool",
     "Attributes": "Attribute Manager",
     "ControlShape": "ControlShape Tool",
+    "Constraints": "Constraint Tool",
     "Rig Module": "Rig Module Editor",
 }
 
