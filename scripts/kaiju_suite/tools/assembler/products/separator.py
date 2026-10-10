@@ -21,7 +21,7 @@ class SeparatorProduct(Product):
     name = "Separator"
     extensions = (EXTENSION,)
     order = 130
-    menu_slot = (1, 2)
+    top_menu = True
     columns_text = "====="
     creators = (Creator("Separator", lambda directory, name, _ext: create_separator(directory, name)),)
 

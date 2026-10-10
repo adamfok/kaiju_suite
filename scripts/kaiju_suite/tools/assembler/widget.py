@@ -718,6 +718,9 @@ class AssemblerWindow(ToolWindow):
             self._add_versions_menu(menu.addMenu("Versions"), path)
         menu.addSeparator()
 
+        for owner, creator in products.top_menu():
+            label = f"New {creator.label}".replace("&", "&&")
+            menu.addAction(label, lambda o=owner, c=creator: self._create(o, c, directory))
         new_menu = menu.addMenu("New")
         for entry in products.new_menu():
             if entry is None:

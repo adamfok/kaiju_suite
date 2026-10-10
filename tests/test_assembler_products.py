@@ -6,7 +6,7 @@ from maya import cmds
 
 from kaiju_suite import rig
 from kaiju_suite.tools.assembler import logic, products, versions
-from kaiju_suite.tools.assembler.products import folder, mesh, scene, script
+from kaiju_suite.tools.assembler.products import folder, mesh, scene, script, separator
 
 
 def _touch(path, text=""):
@@ -174,7 +174,7 @@ def test_new_menu_groups_products_with_dividers():
     assert _menu_labels() == [
         "Script",
         None,
-        "Scene", "Folder", "Separator",
+        "Scene",
         None,
         "Mesh", "Material", "Joints", "ControlShape", "Curves",
         None,
@@ -188,6 +188,13 @@ def test_new_menu_groups_products_with_dividers():
     ]
     assert "Simple IK" in _menu_labels()
     assert folder.PRODUCT.creators[0].choices is None
+
+
+def test_folder_and_separator_are_top_level_not_in_the_new_menu():
+    assert "Folder" not in _menu_labels()
+    assert "Separator" not in _menu_labels()
+    entries = products.top_menu()
+    assert [(p, c.label) for p, c in entries] == [(folder.PRODUCT, "Folder"), (separator.PRODUCT, "Separator")]
 
 
 def test_new_menu_puts_a_product_without_a_slot_last(with_json):

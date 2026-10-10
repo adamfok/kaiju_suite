@@ -39,7 +39,7 @@ class FolderProduct(Product):
     name = "Folder"
     icon = "SP_DirIcon"
     order = 20
-    menu_slot = (1, 1)
+    top_menu = True
     can_disable = True  # Run All skips a disabled folder and everything in it
     versioned = True  # its versions record its build plan and items' versions
     creators = (Creator("Folder", lambda directory, name, _ext: create_folder(directory, name)),)

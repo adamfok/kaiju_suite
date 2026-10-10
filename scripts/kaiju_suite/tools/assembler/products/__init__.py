@@ -91,6 +91,9 @@ class Product:
     # A product without one goes in a last group, by ``order``. ``None``
     # leaves it out of the menu.
     menu_slot = (LAST_GROUP, 0)
+    # Put its creators at the right-click menu's top level, as "New <label>",
+    # instead of in the New menu (``menu_slot`` is then ignored).
+    top_menu = False
     runnable = False  # joins Run All
     versioned = False  # gets Publish and the Versions submenu (see ..versions)
     utility = None  # name of the Kaiju tool double-click opens, e.g. "Mesh Tool"
@@ -255,7 +258,7 @@ def product_for_name(name):
 def new_menu():
     """The New menu: ``(product, creator)`` pairs grouped by ``menu_slot``,
     with ``None`` for the divider between groups."""
-    slotted = [p for p in all_products() if p.creators and p.menu_slot is not None]
+    slotted = [p for p in all_products() if p.creators and not p.top_menu and p.menu_slot is not None]
     slotted.sort(key=lambda p: (p.menu_slot, p.order))
     entries, group = [], None
     for product in slotted:
@@ -264,6 +267,11 @@ def new_menu():
         group = product.menu_slot[0]
         entries.extend((product, creator) for creator in product.creators)
     return entries
+
+
+def top_menu():
+    """``(product, creator)`` pairs for the right-click menu's top level, by ``order``."""
+    return [(p, creator) for p in all_products() if p.top_menu for creator in p.creators]
 
 
 def extensions():
