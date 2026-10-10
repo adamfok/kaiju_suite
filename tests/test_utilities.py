@@ -67,13 +67,17 @@ def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
     assert logic.utility_for(_product(product_name)) is None
 
 
+# Data products with no tool of their own yet: double-click opens their Info window.
+NO_UTILITY_YET = {"Set Driven Keys"}
+
+
 def test_every_other_product_has_a_utility():
-    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Scene"}
+    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Scene"} - NO_UTILITY_YET
 
     assert names == set(UTILITIES)
 
 
-@pytest.mark.parametrize("product_name", sorted(set(UTILITIES) | {"Scene"}))
+@pytest.mark.parametrize("product_name", sorted(set(UTILITIES) | {"Scene"} | NO_UTILITY_YET))
 def test_products_with_an_info_window_get_right_click_info(product_name):
     assert logic.has_info(_product(product_name))
 

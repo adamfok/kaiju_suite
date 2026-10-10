@@ -50,7 +50,7 @@ def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
         "Script", "Folder", "Scene", "Joints", "Mesh", "SkinCluster",
-        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "ControlShape", "Separator",
+        "DeltaMush", "BlendShapes", "Material", "Pose", "Animation", "Set Driven Keys", "ControlShape", "Separator",
         "Rig Module",
     ]
     exts = [ext for p in found for ext in p.extensions]
@@ -179,7 +179,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "SkinCluster", "DeltaMush", "BlendShapes",
         None,
-        "Pose", "Animation",
+        "Pose", "Animation", "Set Driven Keys",
         None,
         *(module.name for module in rig.all_modules()),
     ]
