@@ -5,7 +5,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import logic, plan, products, report, runlog, versions
+from kaiju_suite.tools.assembler import compare, logic, plan, products, report, runlog, versions
 from kaiju_suite.tools.assembler.report_widget import ReportDialog
 from kaiju_suite.ui.base_window import ToolWindow
 
@@ -33,6 +33,16 @@ STATUS_TIPS = {
     logic.ERROR: "Failed. Right-click > Show Log to see why.",
 }
 # Line colors in the Show Log window, by level; header lines are dimmed.
+# Compare window rows, by what changed; a side without the row is shaded.
+DIFF_COLORS = {
+    compare.SAME: QtGui.QColor(150, 150, 150),
+    compare.CHANGED: STATUS_COLORS[logic.WARNING],
+    compare.ADDED: STATUS_COLORS[logic.SUCCESS],
+    compare.REMOVED: STATUS_COLORS[logic.ERROR],
+}
+ABSENT_COLOR = QtGui.QColor(128, 128, 128, 40)
+STATUS_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1
+
 LOG_COLORS = {
     None: QtGui.QColor(150, 150, 150),
     runlog.WARNING: STATUS_COLORS[logic.WARNING],
@@ -215,6 +225,10 @@ class _PanelDialog(QtWidgets.QDialog):
             label = QtWidgets.QLabel(line)
             label.setWordWrap(True)
             self._body.addWidget(label)
+        if panel.diff:
+            self._body.addWidget(_DiffView(panel.diff), 1)  # takes the room when the window grows
+            if not self.isVisible():
+                self.resize(900, 560)
         for action in panel.actions:
             btn = QtWidgets.QPushButton(action.label)
             btn.clicked.connect(lambda _=False, a=action: self._press(a))
@@ -247,6 +261,86 @@ class _PanelDialog(QtWidgets.QDialog):
         self._window._do(lambda: toggle.fn(on))
         self._window.populate()
         self._build()  # also puts the box back if the change failed
+
+
+class _DiffView(QtWidgets.QWidget):
+    """Two trees side by side, one per file of a :class:`compare.Diff`. They
+    hold the same rows (blank on the side without one), so they line up;
+    expanding, scrolling or picking a row on one does it on the other too."""
+
+    def __init__(self, diff):
+        super().__init__()
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        only = QtWidgets.QCheckBox("Only show differences")
+        layout.addWidget(only)
+        trees = QtWidgets.QHBoxLayout()
+        self._trees = [self._make_tree(diff.old_title), self._make_tree(diff.new_title)]
+        for tree in self._trees:
+            trees.addWidget(tree)
+        layout.addLayout(trees, 1)
+
+        self._add(list(self._trees), diff.rows)
+        width = max(tree.sizeHintForColumn(0) for tree in self._trees) + 40
+        for tree, other in (self._trees, self._trees[::-1]):
+            tree.setColumnWidth(0, width)
+            tree.itemExpanded.connect(lambda item, o=other: self._partner(item, o).setExpanded(True))
+            tree.itemCollapsed.connect(lambda item, o=other: self._partner(item, o).setExpanded(False))
+            tree.currentItemChanged.connect(lambda item, _old, o=other: item and o.setCurrentItem(self._partner(item, o)))
+            tree.verticalScrollBar().valueChanged.connect(other.verticalScrollBar().setValue)
+        only.toggled.connect(self._filter)
+        only.setChecked(True)
+
+    @staticmethod
+    def _make_tree(title):
+        tree = QtWidgets.QTreeWidget()
+        tree.setHeaderLabels([title, ""])
+        tree.setUniformRowHeights(True)
+        # No horizontal scroll bar: one on a single side would push its rows out of line.
+        tree.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        return tree
+
+    def _add(self, parents, rows):
+        for row in rows:
+            items = [QtWidgets.QTreeWidgetItem(parent) for parent in parents]
+            for item, text in zip(items, (row.old, row.new)):
+                item.setData(0, STATUS_ROLE, row.status)
+                if text is None:
+                    for column in range(2):
+                        item.setBackground(column, ABSENT_COLOR)
+                    continue
+                item.setText(0, row.label)
+                item.setText(1, text)
+                item.setToolTip(1, text)
+                for column in range(2):
+                    item.setForeground(column, DIFF_COLORS[row.status])
+            self._add(items, row.children)
+            if row.status == compare.CHANGED and row.children:
+                for item in items:
+                    item.setExpanded(True)
+
+    @staticmethod
+    def _partner(item, other):
+        """The item at the same place as ``item`` in tree ``other``."""
+        path = []
+        while item is not None:
+            parent = item.parent()
+            path.append((parent or item.treeWidget().invisibleRootItem()).indexOfChild(item))
+            item = parent
+        found = other.invisibleRootItem()
+        for index in reversed(path):
+            found = found.child(index)
+        return found
+
+    def _filter(self, only_differences):
+        def visit(item):
+            for i in range(item.childCount()):
+                child = item.child(i)
+                child.setHidden(only_differences and child.data(0, STATUS_ROLE) == compare.SAME)
+                visit(child)
+
+        for tree in self._trees:
+            visit(tree.invisibleRootItem())
 
 
 class _LogDialog(QtWidgets.QDialog):
@@ -613,6 +707,11 @@ class AssemblerWindow(ToolWindow):
                 menu.addAction("Disable", lambda: self._set_enabled(toggles, False))
             if not all(enabled):
                 menu.addAction("Enable", lambda: self._set_enabled(toggles, True))
+        selected = self.selected_paths()
+        if versions.can_compare_items(selected):
+            old, new = selected
+            label = f"Compare {os.path.basename(old)} with {os.path.basename(new)}"
+            menu.addAction(label.replace("&", "&&"), lambda: self._show_compare_items(old, new))
         if product and product.versioned:
             menu.addSeparator()
             menu.addAction("Publish", lambda: self._publish(path))
@@ -675,6 +774,10 @@ class AssemblerWindow(ToolWindow):
     def _show_compare(self, path, number):
         title = f"Compare {os.path.basename(path)}"
         self._show_panel(("compare", path, number), title, lambda: versions.compare_panel(path, number))
+
+    def _show_compare_items(self, old, new):
+        title = f"Compare {os.path.basename(old)} with {os.path.basename(new)}"
+        self._show_panel(("compare", old, new), title, lambda: versions.compare_items_panel(old, new))
 
     def _do_and_refresh(self, action):
         self._do(action.fn, action.confirm)

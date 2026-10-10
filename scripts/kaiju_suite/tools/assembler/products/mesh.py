@@ -19,7 +19,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.tools.assembler import compare, data
+from kaiju_suite.tools.assembler import data
 
 _VECTORS = ("translate", "rotate", "scale")
 
@@ -175,39 +175,6 @@ def _build_shape(transform, record):
     return fn.fullPathName()
 
 
-def _compare_record(old, new):
-    """What changed on one mesh, as lines without its name."""
-    lines = []
-    topology = ("face_counts", "face_connects")
-    old_points, new_points = old["points"], new["points"]
-    if len(old_points) != len(new_points) or any(old[k] != new[k] for k in topology):
-        lines.append(
-            f"topology changed ({len(old_points)} → {len(new_points)} vertices, "
-            f"{len(old['face_counts'])} → {len(new['face_counts'])} faces)"
-        )
-    else:
-        moves = [compare.distance(a, b) for a, b in zip(old_points, new_points) if a != b]
-        if moves:
-            points = data.plural(len(new_points), "point")
-            lines.append(f"{len(moves)} of {points} moved (largest move {compare.num(max(moves))})")
-    if old.get("uv_sets") != new.get("uv_sets"):
-        lines.append("UVs changed")
-    if old.get("hard_edges") != new.get("hard_edges"):
-        lines.append("hard edges changed")
-    # Files published before normals and colors were saved have neither: same as none.
-    if (old.get("normals") or []) != (new.get("normals") or []):
-        lines.append("normals changed")
-    if (old.get("color_sets") or []) != (new.get("color_sets") or []):
-        lines.append("vertex colors changed")
-    if old.get("parent") != new.get("parent"):
-        lines.append(f"parent {old.get('parent') or 'world'} → {new.get('parent') or 'world'}")
-    skip = {"name", "points", "uv_sets", "hard_edges", "normals", "color_sets", "parent", *topology}
-    for key in dict.fromkeys([*old, *new]):
-        if key not in skip and old.get(key) != new.get(key):
-            lines.append(f"{key} changed")
-    return lines
-
-
 class MeshProduct(data.DataProduct):
     name = "Mesh"
     utility = "Mesh Tool"
@@ -268,16 +235,10 @@ class MeshProduct(data.DataProduct):
             ", ".join(r["name"] for r in records),
         ]
 
-    def compare(self, old, new):
-        added, removed, common = compare.match(old["meshes"], new["meshes"], "name")
-        lines = []
-        if added:
-            lines.append(f"Added meshes: {', '.join(added)}")
-        if removed:
-            lines.append(f"Removed meshes: {', '.join(removed)}")
-        for name, a, b in common:
-            lines.extend(f"{name}: {line}" for line in _compare_record(a, b))
-        return compare.finish(lines)
+    def compare_view(self, payload):
+        # Files published before normals and colors were saved have neither: same as none.
+        meshes = [{"normals": [], "color_sets": [], **r} for r in payload["meshes"]]
+        return {**payload, "meshes": meshes}
 
 
 PRODUCT = MeshProduct()

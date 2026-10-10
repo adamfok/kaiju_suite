@@ -1,102 +1,30 @@
-"""Compare two payloads of a data item: lines saying what changed.
+"""Compare two payloads of a data item, for the side-by-side compare window.
 
-:func:`structural` is the summary every :class:`~.data.DataProduct` gets by
-default: a walk over the two JSON payloads naming added, removed and changed
-keys. Lists of records are matched by their ``name`` (or ``mesh``, ``node``)
-rather than position, and lists of numbers are summed up as how many values
-changed and by how much at most, so a mesh's points make one line, not one
-per point. Products with a better summary override ``DataProduct.compare``
-using the helpers here (:func:`match`, :func:`finish`, :func:`num`).
+:func:`tree` walks both payloads together into :class:`Row` s, one tree per
+side, matched the same way: keys by name, lists of records by their ``name``
+(or ``mesh``, ``node``), lists of names by value, other lists by position.
+Long lists of numbers fold into one row saying how many entries changed and
+by how much at most, so a mesh's points make one row, not one per point.
+Products tidy a payload first with ``DataProduct.compare_view``.
 
 No Qt and no scene needed: only the payloads.
 """
 
-import math
 import numbers
+from dataclasses import dataclass, field
 
-# Lines shown before the rest are counted as "... and N more changes".
-MAX_LINES = 30
 NO_CHANGES = "No changes."
 # Record fields that name a record, tried in order, for matching lists of them.
 IDENTITY_KEYS = ("name", "mesh", "node")
 
 
 def num(value):
-    """A number for a summary line: ``1.0`` → ``1``, ``0.25`` → ``0.25``."""
+    """A number for a value column: ``1.0`` → ``1``, ``0.25`` → ``0.25``."""
     return f"{value:.6g}"
-
-
-def finish(lines):
-    """``lines`` ready to show: :data:`NO_CHANGES` if empty, cut to
-    :data:`MAX_LINES` with a count of the rest."""
-    lines = list(lines)
-    if not lines:
-        return [NO_CHANGES]
-    if len(lines) > MAX_LINES:
-        rest = len(lines) - MAX_LINES
-        lines = lines[:MAX_LINES] + [f"... and {rest} more change{'s' if rest != 1 else ''}"]
-    return lines
-
-
-def structural(old, new):
-    """What changed from payload ``old`` to ``new``, as lines (see the module doc)."""
-    return finish(changes(old, new))
-
-
-def changes(old, new, path=""):
-    """The raw lines of :func:`structural`, uncut, empty if nothing changed.
-    ``path`` prefixes each line, e.g. ``"body"`` → ``body.envelope: 1 → 0``."""
-    lines = []
-    _diff(old, new, path, lines)
-    return lines
-
-
-def match(old_records, new_records, key):
-    """Match two lists of records by ``key`` (a field name or a function of a
-    record). Returns ``(added, removed, common)``: names only in ``new``,
-    names only in ``old``, and ``(name, old record, new record)`` for the rest,
-    in ``new``'s order."""
-    key_of = key if callable(key) else (lambda record: record[key])
-    old_by = {key_of(r): r for r in old_records}
-    new_by = {key_of(r): r for r in new_records}
-    added = [k for k in new_by if k not in old_by]
-    removed = [k for k in old_by if k not in new_by]
-    common = [(k, old_by[k], new_by[k]) for k in new_by if k in old_by]
-    return added, removed, common
-
-
-def numeric_change(old, new):
-    """``(changed, largest)`` between two equally long lists of numbers: how
-    many differ and the largest difference."""
-    deltas = [abs(a - b) for a, b in zip(old, new) if a != b]
-    return len(deltas), max(deltas, default=0.0)
-
-
-# -- the walk -----------------------------------------------------------------
-
-
-def _join(path, key):
-    return f"{path}.{key}" if path else str(key)
 
 
 def _is_number(value):
     return isinstance(value, numbers.Real) and not isinstance(value, bool)
-
-
-def _flat_numbers(value):
-    """All the numbers in ``value`` (a number or nested lists of them), or
-    ``None`` if it holds anything else."""
-    if _is_number(value):
-        return [value]
-    if not isinstance(value, list):
-        return None
-    found = []
-    for item in value:
-        flat = _flat_numbers(item)
-        if flat is None:
-            return None
-        found.extend(flat)
-    return found
 
 
 def _identity_key(old, new):
@@ -114,56 +42,172 @@ def _identity_key(old, new):
     return None
 
 
-def _short(value):
-    text = repr(value)
-    return text if len(text) <= 40 else text[:37] + "..."
+# -- the side-by-side tree ----------------------------------------------------
+
+SAME, CHANGED, ADDED, REMOVED = "same", "changed", "added", "removed"
+# Number lists up to this long show their values; longer ones fold to a count.
+SHORT_LIST = 4
+_MISSING = object()
 
 
-def _diff(old, new, path, lines):
-    if old == new and type(old) is type(new):
-        return
+@dataclass
+class Row:
+    """One row of both trees. ``old`` and ``new`` are the value column on
+    each side, ``None`` where that side has nothing here (a blank row keeps
+    the trees lined up)."""
+
+    label: str
+    old: object
+    new: object
+    status: str
+    children: list = field(default_factory=list)
+
+
+@dataclass
+class Diff:
+    """Both trees of the compare window: titles over each, and the rows."""
+
+    old_title: str
+    new_title: str
+    rows: list
+
+
+def tree(old, new):
+    """The rows comparing payload ``old`` with ``new``: their keys, records
+    matched by name (see :data:`IDENTITY_KEYS`), names matched by value, and
+    long lists of numbers folded into one row saying how many changed."""
     if isinstance(old, dict) and isinstance(new, dict):
-        for key in old:
-            if key not in new:
-                lines.append(f"Removed {_join(path, key)}")
-            else:
-                _diff(old[key], new[key], _join(path, key), lines)
-        lines.extend(f"Added {_join(path, key)}" for key in new if key not in old)
-    elif isinstance(old, list) and isinstance(new, list):
-        _diff_lists(old, new, path, lines)
-    elif _is_number(old) and _is_number(new):
-        if old != new:
-            lines.append(f"{path or 'value'}: {num(old)} → {num(new)}")
+        return _dict_rows(old, new)
+    return [_row("value", old, new)]
+
+
+def has_changes(rows):
+    return any(row.status != SAME for row in rows)
+
+
+def _kind(value):
+    if isinstance(value, dict):
+        return "dict"
+    return "list" if isinstance(value, list) else "value"
+
+
+def _row(label, old, new, skip=None):
+    present = [v for v in (old, new) if v is not _MISSING]
+    kinds = {_kind(v) for v in present}
+    children = []
+    if kinds == {"dict"}:
+        children = _dict_rows(*(v if v is not _MISSING else {} for v in (old, new)), skip=skip)
+    elif kinds == {"list"}:
+        if all(0 < len(v) <= SHORT_LIST and all(map(_is_number, v)) for v in present):
+            return _leaf(label, *(_numbers_text(v) for v in (old, new)), old, new)
+        if all(_is_numeric_list(v) for v in present):
+            return _folded(label, old, new)
+        children = _list_rows(*(v if v is not _MISSING else [] for v in (old, new)))
     else:
-        lines.append(f"{path or 'value'}: {_short(old)} → {_short(new)}")
+        return _leaf(label, *(_text(v) for v in (old, new)), old, new)
+    # Order doesn't count: matched rows say what changed.
+    status = _presence(old, new) or (CHANGED if has_changes(children) else SAME)
+    return Row(label, _text(old), _text(new), status, children)
 
 
-def _diff_lists(old, new, path, lines):
-    label = path or "value"
+def _presence(old, new):
+    if old is _MISSING:
+        return ADDED
+    if new is _MISSING:
+        return REMOVED
+    return None
+
+
+def _leaf(label, old_text, new_text, old, new):
+    same = old == new and _kind(old) == _kind(new) and isinstance(old, bool) == isinstance(new, bool)
+    return Row(label, old_text, new_text, _presence(old, new) or (SAME if same else CHANGED))
+
+
+def _dict_rows(old, new, skip=None):
+    keys = [k for k in old if k != skip] + [k for k in new if k not in old and k != skip]
+    return [_row(str(k), old.get(k, _MISSING), new.get(k, _MISSING)) for k in keys]
+
+
+def _list_rows(old, new):
     key = _identity_key(old, new)
     if key is not None:
-        added, removed, common = match(old, new, key)
-        if added:
-            lines.append(f"{label}: added {', '.join(map(str, added))}")
-        if removed:
-            lines.append(f"{label}: removed {', '.join(map(str, removed))}")
-        for name, a, b in common:
-            _diff(a, b, f"{path}[{name}]", lines)
-        return
-    if len(old) != len(new):
-        lines.append(f"{label}: {len(old)} → {len(new)} entries")
-        return
-    old_numbers, new_numbers = _flat_numbers(old), _flat_numbers(new)
-    if old_numbers is not None and new_numbers is not None and len(old_numbers) == len(new_numbers):
-        changed, largest = numeric_change(old_numbers, new_numbers)
-        if changed:
-            noun = "value" if len(old_numbers) == 1 else "values"
-            lines.append(f"{label}: {changed} of {len(old_numbers)} {noun} changed (largest change {num(largest)})")
-        return
-    for i, (a, b) in enumerate(zip(old, new)):
-        _diff(a, b, f"{path}[{i}]", lines)
+        old_by, new_by = {r[key]: r for r in old}, {r[key]: r for r in new}
+        names = list(old_by) + [n for n in new_by if n not in old_by]
+        return [_row(str(n), old_by.get(n, _MISSING), new_by.get(n, _MISSING), skip=key) for n in names]
+    if _is_name_list(old) and _is_name_list(new):
+        names = old + [n for n in new if n not in old]
+        return [_leaf(_text(n), *("" if n in side else None for side in (old, new)),
+                      *(n if n in side else _MISSING for side in (old, new))) for n in names]
+    return [
+        _row(f"[{i}]", old[i] if i < len(old) else _MISSING, new[i] if i < len(new) else _MISSING)
+        for i in range(max(len(old), len(new)))
+    ]
 
 
-def distance(a, b):
-    """The distance between two points (lists of numbers)."""
-    return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+def _is_name_list(values):
+    """A list of distinct names (or other plain values) to match by value."""
+    plain = all(isinstance(v, (str, numbers.Real)) or v is None for v in values)
+    return plain and len(set(values)) == len(values)
+
+
+def _is_numeric_list(value):
+    """A list whose entries are numbers, or lists or dicts holding only numbers."""
+    return all(_entry_numbers(v) is not None for v in value)
+
+
+def _entry_numbers(value):
+    """``{position: number}`` for one entry of a number list, or ``None`` if
+    it holds anything but numbers. Dicts are keyed by their keys, so a key
+    one side lacks is a 0 there."""
+    if _is_number(value):
+        return {(): value}
+    if isinstance(value, (list, dict)):
+        found = {}
+        for key, item in value.items() if isinstance(value, dict) else enumerate(value):
+            inner = _entry_numbers(item)
+            if inner is None:
+                return None
+            found.update({(key, *k): v for k, v in inner.items()})
+        return found
+    return None
+
+
+def _folded(label, old, new):
+    texts = [None if v is _MISSING else _items(len(v)) for v in (old, new)]
+    status = _presence(old, new)
+    if status is None:
+        status = SAME if old == new else CHANGED
+        if status == CHANGED and len(old) == len(new):
+            deltas = []
+            for a, b in zip(old, new):
+                a, b = _entry_numbers(a), _entry_numbers(b)
+                delta = max((abs(a.get(k, 0) - b.get(k, 0)) for k in set(a) | set(b)), default=0)
+                if delta:
+                    deltas.append(delta)
+            if deltas:
+                texts[1] += f" ({len(deltas)} changed, largest change {num(max(deltas))})"
+            else:
+                status = SAME  # only ints turned floats, or zero weights added
+    return Row(label, texts[0], texts[1], status)
+
+
+def _items(count):
+    return f"{count} item{'s' if count != 1 else ''}"
+
+
+def _numbers_text(value):
+    return None if value is _MISSING else ", ".join(num(v) for v in value)
+
+
+def _text(value):
+    """What the value column shows for ``value``."""
+    if value is _MISSING:
+        return None
+    if isinstance(value, dict):
+        return ""
+    if isinstance(value, list):
+        return _items(len(value))
+    if _is_number(value):
+        return num(value)
+    text = str(value)
+    return text if len(text) <= 60 else text[:57] + "..."

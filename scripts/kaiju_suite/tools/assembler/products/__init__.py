@@ -53,8 +53,9 @@ class Toggle:
 @dataclass
 class Panel:
     """What a double-click window shows: a list of ``toggles`` (checkboxes),
-    then ``info`` lines, then one button per action. ``run_buttons`` adds
-    Run and Show Log buttons for the item at the bottom.
+    then ``info`` lines, then a ``diff`` (a ``compare.Diff``: two trees side
+    by side), then one button per action. ``run_buttons`` adds Run and Show
+    Log buttons for the item at the bottom.
 
     The window rebuilds it after every change, so it can reflect new state.
     """
@@ -63,6 +64,7 @@ class Panel:
     actions: list
     toggles: list = field(default_factory=list)
     run_buttons: bool = False
+    diff: object = None
 
 
 @dataclass
@@ -141,10 +143,12 @@ class Product:
         return []
 
     def compare_files(self, old_path, new_path):
-        """What changed from file ``old_path`` to ``new_path`` (two versions of
-        one item), as lines. Products that can't compare don't override it;
-        overriding it gives their items right-click Versions ▸ Compare With
-        (see ``versions.can_compare``)."""
+        """The rows of the side-by-side compare window for files ``old_path``
+        and ``new_path`` (see ``compare.tree``). Products that can't compare
+        don't override it;
+        overriding it gives their items right-click Versions ▸ Compare With,
+        and Compare when two of them are selected (see ``versions.can_compare``
+        and ``versions.can_compare_items``)."""
         return None
 
     def before_replace(self, path):
