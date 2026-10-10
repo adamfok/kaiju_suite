@@ -134,13 +134,25 @@ def test_rig_module_params_may_be_partial(tmp_path):
     assert spec.read(str(tmp_path / "arm.rig")) == ("simple_ik", {"name": "R_arm"})
 
 
-def test_import_refuses_names_already_there_and_writes_nothing(tmp_path):
+def test_import_renames_items_whose_name_is_taken(tmp_path):
     _write(tmp_path / "setup.py", "old\n")
+    _write(tmp_path / "setup_copy.py", "older\n")
     items = [{"name": "new.py", "content": ""}, {"name": "setup.py", "content": "new\n"}]
-    with pytest.raises(ValueError, match="setup.py"):
-        plan.import_plan({"items": items}, str(tmp_path))
+    created = plan.import_plan({"items": items}, str(tmp_path))
+    assert created == [str(tmp_path / "new.py"), str(tmp_path / "setup_copy2.py")]
     assert _read(tmp_path / "setup.py") == "old\n"
-    assert not os.path.exists(tmp_path / "new.py")
+    assert _read(tmp_path / "setup_copy2.py") == "new\n"
+    assert [e.name for e in logic.scan(str(tmp_path))][-2:] == ["new.py", "setup_copy2.py"]
+
+
+def test_import_renames_a_folder_whose_name_is_taken(build, tmp_path):
+    target = str(tmp_path / "target")
+    os.makedirs(os.path.join(target, "Arms"))
+    exported = plan.export_plan(os.path.join(build, "arms"), include_folder=True)
+    created = plan.import_plan(exported, target)
+    assert created == [os.path.join(target, "arms_copy")]
+    assert [e.name for e in logic.scan(created[0])] == ["body.mesh", "L_arm.rig"]
+    assert not logic.is_enabled(created[0])
 
 
 def test_import_needs_an_existing_folder(tmp_path):
