@@ -15,6 +15,7 @@ UTILITIES = {
     "Material": "Material Tool",
     "Pose": "Pose Tool",
     "Animation": "Animation Tool",
+    "Attributes": "Attribute Manager",
     "ControlShape": "ControlShape Tool",
     "Rig Module": "Rig Module Editor",
 }
