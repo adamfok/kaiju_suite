@@ -224,6 +224,20 @@ def delete_path(path):
     _forget(path)
 
 
+def delete_paths(paths):
+    """Delete every item and folder in ``paths`` in one action.
+
+    An item inside a folder that is also in ``paths`` goes with its folder.
+    If any path doesn't exist, nothing is deleted and FileNotFoundError is raised.
+    """
+    targets = _top_level(paths)
+    for path in targets:
+        if not os.path.exists(path):
+            raise FileNotFoundError(path)
+    for path in targets:
+        delete_path(path)
+
+
 def rename_path(path, name):
     """Rename an item or folder in place and return its new path.
 
