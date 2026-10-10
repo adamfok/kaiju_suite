@@ -139,7 +139,7 @@ class SceneProduct(Product):
     name = "Scene"
     extensions = (EXTENSION,)
     order = 30
-    menu_slot = (1, 0)
+    menu_slot = (0, 1)  # with Script, just after it: no divider between them
     runnable = True
     versioned = True
     creators = (Creator("Scene", lambda directory, name, _ext: create_scene(directory, name)),)
