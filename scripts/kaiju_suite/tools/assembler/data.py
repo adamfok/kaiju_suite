@@ -21,6 +21,7 @@ from maya import cmds
 from kaiju_suite.core.datafile import FORMAT, DataFormatError, read, write  # noqa: F401 (re-exported)
 from kaiju_suite.core.nodes import unique_name  # noqa: F401 (re-exported)
 from kaiju_suite.core.undo import undo_chunk
+from kaiju_suite.tools.assembler import compare as compare_payloads
 from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, is_empty, new_path
 
@@ -168,7 +169,22 @@ class DataProduct(Product):
         """Info lines about a payload for the double-click panel."""
         return []
 
+    def compare(self, old, new):
+        """What changed from payload ``old`` to ``new``, as lines for the
+        Compare With window. A structural summary of the JSON unless
+        overridden (see :mod:`.compare`)."""
+        return compare_payloads.structural(old, new)
+
     # -- Product -------------------------------------------------------------
+
+    def compare_files(self, old_path, new_path):
+        old, new = read(old_path, self.kind), read(new_path, self.kind)
+        try:
+            return self.compare(old, new)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            # A payload the product's own summary doesn't expect (e.g. an
+            # older format): fall back to the structural one.
+            return compare_payloads.structural(old, new)
 
     def create(self, directory, name, ext=None):
         """New ▸ <name>: an empty entry that a build skips until published into."""
