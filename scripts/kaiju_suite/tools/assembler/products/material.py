@@ -340,7 +340,7 @@ class MaterialProduct(data.DataProduct):
     kind = "material"
     extension = ".mat"
     order = 90
-    menu_slot = None  # not in the New menu for now
+    menu_slot = (2, 0)  # with Mesh; its higher order puts it just after Mesh
 
     def selection_problems(self):
         if not cmds.ls(selection=True):
