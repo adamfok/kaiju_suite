@@ -99,20 +99,22 @@ def current_version(path):
     return next((v for v in list_versions(path) if filecmp.cmp(path, v.path, shallow=False)), None)
 
 
-def save_version(path):
+def save_version(path, latest=False):
     """Copy ``path`` into its history as the next version and return it.
 
     Returns ``None`` without saving if the file is empty or already matches
-    a saved version, so repeated saves don't pile up copies.
+    a saved version, so repeated saves don't pile up copies. With
+    ``latest``, content matching an older version is saved again as the
+    newest, so publishing an older version makes it the latest.
 
     A folder saves its build plan with its items' versions instead (see
     ..folder_versions); it raises if an item has unpublished changes.
     """
     if os.path.isdir(path):
-        return _save_folder_version(path)
+        return _save_folder_version(path, latest)
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
-    if os.path.getsize(path) == 0 or current_version(path) is not None:
+    if os.path.getsize(path) == 0 or _is_saved(path, latest):
         return None
 
     number, target = _next_target(path)
@@ -125,6 +127,15 @@ def _folder_versions():
     from kaiju_suite.tools.assembler import folder_versions  # lazily: it imports logic, which imports this
 
     return folder_versions
+
+
+def _is_saved(path, latest):
+    """Whether ``path`` needs no new version: it matches a saved one (with
+    ``latest``, the newest one)."""
+    current = current_version(path)
+    if current is None:
+        return False
+    return not latest or current.number == list_versions(path)[0].number
 
 
 def _ext(path):
@@ -184,11 +195,11 @@ def folder_publish_problems(folder):
     return [f"Publish these first, they have changes not published yet: {', '.join(unpublished)}"]
 
 
-def _save_folder_version(folder):
+def _save_folder_version(folder, latest=False):
     problems = folder_publish_problems(folder)
     if problems:
         raise ValueError(f"Can't publish {os.path.basename(folder)}. {problems[0]}")
-    if not any(True for _ in _walk(folder)) or current_version(folder) is not None:
+    if not any(True for _ in _walk(folder)) or _is_saved(folder, latest):
         return None
     number, target = _next_target(folder)
     _folder_versions().save(folder, target)
@@ -215,7 +226,8 @@ def export_into(path, write_fn):
     file with the same name as ``path``. Only if it succeeds is ``path``
     replaced, so a failure changes nothing and saves no version. Old content
     not yet in the history is saved as a version first, so nothing is lost.
-    Content that matches a saved version adds none: it's then that one.
+    Content that matches the latest version adds none; content that matches
+    an older one is saved again as the latest.
     """
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
@@ -229,14 +241,16 @@ def export_into(path, write_fn):
         shutil.copyfile(target, path)
     finally:
         shutil.rmtree(folder, ignore_errors=True)
-    version = save_version(path) or current_version(path)
+    version = save_version(path, latest=True) or current_version(path)
     return published_message(path, version)
 
 
 def publish(path):
-    """Save ``path`` as it is as its next version. Returns a message."""
+    """Save ``path`` as it is as its next version. Returns a message.
+
+    Publishing an older version saves it again as the latest."""
     name = os.path.basename(path)
-    version = save_version(path)
+    version = save_version(path, latest=True)
     if version:
         return published_message(path, version)
     current = current_version(path)
@@ -314,6 +328,16 @@ def move_history(old_path, new_path):
     os.makedirs(os.path.dirname(new), exist_ok=True)
     shutil.move(old, new)
     _prune(os.path.dirname(old))
+
+
+def copy_history(src, new):
+    """Give the copy at ``new`` its own copy of ``src``'s versions."""
+    old, target = history_dir(src), history_dir(new)
+    if not os.path.isdir(old):
+        return
+    if os.path.exists(target):
+        shutil.rmtree(target)  # stale history of an item that no longer exists
+    shutil.copytree(old, target)
 
 
 def delete_history(path):
