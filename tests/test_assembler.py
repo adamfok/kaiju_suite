@@ -4,7 +4,7 @@ import pytest
 from maya import cmds
 
 from kaiju_suite.tools.assembler import logic
-from kaiju_suite.tools.assembler.products import folder, scene, script
+from kaiju_suite.tools.assembler.products import folder, scene, script, separator
 
 
 def _touch(path, text=""):
@@ -562,6 +562,34 @@ def test_rename_rejects_bad_names(tmp_path):
 
 
 # -- copy / paste -----------------------------------------------------------
+
+
+def test_create_item_puts_it_below_the_given_position(tmp_path):
+    root = _order_fixture(tmp_path)
+    (creator,) = separator.PRODUCT.creators
+
+    path = logic.create_item(creator, root, "Skinning", None, 2)
+
+    assert path == os.path.join(root, "Skinning.sep")
+    assert _names(logic.scan(root)) == ["sub", "a.py", "Skinning.sep", "b.py", "c.py"]
+
+
+def test_create_item_puts_a_new_folder_below_the_given_position(tmp_path):
+    root = _order_fixture(tmp_path)
+    (creator,) = folder.PRODUCT.creators
+
+    logic.create_item(creator, root, "rig", None, 3)
+
+    assert _names(logic.scan(root)) == ["sub", "a.py", "b.py", "rig", "c.py"]
+
+
+def test_create_item_without_a_position_goes_last(tmp_path):
+    root = _order_fixture(tmp_path)
+    (creator,) = separator.PRODUCT.creators
+
+    logic.create_item(creator, root, "End", None, None)
+
+    assert _names(logic.scan(root))[-1] == "End.sep"
 
 
 def test_paste_copies_into_another_folder_at_index(tmp_path):
