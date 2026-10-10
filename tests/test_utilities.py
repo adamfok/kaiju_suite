@@ -68,7 +68,8 @@ def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
 
 
 def test_every_other_product_has_a_utility():
-    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Scene"}
+    # Pose Correctives has no utility tool yet: double-click opens its Info panel.
+    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Scene", "Pose Correctives"}
 
     assert names == set(UTILITIES)
 
