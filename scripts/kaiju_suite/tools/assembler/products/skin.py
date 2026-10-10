@@ -26,7 +26,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
-from kaiju_suite.tools.assembler import data, runlog
+from kaiju_suite.tools.assembler import compare, data, runlog
 
 _WEIGHT_BLENDED = 2
 # Decimals kept for weights: well below what a skin can show, and it keeps
@@ -210,6 +210,54 @@ def _apply_record(record):
     return cluster
 
 
+def _weights_by_name(record):
+    """Per vertex, ``{influence name: weight}``, so reordered influences compare equal."""
+    names = record["influences"]
+    return [{names[i]: w for i, w in row} for row in record["weights"]]
+
+
+def _changed_weights(old, new):
+    """How many vertices' weights differ between two records, and the largest difference."""
+    changed, largest = 0, 0.0
+    for a, b in zip(_weights_by_name(old), _weights_by_name(new)):
+        deltas = [abs(a.get(n, 0.0) - b.get(n, 0.0)) for n in set(a) | set(b)]
+        if any(deltas):
+            changed += 1
+            largest = max(largest, *deltas)
+    return changed, largest
+
+
+def _compare_record(old, new):
+    """What changed on one mesh's skin, as lines without the mesh name."""
+    lines = []
+    added = [n for n in new["influences"] if n not in old["influences"]]
+    removed = [n for n in old["influences"] if n not in new["influences"]]
+    if added:
+        lines.append(f"added influences {', '.join(added)}")
+    if removed:
+        lines.append(f"removed influences {', '.join(removed)}")
+    skip = ("mesh", "influences", "vertex_count", "weights", "blend_weights")
+    count = new["vertex_count"]
+    if old["vertex_count"] != count:
+        lines.append(f"vertex count {old['vertex_count']} → {count}, weights not compared")
+    else:
+        changed, largest = _changed_weights(old, new)
+        vertices = data.plural(count, "vertex", "vertices")
+        if changed:
+            lines.append(f"weights changed on {changed} of {vertices} (largest change {compare.num(largest)})")
+        if "blend_weights" in old and "blend_weights" in new:
+            changed, largest = compare.numeric_change(old["blend_weights"], new["blend_weights"])
+            if changed:
+                lines.append(
+                    f"blend weights changed on {changed} of {vertices} (largest change {compare.num(largest)})"
+                )
+        else:
+            skip = skip[:-1]  # turned on or off: the structural summary says so
+    rest = [{k: v for k, v in r.items() if k not in skip} for r in (old, new)]
+    lines.extend(compare.changes(*rest))
+    return lines
+
+
 class SkinProduct(data.DataProduct):
     name = "SkinCluster"
     utility = "SkinCluster Tool"
@@ -264,6 +312,17 @@ class SkinProduct(data.DataProduct):
                 f"{data.plural(r['vertex_count'], 'vertex', 'vertices')}"
             )
         return lines
+
+    def compare(self, old, new):
+        added, removed, common = compare.match(old["meshes"], new["meshes"], "mesh")
+        lines = []
+        if added:
+            lines.append(f"Added meshes: {', '.join(added)}")
+        if removed:
+            lines.append(f"Removed meshes: {', '.join(removed)}")
+        for name, a, b in common:
+            lines.extend(f"{name}: {line}" for line in _compare_record(a, b))
+        return compare.finish(lines)
 
 
 PRODUCT = SkinProduct()

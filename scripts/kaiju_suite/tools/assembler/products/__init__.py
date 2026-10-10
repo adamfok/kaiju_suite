@@ -120,6 +120,13 @@ class Product:
         as messages. The user is asked whether to publish anyway."""
         return []
 
+    def compare_files(self, old_path, new_path):
+        """What changed from file ``old_path`` to ``new_path`` (two versions of
+        one item), as lines. Products that can't compare don't override it;
+        overriding it gives their items right-click Versions ▸ Compare With
+        (see ``versions.can_compare``)."""
+        return None
+
     def before_replace(self, path):
         """Called just before the Assembler overwrites ``path`` on disk, e.g.
         to restore a version. Does nothing unless overridden."""

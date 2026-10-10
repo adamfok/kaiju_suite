@@ -17,7 +17,7 @@ import maya.api.OpenMaya as om
 import maya.api.OpenMayaAnim as oma
 
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.tools.assembler import data, runlog
+from kaiju_suite.tools.assembler import compare, data, runlog
 
 # Saved settings, with the type each is stored as.
 _SETTINGS = (
@@ -169,6 +169,29 @@ def _rebuild(name, group, transforms):
     return node
 
 
+def _label(record):
+    return f"{record['name']} on {record['mesh']}"
+
+
+def _compare_record(old, new):
+    """What changed on one deltaMush's mesh, as lines without its name."""
+    lines = []
+    count = new["vertex_count"]
+    if old["vertex_count"] != count:
+        lines.append(f"vertex count {old['vertex_count']} → {count}, weights not compared")
+    else:
+        # Weights not saved are 1.0.
+        a, b = dict(map(tuple, old["weights"])), dict(map(tuple, new["weights"]))
+        deltas = [abs(a.get(v, 1.0) - b.get(v, 1.0)) for v in set(a) | set(b)]
+        deltas = [d for d in deltas if d]
+        if deltas:
+            vertices = data.plural(count, "vertex", "vertices")
+            lines.append(f"weights changed on {len(deltas)} of {vertices} (largest change {compare.num(max(deltas))})")
+    skip = ("name", "mesh", "vertex_count", "weights")
+    lines.extend(compare.changes(*({k: v for k, v in r.items() if k not in skip} for r in (old, new))))
+    return lines
+
+
 class DeltaMushProduct(data.DataProduct):
     name = "DeltaMush"
     utility = "DeltaMush Tool"
@@ -222,6 +245,13 @@ class DeltaMushProduct(data.DataProduct):
         count = len(_groups(records))
         meshes = ", ".join(dict.fromkeys(r["mesh"] for r in records))
         return [f"{count} deltaMush node{'s' if count != 1 else ''}", f"Meshes: {meshes}"]
+
+    def compare(self, old, new):
+        added, removed, common = compare.match(old["deltamush"], new["deltamush"], _label)
+        lines = [f"Added: {name}" for name in added] + [f"Removed: {name}" for name in removed]
+        for name, a, b in common:
+            lines.extend(f"{name}: {line}" for line in _compare_record(a, b))
+        return compare.finish(lines)
 
 
 PRODUCT = DeltaMushProduct()

@@ -10,7 +10,7 @@ otherwise under the world.
 from maya import cmds
 
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import compare, data
 
 _VECTORS = ("translate", "rotate", "jointOrient", "scale", "preferredAngle")
 _INTS = ("rotateOrder", "side", "type")
@@ -117,6 +117,23 @@ class JointsProduct(data.DataProduct):
         records = payload["joints"]
         roots = [r["name"] for r in records if r["parent_index"] is None]
         return [f"{len(records)} joint{'s' if len(records) != 1 else ''}", f"Roots: {', '.join(roots)}"]
+
+    def compare(self, old, new):
+        added, removed, common = compare.match(old["joints"], new["joints"], "name")
+        lines = []
+        if added:
+            lines.append(f"Added joints: {', '.join(added)}")
+        if removed:
+            lines.append(f"Removed joints: {', '.join(removed)}")
+        # parent_index moves whenever joints are added or removed; the parent's name says enough.
+        changed = []
+        for name, a, b in common:
+            attrs = [k for k in dict.fromkeys([*a, *b]) if k != "parent_index" and a.get(k) != b.get(k)]
+            if attrs:
+                changed.append(f"{name} ({', '.join(attrs)})")
+        if changed:
+            lines.append(f"Changed joints: {', '.join(changed)}")
+        return compare.finish(lines)
 
 
 PRODUCT = JointsProduct()

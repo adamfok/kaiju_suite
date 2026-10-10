@@ -615,7 +615,18 @@ class AssemblerWindow(ToolWindow):
         if more:
             submenu.addSeparator()
             submenu.addAction("Show More...", lambda: self._show_versions(path))
+        if versions.can_compare(path):
+            entries = versions.compare_menu(path)
+            submenu.addSeparator()
+            compare_menu = submenu.addMenu("Compare With")
+            compare_menu.setEnabled(bool(entries))
+            for label, number in entries:
+                compare_menu.addAction(label, lambda n=number: self._show_compare(path, n))
         submenu.setToolTipsVisible(True)
+
+    def _show_compare(self, path, number):
+        title = f"Compare {os.path.basename(path)}"
+        self._show_panel(("compare", path, number), title, lambda: versions.compare_panel(path, number))
 
     def _do_and_refresh(self, action):
         self._do(action.fn, action.confirm)
