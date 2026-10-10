@@ -16,6 +16,7 @@ UTILITIES = {
     "Pose": "Pose Tool",
     "Animation": "Animation Tool",
     "ControlShape": "ControlShape Tool",
+    "Constraints": "Constraint Tool",
     "Rig Module": "Rig Module Editor",
 }
 
