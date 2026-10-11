@@ -167,32 +167,8 @@ def test_a_library_folder_that_is_gone_is_forgotten(tmp_path, clean_settings):
     assert logic.library() == ""
 
 
-def test_create_library_makes_an_empty_folder_and_switches_to_it(tmp_path, clean_settings):
-    path = logic.create_library(str(tmp_path), "props")
-    assert _norm(path) == _norm(str(tmp_path / "props"))
-    assert list((tmp_path / "props").iterdir()) == []
-    assert _norm(logic.library()) == _norm(path)
-
-
-@pytest.mark.parametrize("name", ["", "my props", "a/b", "../up"])
-def test_create_library_refuses_names_that_dont_work_as_folders(tmp_path, clean_settings, name):
-    with pytest.raises(ValueError):
-        logic.create_library(str(tmp_path), name)
-    assert list(tmp_path.iterdir()) == []
-    assert logic.library() == ""
-
-
-def test_create_library_refuses_an_existing_folder_or_missing_parent(tmp_path, clean_settings):
-    (tmp_path / "props").mkdir()
-    with pytest.raises(ValueError, match="already"):
-        logic.create_library(str(tmp_path), "props")
-    with pytest.raises(FileNotFoundError):
-        logic.create_library(str(tmp_path / "nope"), "props")
-    assert logic.library() == ""
-
-
 def test_the_list_of_libraries_is_gone():
-    for name in ("libraries", "add_library", "remove_library"):
+    for name in ("libraries", "add_library", "remove_library", "create_library"):
         assert not hasattr(logic, name), name
 
 

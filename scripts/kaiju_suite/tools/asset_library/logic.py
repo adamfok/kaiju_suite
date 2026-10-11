@@ -229,21 +229,6 @@ def set_library(path):
     settings.set(SETTINGS_KEY, "library", os.path.normpath(path))
 
 
-def create_library(parent, name):
-    """Make an empty library folder ``name`` in ``parent`` and use it.
-    Returns its path."""
-    if not _NAME.match(name or ""):
-        raise ValueError(f"Library name {name!r} can't be used: use letters, digits, _ and -.")
-    if not os.path.isdir(parent):
-        raise FileNotFoundError(f"The folder {parent} doesn't exist.")
-    folder = os.path.normpath(os.path.join(parent, name))
-    if os.path.exists(folder):
-        raise ValueError(f"There's already a folder called {name} in {parent}.")
-    os.makedirs(folder)
-    set_library(folder)
-    return folder
-
-
 # -- the current asset ----------------------------------------------------------
 
 

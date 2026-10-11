@@ -40,10 +40,7 @@ class AssetLibraryWindow(ToolWindow):
 
     def build_ui(self):
         self._assets = []
-        self.layout.setMenuBar(self._menu_bar())
-        self.library_label = QtWidgets.QLabel()
-        self.library_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
-        self.layout.addWidget(self.library_label)
+        self.layout.addLayout(self._library_row())
         self.current_label = QtWidgets.QLabel()
         self.layout.addWidget(self.current_label)
         self.search = QtWidgets.QLineEdit()
@@ -71,16 +68,18 @@ class AssetLibraryWindow(ToolWindow):
 
     # -- layout ----------------------------------------------------------------
 
-    def _menu_bar(self):
-        # Parented now: setMenuBar alone doesn't stop Python deleting the bar.
-        bar = QtWidgets.QMenuBar(self)
-        # The same goes for the menu: addMenu("...") leaves it to Python.
-        self.library_menu = QtWidgets.QMenu("Library", bar)
-        self.library_menu.addAction("New Library...", self._new_library)
-        self.library_menu.addAction("Change Library...", self._change_library)
-        bar.addMenu(self.library_menu)
-        self.new_action = bar.addAction("New Asset...", self._new_asset)
-        return bar
+    def _library_row(self):
+        row = QtWidgets.QHBoxLayout()
+        self.library_label = QtWidgets.QLabel()
+        self.library_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        change = QtWidgets.QPushButton()
+        change.setFixedSize(28, 28)
+        change.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
+        change.setToolTip("Change Library")
+        change.clicked.connect(self._change_library)
+        row.addWidget(self.library_label, 1)
+        row.addWidget(change)
+        return row
 
     def _context_menu(self, pos):
         """Right-click an asset for its actions, or empty space for New Asset."""
@@ -97,7 +96,7 @@ class AssetLibraryWindow(ToolWindow):
                 menu.addAction(label, slot).setEnabled(published)
             menu.addSeparator()
             menu.addAction("Open in Assembler", self._open_in_assembler).setToolTip(
-                "Make this the current asset and open its build/ folder in the Assembler"
+                "Make this the Asset and open its build/ folder in the Assembler"
             )
             menu.addAction("Show in Explorer", self._show_in_explorer)
             menu.addSeparator()
@@ -119,35 +118,12 @@ class AssetLibraryWindow(ToolWindow):
 
     def _library_changed(self):
         path = self.library()
-        self.library_label.setText(
-            f"Library: {path}" if path else "No library yet: pick Library > New Library... or Change Library..."
-        )
-        self.new_action.setEnabled(bool(path))
+        self.library_label.setText(f"Library: {path}" if path else "No library yet: click the folder button to pick one.")
         self._rescan()
 
-    def _pick_folder(self, title):
-        start = self.library() or cmds.workspace(query=True, rootDirectory=True)
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, title, start)
-        return os.path.normpath(folder) if folder else ""
-
-    def _new_library(self):
-        parent = self._pick_folder("New Library: Pick Where to Make It")
-        if not parent:
-            return
-        name, ok = QtWidgets.QInputDialog.getText(
-            self, "New Library", f"Make a library folder in {parent}.\nName (letters, digits, _ and -):"
-        )
-        if not ok:
-            return
-        try:
-            logic.create_library(parent, name.strip())
-        except (OSError, ValueError) as e:
-            _warn(str(e))
-            return
-        self._library_changed()
-
     def _change_library(self):
-        folder = self._pick_folder("Change Library")
+        start = self.library() or cmds.workspace(query=True, rootDirectory=True)
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Change Library", start)
         if not folder:
             return
         try:
@@ -186,7 +162,7 @@ class AssetLibraryWindow(ToolWindow):
 
     def _show_details(self):
         current = logic.current()
-        self.current_label.setText(f"Current asset: <b>{current.name}</b>" if current else "No current asset")
+        self.current_label.setText(f"Asset: <b>{current.name}</b>" if current else "Asset: none")
         self.current_label.setToolTip(f"ASSET = {current.path}" if current else "ASSET isn't set by the Asset Library")
         asset = self.selected()
         published = logic.latest_publish(asset.path) if asset else None
