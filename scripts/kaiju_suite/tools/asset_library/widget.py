@@ -3,13 +3,10 @@ import os
 from maya import cmds
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from kaiju_suite.core import settings
 from kaiju_suite.tools.asset_library import logic
 from kaiju_suite.ui.base_window import ToolWindow
 
 _ICON = 96
-_ALL_TYPES = "All types"
-_ALL_TAGS = "All tags"
 
 
 def _warn(message):
@@ -38,40 +35,6 @@ def _icon(asset):
     return _placeholder(asset.name)
 
 
-class AssetDialog(QtWidgets.QDialog):
-    """Name (new assets only), type, tags and notes of an asset."""
-
-    def __init__(self, parent, title, types, asset=None):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        form = QtWidgets.QFormLayout(self)
-        self.name_field = None
-        if asset is None:
-            self.name_field = QtWidgets.QLineEdit()
-            self.name_field.setPlaceholderText("letters, digits, _ and -")
-            form.addRow("Name", self.name_field)
-        self.type_field = QtWidgets.QComboBox(editable=True)
-        self.type_field.addItems(types)
-        self.type_field.setCurrentText(asset.type if asset else "")
-        form.addRow("Type", self.type_field)
-        self.tags_field = QtWidgets.QLineEdit(logic.format_tags(asset.tags) if asset else "")
-        self.tags_field.setPlaceholderText("comma separated")
-        form.addRow("Tags", self.tags_field)
-        self.notes_field = QtWidgets.QPlainTextEdit(asset.notes if asset else "")
-        form.addRow("Notes", self.notes_field)
-        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
-
-    def values(self):
-        return {
-            "asset_type": self.type_field.currentText().strip(),
-            "tags": logic.parse_tags(self.tags_field.text()),
-            "notes": self.notes_field.toPlainText(),
-        }
-
-
 class AssetLibraryWindow(ToolWindow):
     TITLE = "Kaiju Asset Library"
 
@@ -80,7 +43,10 @@ class AssetLibraryWindow(ToolWindow):
         self.layout.addLayout(self._library_row())
         self.current_label = QtWidgets.QLabel()
         self.layout.addWidget(self.current_label)
-        self.layout.addLayout(self._filter_row())
+        self.search = QtWidgets.QLineEdit()
+        self.search.setPlaceholderText("Search names")
+        self.search.textChanged.connect(lambda *_: self._fill_list())
+        self.layout.addWidget(self.search)
 
         self.asset_list = QtWidgets.QListWidget()
         self.asset_list.setViewMode(QtWidgets.QListView.IconMode)
@@ -90,158 +56,94 @@ class AssetLibraryWindow(ToolWindow):
         self.asset_list.setMovement(QtWidgets.QListView.Static)
         self.asset_list.itemClicked.connect(lambda *_: self._make_current())
         self.asset_list.currentItemChanged.connect(lambda *_: self._show_details())
+        self.asset_list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.asset_list.customContextMenuRequested.connect(self._context_menu)
         self.layout.addWidget(self.asset_list, 1)
 
         self.details = QtWidgets.QLabel()
         self.details.setWordWrap(True)
         self.details.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.layout.addWidget(self.details)
-        self.layout.addLayout(self._action_rows())
-        self._load_libraries()
+        self._library_changed()
 
     # -- layout ----------------------------------------------------------------
 
     def _library_row(self):
         row = QtWidgets.QHBoxLayout()
         self.library_label = QtWidgets.QLabel()
-        self.library_combo = QtWidgets.QComboBox()
-        self.library_combo.currentIndexChanged.connect(lambda *_: self._library_changed())
-        add = QtWidgets.QPushButton("Add Library...")
-        add.clicked.connect(self._add_library)
-        self.remove_library_button = QtWidgets.QPushButton("Remove Library")
-        self.remove_library_button.clicked.connect(self._remove_library)
+        self.library_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        change = QtWidgets.QPushButton()
+        change.setFixedSize(28, 28)
+        change.setIcon(self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
+        change.setToolTip("Change Library")
+        change.clicked.connect(self._change_library)
         row.addWidget(self.library_label, 1)
-        row.addWidget(self.library_combo, 1)
-        row.addWidget(add)
-        row.addWidget(self.remove_library_button)
+        row.addWidget(change)
         return row
 
-    def _filter_row(self):
-        row = QtWidgets.QHBoxLayout()
-        self.search = QtWidgets.QLineEdit()
-        self.search.setPlaceholderText("Search names, tags and notes")
-        self.search.textChanged.connect(lambda *_: self._fill_list())
-        self.type_filter = QtWidgets.QComboBox()
-        self.type_filter.currentIndexChanged.connect(lambda *_: self._fill_list())
-        self.tag_filter = QtWidgets.QComboBox()
-        self.tag_filter.currentIndexChanged.connect(lambda *_: self._fill_list())
-        row.addWidget(self.search, 1)
-        row.addWidget(self.type_filter)
-        row.addWidget(self.tag_filter)
-        return row
-
-    def _action_rows(self):
-        rows = QtWidgets.QVBoxLayout()
-        scene = QtWidgets.QHBoxLayout()
-        self.import_button = QtWidgets.QPushButton("Import")
-        self.import_button.clicked.connect(lambda: self._run(logic.import_asset, "Imported"))
-        self.reference_button = QtWidgets.QPushButton("Reference")
-        self.reference_button.clicked.connect(lambda: self._run(logic.reference_asset, "Referenced"))
-        self.open_button = QtWidgets.QPushButton("Open")
-        self.open_button.clicked.connect(self._open)
-        for button in (self.import_button, self.reference_button, self.open_button):
-            scene.addWidget(button)
-        manage = QtWidgets.QHBoxLayout()
-        self.new_button = QtWidgets.QPushButton("New Asset...")
-        self.new_button.clicked.connect(self._new_asset)
-        self.edit_button = QtWidgets.QPushButton("Edit...")
-        self.edit_button.clicked.connect(self._edit_asset)
-        self.folder_button = QtWidgets.QPushButton("Show in Folder")
-        self.folder_button.clicked.connect(self._show_in_folder)
-        self.assembler_button = QtWidgets.QPushButton("Open in Assembler")
-        self.assembler_button.setToolTip("Make this the current asset and open its build/ folder in the Assembler")
-        self.assembler_button.clicked.connect(self._open_in_assembler)
-        for button in (self.new_button, self.edit_button, self.folder_button, self.assembler_button):
-            manage.addWidget(button)
-        thumbnail = QtWidgets.QHBoxLayout()
-        self.viewport_button = QtWidgets.QPushButton("Thumbnail from Viewport")
-        self.viewport_button.setToolTip("Save the active viewport at the current frame as the thumbnail")
-        self.viewport_button.clicked.connect(lambda: self._set_thumbnail(logic.capture_thumbnail))
-        self.image_button = QtWidgets.QPushButton("Thumbnail from File...")
-        self.image_button.clicked.connect(self._thumbnail_from_file)
-        thumbnail.addWidget(self.viewport_button)
-        thumbnail.addWidget(self.image_button)
-        rows.addLayout(scene)
-        rows.addLayout(manage)
-        rows.addLayout(thumbnail)
-        return rows
+    def _context_menu(self, pos):
+        """Right-click an asset for its actions, or empty space for New Asset."""
+        self.asset_list.setCurrentItem(self.asset_list.itemAt(pos))
+        asset = self.selected()
+        menu = QtWidgets.QMenu(self)
+        if asset is not None:
+            published = bool(logic.latest_publish(asset.path))
+            for label, slot in (
+                ("Import", lambda: self._run(logic.import_asset, "Imported")),
+                ("Reference", lambda: self._run(logic.reference_asset, "Referenced")),
+                ("Open", self._open),
+            ):
+                menu.addAction(label, slot).setEnabled(published)
+            menu.addSeparator()
+            menu.addAction("Open in Assembler", self._open_in_assembler).setToolTip(
+                "Make this the Asset and open its build/ folder in the Assembler"
+            )
+            menu.addAction("Show in Explorer", self._show_in_explorer)
+            menu.addSeparator()
+            menu.addAction("Thumbnail from Viewport", lambda: self._set_thumbnail(logic.capture_thumbnail)).setToolTip(
+                "Save the active viewport at the current frame as the thumbnail"
+            )
+            menu.addAction("Thumbnail from File...", self._thumbnail_from_file)
+        elif self.library():
+            menu.addAction("New Asset...", self._new_asset)
+        else:
+            return
+        menu.setToolTipsVisible(True)
+        menu.exec(self.asset_list.viewport().mapToGlobal(pos))
 
     # -- libraries -------------------------------------------------------------
 
-    def _load_libraries(self, select=None):
-        found = logic.libraries()
-        select = select or settings.get(logic.SETTINGS_KEY, "library", "")
-        self.library_combo.blockSignals(True)
-        self.library_combo.clear()
-        for path in found:
-            self.library_combo.addItem(os.path.basename(os.path.normpath(path)) or path, path)
-            self.library_combo.setItemData(self.library_combo.count() - 1, path, QtCore.Qt.ToolTipRole)
-        index = next((i for i, path in enumerate(found) if os.path.normcase(path) == os.path.normcase(select or "")), 0)
-        self.library_combo.setCurrentIndex(index if found else -1)
-        self.library_combo.blockSignals(False)
-        # The drop-down only appears once there's more than one library.
-        self.library_combo.setVisible(len(found) > 1)
-        self.library_label.setVisible(len(found) <= 1)
-        self.library_label.setText(found[0] if found else "No library yet: click Add Library... to pick a folder.")
-        self.remove_library_button.setEnabled(bool(found))
-        self.new_button.setEnabled(bool(found))
-        self._library_changed()
-
     def library(self):
-        return self.library_combo.currentData() or ""
+        return logic.library()
 
     def _library_changed(self):
-        if self.library():
-            settings.set(logic.SETTINGS_KEY, "library", self.library())
+        path = self.library()
+        self.library_label.setText(f"Library: {path}" if path else "No library yet: click the folder button to pick one.")
         self._rescan()
 
-    def _add_library(self):
+    def _change_library(self):
         start = self.library() or cmds.workspace(query=True, rootDirectory=True)
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Add Library Folder", start)
-        if folder:
-            folder = os.path.normpath(folder)
-            logic.add_library(folder)
-            self._load_libraries(select=folder)
-
-    def _remove_library(self):
-        path = self.library()
-        if not path:
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Change Library", start)
+        if not folder:
             return
-        answer = QtWidgets.QMessageBox.question(
-            self, "Remove Library", f"Remove {path} from the list?\nNo files are deleted."
-        )
-        if answer == QtWidgets.QMessageBox.Yes:
-            logic.remove_library(path)
-            self._load_libraries()
+        try:
+            logic.set_library(folder)
+        except OSError as e:
+            _warn(str(e))
+            return
+        self._library_changed()
 
     # -- the list --------------------------------------------------------------
 
     def _rescan(self, select=None):
         self._assets = logic.scan(self.library()) if self.library() else []
-        for combo, everything, values in (
-            (self.type_filter, _ALL_TYPES, logic.types_in_use(self._assets)),
-            (self.tag_filter, _ALL_TAGS, logic.tags_in_use(self._assets)),
-        ):
-            kept = combo.currentText()
-            combo.blockSignals(True)
-            combo.clear()
-            combo.addItems([everything] + values)
-            combo.setCurrentText(kept if kept in values else everything)
-            combo.blockSignals(False)
         self._fill_list(select)
 
     def _fill_list(self, select=None):
         selected = select or (self.selected().path if self.selected() else None)
         current = logic.current()
         selected = selected or (current.path if current else None)
-        asset_type = self.type_filter.currentText()
-        tag = self.tag_filter.currentText()
-        shown = logic.filter_assets(
-            self._assets,
-            text=self.search.text(),
-            asset_type=None if asset_type == _ALL_TYPES else asset_type,
-            tag=None if tag == _ALL_TAGS else tag,
-        )
+        shown = logic.filter_assets(self._assets, self.search.text())
         self.asset_list.blockSignals(True)
         self.asset_list.clear()
         for asset in shown:
@@ -260,21 +162,15 @@ class AssetLibraryWindow(ToolWindow):
 
     def _show_details(self):
         current = logic.current()
-        self.current_label.setText(f"Current asset: <b>{current.name}</b>" if current else "No current asset")
+        self.current_label.setText(f"Asset: <b>{current.name}</b>" if current else "Asset: none")
         self.current_label.setToolTip(f"ASSET = {current.path}" if current else "ASSET isn't set by the Asset Library")
         asset = self.selected()
         published = logic.latest_publish(asset.path) if asset else None
-        for button in (self.import_button, self.reference_button, self.open_button):
-            button.setEnabled(bool(published))
-        for button in (self.edit_button, self.folder_button, self.assembler_button, self.viewport_button, self.image_button):
-            button.setEnabled(bool(asset))
         if asset is None:
             self.details.setText("")
             return
         lines = [
-            f"<b>{asset.name}</b>" + (f" ({asset.type})" if asset.type else ""),
-            f"Tags: {logic.format_tags(asset.tags)}" if asset.tags else "",
-            asset.notes.replace("\n", "<br>") if asset.notes else "",
+            f"<b>{asset.name}</b>",
             f"Latest publish: {os.path.basename(published)}" if published else "Nothing published yet",
             "Has an Assembler build" if logic.has_build(asset.path) else "",
         ]
@@ -313,29 +209,15 @@ class AssetLibraryWindow(ToolWindow):
         self._run(logic.open_asset, "Opened")
 
     def _new_asset(self):
-        dialog = AssetDialog(self, "New Asset", logic.types_in_use(self._assets))
-        if not dialog.exec():
+        name, ok = QtWidgets.QInputDialog.getText(self, "New Asset", "Name (letters, digits, _ and -):")
+        if not ok:
             return
         try:
-            asset = logic.create_asset(self.library(), dialog.name_field.text().strip(), **dialog.values())
+            asset = logic.create_asset(self.library(), name.strip())
         except (OSError, ValueError) as e:
             _warn(str(e))
             return
         logic.set_current(asset.path)
-        self._rescan(select=asset.path)
-
-    def _edit_asset(self):
-        asset = self.selected()
-        if asset is None:
-            return
-        dialog = AssetDialog(self, f"Edit {asset.name}", logic.types_in_use(self._assets), asset)
-        if not dialog.exec():
-            return
-        try:
-            logic.update_asset(asset.path, **dialog.values())
-        except (OSError, ValueError) as e:
-            _warn(str(e))
-            return
         self._rescan(select=asset.path)
 
     def _set_thumbnail(self, action, *args):
@@ -369,7 +251,7 @@ class AssetLibraryWindow(ToolWindow):
             _warn(str(e))
         self._show_details()
 
-    def _show_in_folder(self):
+    def _show_in_explorer(self):
         asset = self.selected()
         if asset is not None:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(asset.path))

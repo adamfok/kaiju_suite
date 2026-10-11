@@ -9,11 +9,11 @@ from kaiju_suite.tools.asset_library import logic
 
 @pytest.fixture
 def clean_settings():
-    for name in ("libraries", "current_asset"):
+    for name in ("library", "current_asset"):
         settings.remove(logic.SETTINGS_KEY, name)
     old = os.environ.pop("ASSET", None)
     yield
-    for name in ("libraries", "current_asset"):
+    for name in ("library", "current_asset"):
         settings.remove(logic.SETTINGS_KEY, name)
     os.environ.pop("ASSET", None)
     if old is not None:
@@ -28,25 +28,26 @@ def _norm(path):
 
 
 def test_create_asset_makes_the_folder_layout(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero", asset_type="character", tags=["biped"], notes="Main guy")
+    asset = logic.create_asset(str(tmp_path), "hero")
     folder = tmp_path / "hero"
     assert asset.path == str(folder)
     for sub in logic.FOLDERS:
         assert (folder / sub).is_dir()
-    assert datafile.read(str(folder / logic.ASSET_FILE), logic.KIND) == {
-        "type": "character",
-        "tags": ["biped"],
-        "notes": "Main guy",
-    }
+    assert datafile.read(str(folder / logic.ASSET_FILE), logic.KIND) == {}
 
 
-def test_read_asset_gives_its_fields_and_name_from_the_folder(tmp_path):
-    logic.create_asset(str(tmp_path), "crate", asset_type="prop", tags=["wood", "box"])
+def test_an_asset_is_only_its_folder_and_name(tmp_path):
+    logic.create_asset(str(tmp_path), "crate")
     asset = logic.read_asset(str(tmp_path / "crate"))
+    assert asset._fields == ("path", "name")
     assert asset.name == "crate"
-    assert asset.type == "prop"
-    assert asset.tags == ["wood", "box"]
-    assert asset.notes == ""
+
+
+def test_an_asset_made_with_type_tags_and_notes_still_reads(tmp_path):
+    folder = tmp_path / "old"
+    folder.mkdir()
+    datafile.write(str(folder / logic.ASSET_FILE), logic.KIND, {"type": "prop", "tags": ["wood"], "notes": "hi"})
+    assert logic.read_asset(str(folder)).name == "old"
 
 
 def test_create_asset_refuses_an_existing_folder(tmp_path):
@@ -65,18 +66,6 @@ def test_create_asset_refuses_names_that_dont_work_as_folders(tmp_path, name):
 def test_create_asset_refuses_a_missing_library(tmp_path):
     with pytest.raises(FileNotFoundError):
         logic.create_asset(str(tmp_path / "nope"), "hero")
-
-
-def test_update_asset_changes_only_the_given_fields(tmp_path):
-    logic.create_asset(str(tmp_path), "hero", asset_type="character", tags=["biped"], notes="old")
-    asset = logic.update_asset(str(tmp_path / "hero"), notes="new")
-    assert (asset.type, asset.tags, asset.notes) == ("character", ["biped"], "new")
-    assert logic.read_asset(str(tmp_path / "hero")).notes == "new"
-
-
-def test_tags_are_trimmed_and_deduplicated(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero", tags=[" biped ", "biped", "", "hero"])
-    assert asset.tags == ["biped", "hero"]
 
 
 def test_thumbnail_is_found_only_when_there_is_one(tmp_path):
@@ -112,31 +101,17 @@ def test_scan_of_a_missing_library_is_empty(tmp_path):
 # -- filtering ------------------------------------------------------------------
 
 
-def _assets(tmp_path):
-    logic.create_asset(str(tmp_path), "hero", asset_type="character", tags=["biped"], notes="Main guy")
-    logic.create_asset(str(tmp_path), "dragon", asset_type="character", tags=["quadruped", "wings"])
-    logic.create_asset(str(tmp_path), "crate", asset_type="prop", tags=["wood"])
-    return logic.scan(str(tmp_path))
+def test_filter_matches_names_ignoring_case(tmp_path):
+    for name in ("hero", "dragon", "crate"):
+        logic.create_asset(str(tmp_path), name)
+    assets = logic.scan(str(tmp_path))
+    assert [a.name for a in logic.filter_assets(assets, "HER")] == ["hero"]
+    assert [a.name for a in logic.filter_assets(assets, "  ")] == ["crate", "dragon", "hero"]
 
 
-def test_filter_by_text_matches_name_tags_and_notes_ignoring_case(tmp_path):
-    assets = _assets(tmp_path)
-    assert [a.name for a in logic.filter_assets(assets, text="HER")] == ["hero"]
-    assert [a.name for a in logic.filter_assets(assets, text="wing")] == ["dragon"]
-    assert [a.name for a in logic.filter_assets(assets, text="main")] == ["hero"]
-
-
-def test_filter_by_type_and_tag(tmp_path):
-    assets = _assets(tmp_path)
-    assert [a.name for a in logic.filter_assets(assets, asset_type="character")] == ["dragon", "hero"]
-    assert [a.name for a in logic.filter_assets(assets, tag="wood")] == ["crate"]
-    assert [a.name for a in logic.filter_assets(assets, asset_type="prop", tag="biped")] == []
-
-
-def test_types_and_tags_in_use(tmp_path):
-    assets = _assets(tmp_path)
-    assert logic.types_in_use(assets) == ["character", "prop"]
-    assert logic.tags_in_use(assets) == ["biped", "quadruped", "wings", "wood"]
+def test_type_tag_and_note_helpers_are_gone():
+    for name in ("update_asset", "parse_tags", "format_tags", "types_in_use", "tags_in_use"):
+        assert not hasattr(logic, name), name
 
 
 # -- published files ------------------------------------------------------------
@@ -164,15 +139,37 @@ def test_build_folder_is_known_only_when_it_has_items(tmp_path):
 # -- libraries ------------------------------------------------------------------
 
 
-def test_libraries_are_remembered_in_order_without_duplicates(tmp_path, clean_settings):
-    a, b = str(tmp_path / "a"), str(tmp_path / "b")
-    assert logic.libraries() == []
-    logic.add_library(a)
-    logic.add_library(b)
-    logic.add_library(a)
-    assert [_norm(p) for p in logic.libraries()] == [_norm(a), _norm(b)]
-    logic.remove_library(a)
-    assert [_norm(p) for p in logic.libraries()] == [_norm(b)]
+def test_no_library_until_one_is_set(clean_settings):
+    assert logic.library() == ""
+
+
+def test_set_library_remembers_one_library(tmp_path, clean_settings):
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    logic.set_library(str(a))
+    logic.set_library(str(b))
+    assert _norm(logic.library()) == _norm(str(b))
+
+
+def test_set_library_refuses_a_missing_folder_and_keeps_the_old_one(tmp_path, clean_settings):
+    logic.set_library(str(tmp_path))
+    with pytest.raises(FileNotFoundError):
+        logic.set_library(str(tmp_path / "nope"))
+    assert _norm(logic.library()) == _norm(str(tmp_path))
+
+
+def test_a_library_folder_that_is_gone_is_forgotten(tmp_path, clean_settings):
+    folder = tmp_path / "lib"
+    folder.mkdir()
+    logic.set_library(str(folder))
+    folder.rmdir()
+    assert logic.library() == ""
+
+
+def test_the_list_of_libraries_is_gone():
+    for name in ("libraries", "add_library", "remove_library", "create_library"):
+        assert not hasattr(logic, name), name
 
 
 # -- the current asset ----------------------------------------------------------
@@ -246,18 +243,6 @@ def test_startup_hook_sets_asset_again(tmp_path, clean_settings):
     del os.environ["ASSET"]  # a new Maya session
     registry.find("Asset Library")["startup"]()
     assert _norm(os.environ["ASSET"]) == _norm(asset.path)
-
-
-# -- tags typed by the user -----------------------------------------------------
-
-
-def test_parse_tags_splits_on_commas_and_spaces():
-    assert logic.parse_tags(" biped, hero  wings,,biped ") == ["biped", "hero", "wings"]
-    assert logic.parse_tags("") == []
-
-
-def test_format_tags_is_what_parse_tags_reads_back():
-    assert logic.parse_tags(logic.format_tags(["a", "b"])) == ["a", "b"]
 
 
 # -- bringing a published file into the scene -----------------------------------
