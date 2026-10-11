@@ -30,7 +30,7 @@ Imports only flow one way: `tools` → `ui` → `core`, and `tools` → `rig` �
    ```python
    TOOL = {"name": "My Tool", "category": "Rigging", "launch": show}
    ```
-5. Click **Kaiju → Reload Kaiju Suite**. The tool shows up under its category, or directly in the Kaiju menu if it has none (`category` is optional). Add `"menu": False` to keep a tool out of the menu, e.g. one that's only opened from another tool; `registry.find(name)` still finds it.
+5. Click **Kaiju → Reload Kaiju Suite**. The tool shows up under its category, or directly in the Kaiju menu if it has none (`category` is optional). Add `"menu": False` to keep a tool out of the menu, e.g. one that's only opened from another tool; `registry.find(name)` still finds it. Add `"startup": fn` to run something once when the plug-in loads (the Asset Library sets `ASSET` again this way).
 
 See `tools/renamer/` for a working example. Ideas for tools to build next are in [docs/tool-ideas.md](docs/tool-ideas.md).
 
