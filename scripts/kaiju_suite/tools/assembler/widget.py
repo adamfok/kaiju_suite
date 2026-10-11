@@ -721,7 +721,7 @@ class AssemblerWindow(ToolWindow):
         for owner, creator in products.top_menu():
             label = f"New {creator.label}".replace("&", "&&")
             menu.addAction(label, lambda o=owner, c=creator: self._create(o, c, item))
-        new_menu = menu.addMenu("New")
+        new_menu = menu.addMenu(products.NEW_MENU_LABEL)
         for entry in products.new_menu():
             if entry is None:
                 new_menu.addSeparator()
