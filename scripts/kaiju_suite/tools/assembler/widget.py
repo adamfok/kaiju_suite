@@ -590,6 +590,11 @@ class AssemblerWindow(ToolWindow):
         for i in range(root.childCount()):
             visit(root.child(i))
 
+    def open_folder(self, folder):
+        """Show the build folder ``folder``, as if picked with the folder button."""
+        self._set_root(os.path.normpath(folder))
+        self.populate()
+
     def _browse(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Select Snippets Folder", self.root_dir() or os.path.expanduser("~")
