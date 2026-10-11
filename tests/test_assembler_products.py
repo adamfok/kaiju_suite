@@ -193,10 +193,10 @@ def test_script_and_scene_share_a_group_with_no_divider_between():
     assert labels[:3] == ["Script", "Scene", None]
 
 
-def test_new_menu_is_labelled_new_component():
+def test_new_menu_is_labelled_new():
     # Folder and Separator stay top level as "New Folder" / "New Separator";
-    # the submenu of item types is "New Component".
-    assert products.NEW_MENU_LABEL == "New Component"
+    # the submenu of item types is plain "New".
+    assert products.NEW_MENU_LABEL == "New"
 
 
 def test_folder_and_separator_are_top_level_not_in_the_new_menu():
