@@ -148,7 +148,10 @@ class AssetLibraryWindow(ToolWindow):
         self.edit_button.clicked.connect(self._edit_asset)
         self.folder_button = QtWidgets.QPushButton("Show in Folder")
         self.folder_button.clicked.connect(self._show_in_folder)
-        for button in (self.new_button, self.edit_button, self.folder_button):
+        self.assembler_button = QtWidgets.QPushButton("Open in Assembler")
+        self.assembler_button.setToolTip("Make this the current asset and open its build/ folder in the Assembler")
+        self.assembler_button.clicked.connect(self._open_in_assembler)
+        for button in (self.new_button, self.edit_button, self.folder_button, self.assembler_button):
             manage.addWidget(button)
         thumbnail = QtWidgets.QHBoxLayout()
         self.viewport_button = QtWidgets.QPushButton("Thumbnail from Viewport")
@@ -263,7 +266,7 @@ class AssetLibraryWindow(ToolWindow):
         published = logic.latest_publish(asset.path) if asset else None
         for button in (self.import_button, self.reference_button, self.open_button):
             button.setEnabled(bool(published))
-        for button in (self.edit_button, self.folder_button, self.viewport_button, self.image_button):
+        for button in (self.edit_button, self.folder_button, self.assembler_button, self.viewport_button, self.image_button):
             button.setEnabled(bool(asset))
         if asset is None:
             self.details.setText("")
@@ -355,6 +358,16 @@ class AssetLibraryWindow(ToolWindow):
         )
         if picked:
             self._set_thumbnail(logic.set_thumbnail_from_file, picked)
+
+    def _open_in_assembler(self):
+        asset = self.selected()
+        if asset is None:
+            return
+        try:
+            logic.open_in_assembler(asset.path)
+        except Exception as e:
+            _warn(str(e))
+        self._show_details()
 
     def _show_in_folder(self):
         asset = self.selected()

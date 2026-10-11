@@ -308,6 +308,46 @@ def test_actions_on_an_asset_with_nothing_published_say_so(new_scene, tmp_path, 
         getattr(logic, action)(asset.path)
 
 
+# -- opening an asset's build in the Assembler ----------------------------------
+
+
+def test_the_assembler_can_be_opened_on_a_folder():
+    from kaiju_suite import registry
+
+    assert callable(registry.find("Assembler")["open"])
+
+
+def test_open_in_assembler_makes_the_asset_current_and_opens_its_build(tmp_path, clean_settings, monkeypatch):
+    from kaiju_suite import registry
+
+    opened = []
+    monkeypatch.setattr(registry, "find", lambda name: {"name": name, "open": opened.append} if name == "Assembler" else None)
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.open_in_assembler(asset.path)
+    assert [_norm(p) for p in opened] == [_norm(logic.build_folder(asset.path))]
+    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
+
+
+def test_open_in_assembler_makes_a_missing_build_folder(tmp_path, clean_settings, monkeypatch):
+    import shutil
+
+    from kaiju_suite import registry
+
+    monkeypatch.setattr(registry, "find", lambda name: {"name": name, "open": lambda path: None})
+    asset = logic.create_asset(str(tmp_path), "hero")
+    shutil.rmtree(logic.build_folder(asset.path))
+    logic.open_in_assembler(asset.path)
+    assert os.path.isdir(logic.build_folder(asset.path))
+
+
+def test_open_in_assembler_without_the_assembler_says_so_and_changes_nothing(tmp_path, clean_settings, monkeypatch):
+    from kaiju_suite import registry
+
+    monkeypatch.setattr(registry, "find", lambda name: None)
+    asset = logic.create_asset(str(tmp_path), "hero")
+    with pytest.raises(LookupError, match="Assembler"):
+        logic.open_in_assembler(asset.path)
+    assert "ASSET" not in os.environ
 # -- thumbnails -----------------------------------------------------------------
 
 

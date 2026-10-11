@@ -24,6 +24,7 @@ from collections import namedtuple
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite import registry
 from kaiju_suite.core import datafile, settings
 from kaiju_suite.core.log import get_logger
 
@@ -344,3 +345,19 @@ def clear_current():
     """Forget the current asset and unset ``ASSET``."""
     settings.remove(SETTINGS_KEY, "current_asset")
     os.environ.pop(VARIABLE, None)
+
+
+# -- the Assembler --------------------------------------------------------------
+
+
+def open_in_assembler(folder):
+    """Make the asset in ``folder`` current and open the Assembler on its
+    build folder (made if it's missing). Returns the asset."""
+    tool = registry.find("Assembler")
+    if tool is None or not callable(tool.get("open")):
+        raise LookupError("The Assembler isn't available, so the build can't be opened.")
+    asset = set_current(folder)
+    build = build_folder(asset.path)
+    os.makedirs(build, exist_ok=True)
+    tool["open"](build)
+    return asset
