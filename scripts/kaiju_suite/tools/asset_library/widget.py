@@ -71,17 +71,18 @@ class AssetLibraryWindow(ToolWindow):
 
     def _menu_bar(self):
         """Library menu, New Asset, and the current library's path on the right."""
-        bar = QtWidgets.QMenuBar()
+        # Parented now: setMenuBar alone doesn't stop Python deleting the bar.
+        bar = QtWidgets.QMenuBar(self)
         library = bar.addMenu("Library")
         library.addAction("Add Library...", self._add_library)
         remove = library.addAction("Remove Library", self._remove_library)
         library.aboutToShow.connect(lambda: remove.setEnabled(bool(self.library())))
         self.new_action = bar.addAction("New Asset...", self._new_asset)
-        bar.setCornerWidget(self._library_path(), QtCore.Qt.TopRightCorner)
+        bar.setCornerWidget(self._library_path(bar), QtCore.Qt.TopRightCorner)
         return bar
 
-    def _library_path(self):
-        corner = QtWidgets.QWidget()
+    def _library_path(self, bar):
+        corner = QtWidgets.QWidget(bar)
         row = QtWidgets.QHBoxLayout(corner)
         row.setContentsMargins(4, 0, 4, 0)
         self.library_label = QtWidgets.QLabel()
