@@ -1,7 +1,7 @@
 """Asset Library: asset folders in one or more library folders. No Qt here.
 
-An asset is a folder holding an ``asset.json`` (a Kaiju data file with its
-type, tags and notes; its name is the folder's name) in this layout::
+An asset is a folder holding an ``asset.json`` (a Kaiju data file that marks
+the folder as an asset; its name is the folder's name) in this layout::
 
     hero/
       asset.json
@@ -44,7 +44,7 @@ SETTINGS_KEY = "asset_library"
 _NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_-]*$")
 
 
-class Asset(namedtuple("Asset", "path name type tags notes")):
+class Asset(namedtuple("Asset", "path name")):
     __slots__ = ()
 
     @property
@@ -61,10 +61,6 @@ def is_asset(folder):
     return os.path.isfile(os.path.join(folder, ASSET_FILE))
 
 
-def _clean_tags(tags):
-    return list(dict.fromkeys(tag.strip() for tag in tags or () if tag.strip()))
-
-
 def read_asset(folder):
     """The :class:`Asset` in ``folder``; raises ``datafile.DataFormatError``
     or ``OSError`` if its ``asset.json`` can't be read."""
@@ -72,25 +68,10 @@ def read_asset(folder):
     if not isinstance(data, dict):
         raise datafile.DataFormatError(f"{ASSET_FILE} in {folder} holds no asset fields.")
     folder = os.path.normpath(folder)
-    return Asset(
-        folder,
-        os.path.basename(folder),
-        str(data.get("type", "")),
-        _clean_tags(data.get("tags", [])),
-        str(data.get("notes", "")),
-    )
+    return Asset(folder, os.path.basename(folder))
 
 
-def _write(folder, asset_type, tags, notes):
-    datafile.write(
-        os.path.join(folder, ASSET_FILE),
-        KIND,
-        {"type": asset_type, "tags": _clean_tags(tags), "notes": notes},
-    )
-    return read_asset(folder)
-
-
-def create_asset(library, name, asset_type="", tags=(), notes=""):
+def create_asset(library, name):
     """Make asset ``name`` in ``library`` with the folder layout; returns it."""
     if not _NAME.match(name or ""):
         raise ValueError(f"Asset name {name!r} can't be used: use letters, digits, _ and -.")
@@ -101,18 +82,8 @@ def create_asset(library, name, asset_type="", tags=(), notes=""):
         raise ValueError(f"There's already a folder called {name} in {library}.")
     for sub in FOLDERS:
         os.makedirs(os.path.join(folder, sub))
-    return _write(folder, asset_type, tags, notes)
-
-
-def update_asset(folder, asset_type=None, tags=None, notes=None):
-    """Change the given fields of the asset in ``folder``; returns it."""
-    asset = read_asset(folder)
-    return _write(
-        folder,
-        asset.type if asset_type is None else asset_type,
-        asset.tags if tags is None else tags,
-        asset.notes if notes is None else notes,
-    )
+    datafile.write(os.path.join(folder, ASSET_FILE), KIND, {})
+    return read_asset(folder)
 
 
 def scan(library):
@@ -132,42 +103,10 @@ def scan(library):
     return sorted(found, key=lambda a: a.name.lower())
 
 
-# -- filtering ------------------------------------------------------------------
-
-
-def filter_assets(assets, text="", asset_type=None, tag=None):
-    """The ``assets`` whose name, tags or notes contain ``text`` (ignoring
-    case), of type ``asset_type`` and with tag ``tag`` when given."""
+def filter_assets(assets, text=""):
+    """The ``assets`` whose name contains ``text``, ignoring case."""
     text = text.strip().lower()
-
-    def keep(asset):
-        if asset_type and asset.type != asset_type:
-            return False
-        if tag and tag not in asset.tags:
-            return False
-        if text:
-            haystack = " ".join([asset.name, asset.notes, *asset.tags]).lower()
-            return text in haystack
-        return True
-
-    return [asset for asset in assets if keep(asset)]
-
-
-def parse_tags(text):
-    """Tags typed by the user, split on commas and spaces."""
-    return _clean_tags(re.split(r"[,\s]+", text or ""))
-
-
-def format_tags(tags):
-    return ", ".join(tags)
-
-
-def types_in_use(assets):
-    return sorted({asset.type for asset in assets if asset.type})
-
-
-def tags_in_use(assets):
-    return sorted({tag for asset in assets for tag in asset.tags})
+    return [asset for asset in assets if text in asset.name.lower()]
 
 
 # -- folders in an asset --------------------------------------------------------

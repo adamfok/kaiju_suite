@@ -28,25 +28,26 @@ def _norm(path):
 
 
 def test_create_asset_makes_the_folder_layout(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero", asset_type="character", tags=["biped"], notes="Main guy")
+    asset = logic.create_asset(str(tmp_path), "hero")
     folder = tmp_path / "hero"
     assert asset.path == str(folder)
     for sub in logic.FOLDERS:
         assert (folder / sub).is_dir()
-    assert datafile.read(str(folder / logic.ASSET_FILE), logic.KIND) == {
-        "type": "character",
-        "tags": ["biped"],
-        "notes": "Main guy",
-    }
+    assert datafile.read(str(folder / logic.ASSET_FILE), logic.KIND) == {}
 
 
-def test_read_asset_gives_its_fields_and_name_from_the_folder(tmp_path):
-    logic.create_asset(str(tmp_path), "crate", asset_type="prop", tags=["wood", "box"])
+def test_an_asset_is_only_its_folder_and_name(tmp_path):
+    logic.create_asset(str(tmp_path), "crate")
     asset = logic.read_asset(str(tmp_path / "crate"))
+    assert asset._fields == ("path", "name")
     assert asset.name == "crate"
-    assert asset.type == "prop"
-    assert asset.tags == ["wood", "box"]
-    assert asset.notes == ""
+
+
+def test_an_asset_made_with_type_tags_and_notes_still_reads(tmp_path):
+    folder = tmp_path / "old"
+    folder.mkdir()
+    datafile.write(str(folder / logic.ASSET_FILE), logic.KIND, {"type": "prop", "tags": ["wood"], "notes": "hi"})
+    assert logic.read_asset(str(folder)).name == "old"
 
 
 def test_create_asset_refuses_an_existing_folder(tmp_path):
@@ -65,18 +66,6 @@ def test_create_asset_refuses_names_that_dont_work_as_folders(tmp_path, name):
 def test_create_asset_refuses_a_missing_library(tmp_path):
     with pytest.raises(FileNotFoundError):
         logic.create_asset(str(tmp_path / "nope"), "hero")
-
-
-def test_update_asset_changes_only_the_given_fields(tmp_path):
-    logic.create_asset(str(tmp_path), "hero", asset_type="character", tags=["biped"], notes="old")
-    asset = logic.update_asset(str(tmp_path / "hero"), notes="new")
-    assert (asset.type, asset.tags, asset.notes) == ("character", ["biped"], "new")
-    assert logic.read_asset(str(tmp_path / "hero")).notes == "new"
-
-
-def test_tags_are_trimmed_and_deduplicated(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero", tags=[" biped ", "biped", "", "hero"])
-    assert asset.tags == ["biped", "hero"]
 
 
 def test_thumbnail_is_found_only_when_there_is_one(tmp_path):
@@ -112,152 +101,17 @@ def test_scan_of_a_missing_library_is_empty(tmp_path):
 # -- filtering ------------------------------------------------------------------
 
 
-def _assets(tmp_path):
-    logic.create_asset(str(tmp_path), "hero", asset_type="character", tags=["biped"], notes="Main guy")
-    logic.create_asset(str(tmp_path), "dragon", asset_type="character", tags=["quadruped", "wings"])
-    logic.create_asset(str(tmp_path), "crate", asset_type="prop", tags=["wood"])
-    return logic.scan(str(tmp_path))
+def test_filter_matches_names_ignoring_case(tmp_path):
+    for name in ("hero", "dragon", "crate"):
+        logic.create_asset(str(tmp_path), name)
+    assets = logic.scan(str(tmp_path))
+    assert [a.name for a in logic.filter_assets(assets, "HER")] == ["hero"]
+    assert [a.name for a in logic.filter_assets(assets, "  ")] == ["crate", "dragon", "hero"]
 
 
-def test_filter_by_text_matches_name_tags_and_notes_ignoring_case(tmp_path):
-    assets = _assets(tmp_path)
-    assert [a.name for a in logic.filter_assets(assets, text="HER")] == ["hero"]
-    assert [a.name for a in logic.filter_assets(assets, text="wing")] == ["dragon"]
-    assert [a.name for a in logic.filter_assets(assets, text="main")] == ["hero"]
-
-
-def test_filter_by_type_and_tag(tmp_path):
-    assets = _assets(tmp_path)
-    assert [a.name for a in logic.filter_assets(assets, asset_type="character")] == ["dragon", "hero"]
-    assert [a.name for a in logic.filter_assets(assets, tag="wood")] == ["crate"]
-    assert [a.name for a in logic.filter_assets(assets, asset_type="prop", tag="biped")] == []
-
-
-def test_types_and_tags_in_use(tmp_path):
-    assets = _assets(tmp_path)
-    assert logic.types_in_use(assets) == ["character", "prop"]
-    assert logic.tags_in_use(assets) == ["biped", "quadruped", "wings", "wood"]
-
-
-# -- published files ------------------------------------------------------------
-
-
-def test_latest_publish_is_the_newest_maya_or_fbx_file(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    publish = tmp_path / "hero" / "publish"
-    assert logic.latest_publish(asset.path) is None
-    for i, name in enumerate(["hero_v001.ma", "notes.txt", "hero_v002.mb", "hero.fbx"]):
-        (publish / name).write_text("x")
-        os.utime(publish / name, (time.time() + i, time.time() + i))
-    os.utime(publish / "hero_v002.mb", (time.time() + 10, time.time() + 10))
-    assert _norm(logic.latest_publish(asset.path)) == _norm(str(publish / "hero_v002.mb"))
-
-
-def test_build_folder_is_known_only_when_it_has_items(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    assert _norm(logic.build_folder(asset.path)) == _norm(str(tmp_path / "hero" / "build"))
-    assert not logic.has_build(asset.path)
-    (tmp_path / "hero" / "build" / "model.scene").write_text("{}")
-    assert logic.has_build(asset.path)
-
-
-# -- libraries ------------------------------------------------------------------
-
-
-def test_libraries_are_remembered_in_order_without_duplicates(tmp_path, clean_settings):
-    a, b = str(tmp_path / "a"), str(tmp_path / "b")
-    assert logic.libraries() == []
-    logic.add_library(a)
-    logic.add_library(b)
-    logic.add_library(a)
-    assert [_norm(p) for p in logic.libraries()] == [_norm(a), _norm(b)]
-    logic.remove_library(a)
-    assert [_norm(p) for p in logic.libraries()] == [_norm(b)]
-
-
-# -- the current asset ----------------------------------------------------------
-
-
-def test_set_current_sets_asset_variable_and_remembers_it(tmp_path, clean_settings):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    logic.set_current(asset.path)
-    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
-    assert _norm(logic.current().path) == _norm(asset.path)
-
-
-def test_set_current_refuses_a_folder_that_isnt_an_asset(tmp_path, clean_settings):
-    with pytest.raises(ValueError):
-        logic.set_current(str(tmp_path))
-    assert "ASSET" not in os.environ
-
-
-def test_restore_current_sets_the_variable_again_after_a_restart(tmp_path, clean_settings):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    logic.set_current(asset.path)
-    del os.environ["ASSET"]  # a new Maya session
-    assert logic.restore_current().name == "hero"
-    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
-
-
-def test_restore_current_forgets_an_asset_that_is_gone(tmp_path, clean_settings):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    logic.set_current(asset.path)
-    del os.environ["ASSET"]
-    os.remove(os.path.join(asset.path, logic.ASSET_FILE))
-    assert logic.restore_current() is None
-    assert "ASSET" not in os.environ
-    assert logic.current() is None
-
-
-def test_clear_current_unsets_the_variable(tmp_path, clean_settings):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    logic.set_current(asset.path)
-    logic.clear_current()
-    assert "ASSET" not in os.environ
-    assert logic.current() is None
-
-
-def test_a_scene_path_under_the_current_asset_is_stored_with_the_variable(tmp_path, clean_settings):
-    from kaiju_suite.core import paths
-
-    asset = logic.create_asset(str(tmp_path), "hero")
-    logic.set_current(asset.path)
-    model = os.path.join(asset.path, "files", "model.ma")
-    build = logic.build_folder(asset.path)
-    assert paths.to_portable(model, build) == "$ASSET/files/model.ma"
-
-
-# -- the tool and its startup hook ----------------------------------------------
-
-
-def test_asset_library_is_in_the_menu_with_a_startup_hook():
-    from kaiju_suite import registry
-
-    tool = registry.find("Asset Library")
-    assert tool is not None and tool.get("menu", True)
-    assert callable(tool["startup"])
-
-
-def test_startup_hook_sets_asset_again(tmp_path, clean_settings):
-    from kaiju_suite import registry
-
-    asset = logic.create_asset(str(tmp_path), "hero")
-    logic.set_current(asset.path)
-    del os.environ["ASSET"]  # a new Maya session
-    registry.find("Asset Library")["startup"]()
-    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
-
-
-# -- tags typed by the user -----------------------------------------------------
-
-
-def test_parse_tags_splits_on_commas_and_spaces():
-    assert logic.parse_tags(" biped, hero  wings,,biped ") == ["biped", "hero", "wings"]
-    assert logic.parse_tags("") == []
-
-
-def test_format_tags_is_what_parse_tags_reads_back():
-    assert logic.parse_tags(logic.format_tags(["a", "b"])) == ["a", "b"]
+def test_type_tag_and_note_helpers_are_gone():
+    for name in ("update_asset", "parse_tags", "format_tags", "types_in_use", "tags_in_use"):
+        assert not hasattr(logic, name), name
 
 
 # -- bringing a published file into the scene -----------------------------------
