@@ -41,6 +41,7 @@ class AssetLibraryWindow(ToolWindow):
 
     def build_ui(self):
         self._assets = []
+        self.layout.setMenuBar(self._menu_bar())
         self.layout.addLayout(self._library_row())
         self.current_label = QtWidgets.QLabel()
         self.layout.addWidget(self.current_label)
@@ -69,6 +70,14 @@ class AssetLibraryWindow(ToolWindow):
 
     # -- layout ----------------------------------------------------------------
 
+    def _menu_bar(self):
+        bar = QtWidgets.QMenuBar()
+        library = bar.addMenu("Library")
+        library.addAction("Add Library...", self._add_library)
+        remove = library.addAction("Remove Library", self._remove_library)
+        library.aboutToShow.connect(lambda: remove.setEnabled(bool(self.library())))
+        return bar
+
     def _library_row(self):
         row = QtWidgets.QHBoxLayout()
         self.library_label = QtWidgets.QLabel()
@@ -79,8 +88,7 @@ class AssetLibraryWindow(ToolWindow):
         return row
 
     def _context_menu(self, pos):
-        """Every action, on right-click: the asset's own above, then New Asset
-        and the libraries. Right-clicking empty space shows only the latter."""
+        """Right-click an asset for its actions, or empty space for New Asset."""
         self.asset_list.setCurrentItem(self.asset_list.itemAt(pos))
         asset = self.selected()
         menu = QtWidgets.QMenu(self)
@@ -96,17 +104,16 @@ class AssetLibraryWindow(ToolWindow):
             menu.addAction("Open in Assembler", self._open_in_assembler).setToolTip(
                 "Make this the current asset and open its build/ folder in the Assembler"
             )
-            menu.addAction("Show in Folder", self._show_in_folder)
+            menu.addAction("Show in Explorer", self._show_in_explorer)
             menu.addSeparator()
             menu.addAction("Thumbnail from Viewport", lambda: self._set_thumbnail(logic.capture_thumbnail)).setToolTip(
                 "Save the active viewport at the current frame as the thumbnail"
             )
             menu.addAction("Thumbnail from File...", self._thumbnail_from_file)
-            menu.addSeparator()
-        menu.addAction("New Asset...", self._new_asset).setEnabled(bool(self.library()))
-        menu.addSeparator()
-        menu.addAction("Add Library...", self._add_library)
-        menu.addAction("Remove Library", self._remove_library).setEnabled(bool(self.library()))
+        elif self.library():
+            menu.addAction("New Asset...", self._new_asset)
+        else:
+            return
         menu.setToolTipsVisible(True)
         menu.exec(self.asset_list.viewport().mapToGlobal(pos))
 
@@ -126,7 +133,7 @@ class AssetLibraryWindow(ToolWindow):
         # The drop-down only appears once there's more than one library.
         self.library_combo.setVisible(len(found) > 1)
         self.library_label.setVisible(len(found) <= 1)
-        self.library_label.setText(found[0] if found else "No library yet: right-click below and pick Add Library...")
+        self.library_label.setText(found[0] if found else "No library yet: pick Library > Add Library... to add a folder.")
         self._library_changed()
 
     def library(self):
@@ -274,7 +281,7 @@ class AssetLibraryWindow(ToolWindow):
             _warn(str(e))
         self._show_details()
 
-    def _show_in_folder(self):
+    def _show_in_explorer(self):
         asset = self.selected()
         if asset is not None:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(asset.path))
