@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fix: Assembler **Delete** now deletes every selected item, not just the one you right-clicked. With several selected, the menu reads **Delete _N_ Selected** and asks once, listing their names. Selecting a folder and items inside it no longer fails; the items go with the folder. The **Delete** key also deletes the selected items (after the same confirmation)
 - Assembler: the right-click **New** submenu no longer has a divider between **Script** and **Scene**
 - Assembler: **New Folder** and **New Separator** are now at the top level of the right-click menu, just above the **New** submenu, instead of inside it. The New submenu now lists only item types. A new item (from New Folder, New Separator or the New submenu) now goes just below the item you right-clicked, as Paste does, instead of at the bottom; right-clicking a folder still creates it at the end of that folder
 - Fix: the **ControlShape Tool** opens again. It failed with `'QDoubleSpinBox' object is not callable` because its Size and Line width fields hid Qt's own `size()` and `width()`. The Assembler tree and the Joint Tool had the same kind of clash (`window`, `children`) and are fixed too

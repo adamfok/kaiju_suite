@@ -21,6 +21,8 @@ OLD_VERSION_COLOR = QtGui.QColor(235, 150, 50)
 # Starting widths of the Name and Version columns, until the user drags them.
 # Type, the last column, stretches to fill the rest.
 DEFAULT_WIDTHS = (220, 60)
+# How many names the delete confirmation lists before "...and N more".
+MAX_LISTED = 10
 # Name color for the last run of each step; see logic.run_steps.
 STATUS_COLORS = {
     logic.RUNNING: QtGui.QColor(110, 180, 240),
@@ -419,6 +421,7 @@ class AssemblerWindow(ToolWindow):
         for keys, fn in (
             (QtGui.QKeySequence.StandardKey.Copy, self._copy),
             (QtGui.QKeySequence.StandardKey.Paste, lambda: self._paste(self.tree.currentItem())),
+            (QtGui.QKeySequence.StandardKey.Delete, self._delete_selected),
         ):
             shortcut = QtGui.QShortcut(keys, self.tree)
             shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -740,7 +743,10 @@ class AssemblerWindow(ToolWindow):
         if path:
             menu.addSeparator()
             menu.addAction("Rename", lambda: self._rename(path))
-            menu.addAction("Delete", lambda: self._delete(path))
+            selected = self.selected_paths()
+            targets = selected if path in selected else [path]
+            label = "Delete" if len(targets) == 1 else f"Delete {len(targets)} Selected"
+            menu.addAction(label, lambda: self._delete(targets))
 
         if product and logic.has_info(product):
             menu.addSeparator()
@@ -969,22 +975,38 @@ class AssemblerWindow(ToolWindow):
             _warn(f"Failed to rename: {e}")
         self.populate()
 
-    def _delete(self, path):
-        product = products.product_for(path)
-        kind = product.name.lower() if product else "item"
-        if os.path.isdir(path):
-            kind += " and everything in it"
+    def _delete_selected(self):
+        paths = self.selected_paths()
+        if paths:
+            self._delete(paths)
+
+    def _delete(self, paths):
+        """Ask once, then delete every path in ``paths`` in one action."""
+        if len(paths) == 1:
+            path = paths[0]
+            product = products.product_for(path)
+            kind = product.name.lower() if product else "item"
+            if os.path.isdir(path):
+                kind += " and everything in it"
+            text = f"Delete this {kind}?\n\n{os.path.basename(path)}"
+        else:
+            names = [os.path.basename(p) for p in paths]
+            shown = "\n".join(names[:MAX_LISTED])
+            if len(names) > MAX_LISTED:
+                shown += f"\n...and {len(names) - MAX_LISTED} more"
+            folders = " Folders are deleted with everything in them." if any(map(os.path.isdir, paths)) else ""
+            text = f"Delete these {len(paths)} items?{folders}\n\n{shown}"
         answer = QtWidgets.QMessageBox.question(
             self,
             "Confirm Delete",
-            f"Delete this {kind}?\n\n{os.path.basename(path)}",
+            text,
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
             QtWidgets.QMessageBox.StandardButton.No,
         )
         if answer != QtWidgets.QMessageBox.StandardButton.Yes:
             return
         try:
-            logic.delete_path(path)
+            logic.delete_paths(paths)
         except Exception as e:
             _warn(f"Failed to delete: {e}")
         self.populate()

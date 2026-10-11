@@ -272,6 +272,42 @@ def test_delete_forgets_disabled_state(tmp_path):
     assert logic.is_enabled(_touch(tmp_path / "a.py"))
 
 
+def test_delete_paths_deletes_every_selected_item(tmp_path):
+    a = _touch(tmp_path / "a.py")
+    b = _touch(tmp_path / "b.scene")
+    c = _touch(tmp_path / "c.py")
+    (tmp_path / "f").mkdir()
+    logic.delete_paths([a, b, str(tmp_path / "f")])
+    assert not os.path.exists(a) and not os.path.exists(b)
+    assert not os.path.exists(tmp_path / "f")
+    assert os.path.isfile(c)
+
+
+def test_delete_paths_with_folder_and_item_inside_it(tmp_path):
+    inner = _touch(tmp_path / "f" / "x.py")
+    other = _touch(tmp_path / "b.py")
+    # The item inside is listed after its folder, as the tree lists it.
+    logic.delete_paths([str(tmp_path / "f"), inner, other])
+    assert not os.path.exists(tmp_path / "f") and not os.path.exists(other)
+
+
+def test_delete_paths_forgets_order_and_disabled_state_of_each(tmp_path):
+    a = _touch(tmp_path / "a.py")
+    b = _touch(tmp_path / "b.py")
+    _touch(tmp_path / "c.py")
+    logic.set_layout(str(tmp_path), ["c.py", "b.py", "a.py"], ["a.py", "b.py"])
+    logic.delete_paths([a, b])
+    assert logic._load_meta(str(tmp_path)) == {"order": ["c.py"], "disabled": []}
+    assert logic.item_names(str(tmp_path)) == ["c.py"]
+
+
+def test_delete_paths_missing_one_deletes_nothing(tmp_path):
+    a = _touch(tmp_path / "a.py")
+    with pytest.raises(FileNotFoundError):
+        logic.delete_paths([a, str(tmp_path / "gone.py")])
+    assert os.path.isfile(a)
+
+
 # -- batch run --------------------------------------------------------------
 
 
