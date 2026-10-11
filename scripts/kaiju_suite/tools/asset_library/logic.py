@@ -18,9 +18,11 @@ It's remembered per user and set again by :func:`restore_current`.
 import json
 import os
 import re
+import tempfile
 from collections import namedtuple
 
 from maya import cmds
+from maya.api import OpenMaya as om
 
 from kaiju_suite import registry
 from kaiju_suite.core import datafile, settings
@@ -31,6 +33,8 @@ log = get_logger(__name__)
 KIND = "asset"
 ASSET_FILE = "asset.json"
 THUMBNAIL = "thumbnail.png"
+# Thumbnails fit in a square this many pixels wide.
+THUMBNAIL_SIZE = 256
 FOLDERS = ("files", "build", "publish")
 PUBLISH_EXTENSIONS = (".ma", ".mb", ".fbx")
 VARIABLE = "ASSET"
@@ -219,6 +223,56 @@ def open_asset(folder):
     path = _publish_or_raise(folder)
     cmds.file(path, open=True, force=True)
     return path
+
+
+# -- thumbnails -----------------------------------------------------------------
+
+
+def set_thumbnail_from_file(folder, image_path):
+    """Save the image at ``image_path`` as the asset's thumbnail: a PNG
+    scaled down (never up) to fit :data:`THUMBNAIL_SIZE`. Returns its path.
+    The old thumbnail is kept if the image can't be read."""
+    if not is_asset(folder):
+        raise ValueError(f"{folder} isn't an asset (it has no {ASSET_FILE}).")
+    image = om.MImage()
+    try:
+        image.readFromFile(image_path)
+    except RuntimeError as e:
+        raise ValueError(f"Can't read {os.path.basename(image_path)} as an image.") from e
+    width, height = image.getSize()
+    if width > THUMBNAIL_SIZE or height > THUMBNAIL_SIZE:
+        image.resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, True)
+    target = os.path.join(folder, THUMBNAIL)
+    partial = target + ".part"
+    image.writeToFile(partial, "png")
+    os.replace(partial, target)
+    return target
+
+
+def capture_thumbnail(folder):
+    """Save the active viewport at the current frame as the asset's
+    thumbnail. Returns its path. Needs Maya's UI (a viewport)."""
+    if not is_asset(folder):
+        raise ValueError(f"{folder} isn't an asset (it has no {ASSET_FILE}).")
+    handle, grab = tempfile.mkstemp(prefix="kaiju_thumbnail_", suffix=".png")
+    os.close(handle)
+    try:
+        cmds.playblast(
+            frame=[cmds.currentTime(query=True)],
+            format="image",
+            compression="png",
+            completeFilename=grab,
+            widthHeight=(THUMBNAIL_SIZE, THUMBNAIL_SIZE),
+            percent=100,
+            viewer=False,
+            showOrnaments=False,
+            offScreen=True,
+            forceOverwrite=True,
+        )
+        return set_thumbnail_from_file(folder, grab)
+    finally:
+        if os.path.exists(grab):
+            os.remove(grab)
 
 
 # -- libraries ------------------------------------------------------------------

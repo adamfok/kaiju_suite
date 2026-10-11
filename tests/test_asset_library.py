@@ -348,3 +348,83 @@ def test_open_in_assembler_without_the_assembler_says_so_and_changes_nothing(tmp
     with pytest.raises(LookupError, match="Assembler"):
         logic.open_in_assembler(asset.path)
     assert "ASSET" not in os.environ
+# -- thumbnails -----------------------------------------------------------------
+
+
+def _image(path, width, height, kind="png"):
+    from maya.api import OpenMaya as om
+
+    image = om.MImage()
+    image.create(width, height)
+    image.writeToFile(str(path), kind)
+    return str(path)
+
+
+def _size(path):
+    from maya.api import OpenMaya as om
+
+    image = om.MImage()
+    image.readFromFile(str(path))
+    return image.getSize()
+
+
+def test_thumbnail_from_file_saves_a_png_that_fits_the_thumbnail_size(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    picked = _image(tmp_path / "shot.jpg", 1024, 512, "jpg")
+    path = logic.set_thumbnail_from_file(asset.path, picked)
+    assert _norm(path) == _norm(os.path.join(asset.path, logic.THUMBNAIL))
+    assert _size(path) == [logic.THUMBNAIL_SIZE, logic.THUMBNAIL_SIZE // 2]
+    with open(path, "rb") as f:
+        assert f.read(8) == b"\x89PNG\r\n\x1a\n"
+
+
+def test_a_small_image_is_not_scaled_up(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    path = logic.set_thumbnail_from_file(asset.path, _image(tmp_path / "small.png", 64, 32))
+    assert _size(path) == [64, 32]
+
+
+def test_thumbnail_replaces_the_old_one(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_thumbnail_from_file(asset.path, _image(tmp_path / "a.png", 64, 64))
+    logic.set_thumbnail_from_file(asset.path, _image(tmp_path / "b.png", 32, 16))
+    assert _size(logic.read_asset(asset.path).thumbnail) == [32, 16]
+
+
+def test_thumbnail_from_a_file_that_isnt_an_image_changes_nothing(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_thumbnail_from_file(asset.path, _image(tmp_path / "a.png", 64, 64))
+    bad = tmp_path / "notes.txt"
+    bad.write_text("not an image")
+    with pytest.raises(ValueError, match="notes.txt"):
+        logic.set_thumbnail_from_file(asset.path, str(bad))
+    assert _size(logic.read_asset(asset.path).thumbnail) == [64, 64]
+
+
+def test_thumbnail_refuses_a_folder_that_isnt_an_asset(tmp_path):
+    with pytest.raises(ValueError):
+        logic.set_thumbnail_from_file(str(tmp_path), _image(tmp_path / "a.png", 8, 8))
+
+
+def test_capture_thumbnail_playblasts_the_current_frame_into_the_thumbnail(tmp_path, monkeypatch):
+    from maya import cmds
+
+    asset = logic.create_asset(str(tmp_path), "hero")
+    calls = []
+
+    def fake_playblast(**kwargs):
+        calls.append(kwargs)
+        _image(kwargs["completeFilename"], 600, 600)
+        return kwargs["completeFilename"]
+
+    monkeypatch.setattr(cmds, "playblast", fake_playblast)
+    path = logic.capture_thumbnail(asset.path)
+    assert _size(path) == [logic.THUMBNAIL_SIZE, logic.THUMBNAIL_SIZE]
+    (kwargs,) = calls
+    frame = cmds.currentTime(query=True)
+    assert kwargs["frame"] == [frame]
+    assert kwargs["format"] == "image"
+    assert kwargs["viewer"] is False
+    assert kwargs["showOrnaments"] is False
+    # The temporary playblast file is cleaned up.
+    assert not os.path.exists(kwargs["completeFilename"])
