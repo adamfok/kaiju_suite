@@ -150,8 +150,17 @@ class AssetLibraryWindow(ToolWindow):
         self.folder_button.clicked.connect(self._show_in_folder)
         for button in (self.new_button, self.edit_button, self.folder_button):
             manage.addWidget(button)
+        thumbnail = QtWidgets.QHBoxLayout()
+        self.viewport_button = QtWidgets.QPushButton("Thumbnail from Viewport")
+        self.viewport_button.setToolTip("Save the active viewport at the current frame as the thumbnail")
+        self.viewport_button.clicked.connect(lambda: self._set_thumbnail(logic.capture_thumbnail))
+        self.image_button = QtWidgets.QPushButton("Thumbnail from File...")
+        self.image_button.clicked.connect(self._thumbnail_from_file)
+        thumbnail.addWidget(self.viewport_button)
+        thumbnail.addWidget(self.image_button)
         rows.addLayout(scene)
         rows.addLayout(manage)
+        rows.addLayout(thumbnail)
         return rows
 
     # -- libraries -------------------------------------------------------------
@@ -254,8 +263,8 @@ class AssetLibraryWindow(ToolWindow):
         published = logic.latest_publish(asset.path) if asset else None
         for button in (self.import_button, self.reference_button, self.open_button):
             button.setEnabled(bool(published))
-        self.edit_button.setEnabled(bool(asset))
-        self.folder_button.setEnabled(bool(asset))
+        for button in (self.edit_button, self.folder_button, self.viewport_button, self.image_button):
+            button.setEnabled(bool(asset))
         if asset is None:
             self.details.setText("")
             return
@@ -325,6 +334,27 @@ class AssetLibraryWindow(ToolWindow):
             _warn(str(e))
             return
         self._rescan(select=asset.path)
+
+    def _set_thumbnail(self, action, *args):
+        asset = self.selected()
+        if asset is None:
+            return
+        try:
+            action(asset.path, *args)
+        except Exception as e:
+            _warn(str(e))
+            return
+        self._rescan(select=asset.path)
+
+    def _thumbnail_from_file(self):
+        asset = self.selected()
+        if asset is None:
+            return
+        picked, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Thumbnail Image", asset.path, "Images (*.png *.jpg *.jpeg *.tif *.tiff *.bmp)"
+        )
+        if picked:
+            self._set_thumbnail(logic.set_thumbnail_from_file, picked)
 
     def _show_in_folder(self):
         asset = self.selected()
