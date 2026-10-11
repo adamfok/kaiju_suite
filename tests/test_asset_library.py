@@ -225,3 +225,84 @@ def test_a_scene_path_under_the_current_asset_is_stored_with_the_variable(tmp_pa
     model = os.path.join(asset.path, "files", "model.ma")
     build = logic.build_folder(asset.path)
     assert paths.to_portable(model, build) == "$ASSET/files/model.ma"
+
+
+# -- the tool and its startup hook ----------------------------------------------
+
+
+def test_asset_library_is_in_the_menu_with_a_startup_hook():
+    from kaiju_suite import registry
+
+    tool = registry.find("Asset Library")
+    assert tool is not None and tool.get("menu", True)
+    assert callable(tool["startup"])
+
+
+def test_startup_hook_sets_asset_again(tmp_path, clean_settings):
+    from kaiju_suite import registry
+
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    del os.environ["ASSET"]  # a new Maya session
+    registry.find("Asset Library")["startup"]()
+    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
+
+
+# -- tags typed by the user -----------------------------------------------------
+
+
+def test_parse_tags_splits_on_commas_and_spaces():
+    assert logic.parse_tags(" biped, hero  wings,,biped ") == ["biped", "hero", "wings"]
+    assert logic.parse_tags("") == []
+
+
+def test_format_tags_is_what_parse_tags_reads_back():
+    assert logic.parse_tags(logic.format_tags(["a", "b"])) == ["a", "b"]
+
+
+# -- bringing a published file into the scene -----------------------------------
+
+
+def _published(tmp_path, name="hero", node="hero_rig"):
+    from maya import cmds
+
+    asset = logic.create_asset(str(tmp_path), name)
+    cmds.file(new=True, force=True)
+    cmds.createNode("transform", name=node)
+    path = os.path.join(asset.path, "publish", f"{name}_rig.ma")
+    cmds.file(rename=path)
+    cmds.file(save=True, type="mayaAscii")
+    cmds.file(new=True, force=True)
+    return asset
+
+
+def test_import_asset_brings_in_the_latest_publish(new_scene, tmp_path):
+    from maya import cmds
+
+    asset = _published(tmp_path)
+    logic.import_asset(asset.path)
+    assert cmds.objExists("hero_rig")
+
+
+def test_reference_asset_uses_the_asset_name_as_namespace(new_scene, tmp_path):
+    from maya import cmds
+
+    asset = _published(tmp_path)
+    logic.reference_asset(asset.path)
+    assert cmds.objExists("hero:hero_rig")
+    assert len(cmds.file(query=True, reference=True)) == 1
+
+
+def test_open_asset_opens_the_latest_publish(new_scene, tmp_path):
+    from maya import cmds
+
+    asset = _published(tmp_path)
+    logic.open_asset(asset.path)
+    assert _norm(cmds.file(query=True, sceneName=True)) == _norm(logic.latest_publish(asset.path))
+
+
+@pytest.mark.parametrize("action", ["import_asset", "reference_asset", "open_asset"])
+def test_actions_on_an_asset_with_nothing_published_say_so(new_scene, tmp_path, action):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    with pytest.raises(LookupError, match="hero has nothing published"):
+        getattr(logic, action)(asset.path)

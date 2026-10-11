@@ -1,5 +1,20 @@
-"""Asset Library: browse asset folders and pick the current asset.
+def show():
+    # Imported lazily so building the menu never loads Qt.
+    from kaiju_suite.tools.asset_library.widget import AssetLibraryWindow
 
-No ``TOOL`` dict yet, so it stays out of the menu until its window exists;
-the logic is in :mod:`.logic`.
-"""
+    AssetLibraryWindow.show_window()
+
+
+def startup():
+    """Set ASSET to the remembered current asset when Maya starts."""
+    from kaiju_suite.tools.asset_library import logic
+
+    logic.restore_current()
+
+
+TOOL = {
+    "name": "Asset Library",
+    "launch": show,
+    "startup": startup,
+    "description": "Browse assets, import or reference their published files, and pick the current asset.",
+}

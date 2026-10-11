@@ -59,3 +59,30 @@ def test_menu_tools_leave_out_tools_marked_menu_false(fake_tools):
 def test_rig_module_editor_is_not_in_the_menu():
     assert "Rig Module Editor" not in [tool["name"] for tool in registry.menu_tools()]
     assert registry.find("Rig Module Editor") is not None
+
+
+def test_run_startup_calls_each_tools_startup_hook_once(fake_tools):
+    fake_tools("one", '{"name": "One", "launch": show, "startup": lambda: CALLS.append("one")}')
+    fake_tools("two", '{"name": "Two", "launch": show}')
+    fake_tools("three", '{"name": "Three", "launch": show, "startup": lambda: CALLS.append("three")}')
+    import builtins
+
+    builtins.CALLS = []
+    try:
+        registry.run_startup()
+        assert sorted(builtins.CALLS) == ["one", "three"]
+    finally:
+        del builtins.CALLS
+
+
+def test_a_failing_startup_hook_doesnt_stop_the_others(fake_tools):
+    fake_tools("bad", '{"name": "Bad", "launch": show, "startup": lambda: 1 / 0}')
+    fake_tools("good", '{"name": "Good", "launch": show, "startup": lambda: CALLS.append("good")}')
+    import builtins
+
+    builtins.CALLS = []
+    try:
+        registry.run_startup()
+        assert builtins.CALLS == ["good"]
+    finally:
+        del builtins.CALLS

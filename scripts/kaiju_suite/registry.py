@@ -11,6 +11,8 @@ A tool is any sub-package whose ``__init__.py`` defines a ``TOOL`` dict:
         "description": "...",       # optional, used as the menu tooltip
         "menu": False,              # optional; leaves it out of the menu,
                                     # e.g. a tool only opened from another
+        "startup": fn,              # optional; run once when the plug-in
+                                    # loads (see run_startup)
     }
 
 Adding a tool means adding a folder; nothing else needs registering.
@@ -66,3 +68,16 @@ def find(name):
     Lets a tool open another without importing it.
     """
     return next((tool for tool in discover() if tool["name"] == name), None)
+
+
+def run_startup():
+    """Call every tool's ``"startup"`` hook, if it has one. Called once when
+    the plug-in loads; a failing hook is logged and the others still run."""
+    for tool in discover():
+        hook = tool.get("startup")
+        if not callable(hook):
+            continue
+        try:
+            hook()
+        except Exception:
+            log.exception("Startup of tool '%s' failed", tool["name"])

@@ -20,6 +20,8 @@ import os
 import re
 from collections import namedtuple
 
+from maya import cmds
+
 from kaiju_suite.core import datafile, settings
 from kaiju_suite.core.log import get_logger
 
@@ -146,6 +148,15 @@ def filter_assets(assets, text="", asset_type=None, tag=None):
     return [asset for asset in assets if keep(asset)]
 
 
+def parse_tags(text):
+    """Tags typed by the user, split on commas and spaces."""
+    return _clean_tags(re.split(r"[,\s]+", text or ""))
+
+
+def format_tags(tags):
+    return ", ".join(tags)
+
+
 def types_in_use(assets):
     return sorted({asset.type for asset in assets if asset.type})
 
@@ -179,6 +190,34 @@ def latest_publish(folder):
         if name.lower().endswith(PUBLISH_EXTENSIONS) and os.path.isfile(os.path.join(publish, name))
     ]
     return max(files, key=os.path.getmtime, default=None)
+
+
+def _publish_or_raise(folder):
+    path = latest_publish(folder)
+    if path is None:
+        raise LookupError(f"{os.path.basename(os.path.normpath(folder))} has nothing published (no .ma, .mb or .fbx in publish/).")
+    return path
+
+
+def import_asset(folder):
+    """Import the asset's latest published file; returns the new nodes."""
+    return cmds.file(_publish_or_raise(folder), i=True, returnNewNodes=True)
+
+
+def reference_asset(folder):
+    """Reference the asset's latest published file under a namespace named
+    after the asset (Maya numbers it if it's taken); returns the file."""
+    path = _publish_or_raise(folder)
+    namespace = os.path.basename(os.path.normpath(folder))
+    return cmds.file(path, reference=True, namespace=namespace)
+
+
+def open_asset(folder):
+    """Open the asset's latest published file, dropping unsaved changes:
+    ask the user first."""
+    path = _publish_or_raise(folder)
+    cmds.file(path, open=True, force=True)
+    return path
 
 
 # -- libraries ------------------------------------------------------------------
