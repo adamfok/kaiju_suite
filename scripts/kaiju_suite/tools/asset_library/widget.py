@@ -3,7 +3,6 @@ import os
 from maya import cmds
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from kaiju_suite.core import settings
 from kaiju_suite.tools.asset_library import logic
 from kaiju_suite.ui.base_window import ToolWindow
 
@@ -42,6 +41,9 @@ class AssetLibraryWindow(ToolWindow):
     def build_ui(self):
         self._assets = []
         self.layout.setMenuBar(self._menu_bar())
+        self.library_label = QtWidgets.QLabel()
+        self.library_label.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.layout.addWidget(self.library_label)
         self.current_label = QtWidgets.QLabel()
         self.layout.addWidget(self.current_label)
         self.search = QtWidgets.QLineEdit()
@@ -65,33 +67,20 @@ class AssetLibraryWindow(ToolWindow):
         self.details.setWordWrap(True)
         self.details.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.layout.addWidget(self.details)
-        self._load_libraries()
+        self._library_changed()
 
     # -- layout ----------------------------------------------------------------
 
     def _menu_bar(self):
-        """Library menu, New Asset, and the current library's path on the right."""
         # Parented now: setMenuBar alone doesn't stop Python deleting the bar.
         bar = QtWidgets.QMenuBar(self)
-        library = bar.addMenu("Library")
-        library.addAction("Add Library...", self._add_library)
-        remove = library.addAction("Remove Library", self._remove_library)
-        library.aboutToShow.connect(lambda: remove.setEnabled(bool(self.library())))
+        # The same goes for the menu: addMenu("...") leaves it to Python.
+        self.library_menu = QtWidgets.QMenu("Library", bar)
+        self.library_menu.addAction("New Library...", self._new_library)
+        self.library_menu.addAction("Change Library...", self._change_library)
+        bar.addMenu(self.library_menu)
         self.new_action = bar.addAction("New Asset...", self._new_asset)
-        bar.setCornerWidget(self._library_path(bar), QtCore.Qt.TopRightCorner)
         return bar
-
-    def _library_path(self, bar):
-        corner = QtWidgets.QWidget(bar)
-        row = QtWidgets.QHBoxLayout(corner)
-        row.setContentsMargins(4, 0, 4, 0)
-        self.library_label = QtWidgets.QLabel()
-        self.library_combo = QtWidgets.QComboBox()
-        self.library_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
-        self.library_combo.currentIndexChanged.connect(lambda *_: self._library_changed())
-        row.addWidget(self.library_label)
-        row.addWidget(self.library_combo)
-        return corner
 
     def _context_menu(self, pos):
         """Right-click an asset for its actions, or empty space for New Asset."""
@@ -125,49 +114,48 @@ class AssetLibraryWindow(ToolWindow):
 
     # -- libraries -------------------------------------------------------------
 
-    def _load_libraries(self, select=None):
-        found = logic.libraries()
-        select = select or settings.get(logic.SETTINGS_KEY, "library", "")
-        self.library_combo.blockSignals(True)
-        self.library_combo.clear()
-        for path in found:
-            self.library_combo.addItem(path, path)
-        index = next((i for i, path in enumerate(found) if os.path.normcase(path) == os.path.normcase(select or "")), 0)
-        self.library_combo.setCurrentIndex(index if found else -1)
-        self.library_combo.blockSignals(False)
-        # The drop-down only appears once there's more than one library.
-        self.library_combo.setVisible(len(found) > 1)
-        self.library_label.setVisible(len(found) <= 1)
-        self.library_label.setText(found[0] if found else "No library yet: pick Library > Add Library...")
-        self.new_action.setEnabled(bool(found))
-        self._library_changed()
-
     def library(self):
-        return self.library_combo.currentData() or ""
+        return logic.library()
 
     def _library_changed(self):
-        if self.library():
-            settings.set(logic.SETTINGS_KEY, "library", self.library())
+        path = self.library()
+        self.library_label.setText(
+            f"Library: {path}" if path else "No library yet: pick Library > New Library... or Change Library..."
+        )
+        self.new_action.setEnabled(bool(path))
         self._rescan()
 
-    def _add_library(self):
+    def _pick_folder(self, title):
         start = self.library() or cmds.workspace(query=True, rootDirectory=True)
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Add Library Folder", start)
-        if folder:
-            folder = os.path.normpath(folder)
-            logic.add_library(folder)
-            self._load_libraries(select=folder)
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, title, start)
+        return os.path.normpath(folder) if folder else ""
 
-    def _remove_library(self):
-        path = self.library()
-        if not path:
+    def _new_library(self):
+        parent = self._pick_folder("New Library: Pick Where to Make It")
+        if not parent:
             return
-        answer = QtWidgets.QMessageBox.question(
-            self, "Remove Library", f"Remove {path} from the list?\nNo files are deleted."
+        name, ok = QtWidgets.QInputDialog.getText(
+            self, "New Library", f"Make a library folder in {parent}.\nName (letters, digits, _ and -):"
         )
-        if answer == QtWidgets.QMessageBox.Yes:
-            logic.remove_library(path)
-            self._load_libraries()
+        if not ok:
+            return
+        try:
+            logic.create_library(parent, name.strip())
+        except (OSError, ValueError) as e:
+            _warn(str(e))
+            return
+        self._library_changed()
+
+    def _change_library(self):
+        folder = self._pick_folder("Change Library")
+        if not folder:
+            return
+        try:
+            logic.set_library(folder)
+        except OSError as e:
+            _warn(str(e))
+            return
+        self._library_changed()
 
     # -- the list --------------------------------------------------------------
 

@@ -15,7 +15,6 @@ so Assembler Scene and Output items under it store ``$ASSET/...`` paths.
 It's remembered per user and set again by :func:`restore_current`.
 """
 
-import json
 import os
 import re
 import tempfile
@@ -214,34 +213,35 @@ def capture_thumbnail(folder):
             os.remove(grab)
 
 
-# -- libraries ------------------------------------------------------------------
+# -- the library ---------------------------------------------------------------
 
 
-def libraries():
-    """The user's library folders, in the order they were added."""
-    try:
-        found = json.loads(settings.get(SETTINGS_KEY, "libraries", "[]"))
-    except ValueError:
-        return []
-    return [path for path in found if isinstance(path, str)] if isinstance(found, list) else []
+def library():
+    """The library folder in use, or ``""`` if none is set or it's gone."""
+    path = settings.get(SETTINGS_KEY, "library", "")
+    return path if path and os.path.isdir(path) else ""
 
 
-def _save_libraries(paths):
-    settings.set(SETTINGS_KEY, "libraries", json.dumps(paths))
+def set_library(path):
+    """Use the folder at ``path`` as the library from now on."""
+    if not os.path.isdir(path):
+        raise FileNotFoundError(f"The library folder {path} doesn't exist.")
+    settings.set(SETTINGS_KEY, "library", os.path.normpath(path))
 
 
-def _same(a, b):
-    return os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
-
-
-def add_library(path):
-    current = libraries()
-    if not any(_same(path, p) for p in current):
-        _save_libraries(current + [os.path.normpath(path)])
-
-
-def remove_library(path):
-    _save_libraries([p for p in libraries() if not _same(path, p)])
+def create_library(parent, name):
+    """Make an empty library folder ``name`` in ``parent`` and use it.
+    Returns its path."""
+    if not _NAME.match(name or ""):
+        raise ValueError(f"Library name {name!r} can't be used: use letters, digits, _ and -.")
+    if not os.path.isdir(parent):
+        raise FileNotFoundError(f"The folder {parent} doesn't exist.")
+    folder = os.path.normpath(os.path.join(parent, name))
+    if os.path.exists(folder):
+        raise ValueError(f"There's already a folder called {name} in {parent}.")
+    os.makedirs(folder)
+    set_library(folder)
+    return folder
 
 
 # -- the current asset ----------------------------------------------------------

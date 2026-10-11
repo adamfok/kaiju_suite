@@ -9,11 +9,11 @@ from kaiju_suite.tools.asset_library import logic
 
 @pytest.fixture
 def clean_settings():
-    for name in ("libraries", "current_asset"):
+    for name in ("library", "current_asset"):
         settings.remove(logic.SETTINGS_KEY, name)
     old = os.environ.pop("ASSET", None)
     yield
-    for name in ("libraries", "current_asset"):
+    for name in ("library", "current_asset"):
         settings.remove(logic.SETTINGS_KEY, name)
     os.environ.pop("ASSET", None)
     if old is not None:
@@ -112,6 +112,161 @@ def test_filter_matches_names_ignoring_case(tmp_path):
 def test_type_tag_and_note_helpers_are_gone():
     for name in ("update_asset", "parse_tags", "format_tags", "types_in_use", "tags_in_use"):
         assert not hasattr(logic, name), name
+
+
+# -- published files ------------------------------------------------------------
+
+
+def test_latest_publish_is_the_newest_maya_or_fbx_file(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    publish = tmp_path / "hero" / "publish"
+    assert logic.latest_publish(asset.path) is None
+    for i, name in enumerate(["hero_v001.ma", "notes.txt", "hero_v002.mb", "hero.fbx"]):
+        (publish / name).write_text("x")
+        os.utime(publish / name, (time.time() + i, time.time() + i))
+    os.utime(publish / "hero_v002.mb", (time.time() + 10, time.time() + 10))
+    assert _norm(logic.latest_publish(asset.path)) == _norm(str(publish / "hero_v002.mb"))
+
+
+def test_build_folder_is_known_only_when_it_has_items(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    assert _norm(logic.build_folder(asset.path)) == _norm(str(tmp_path / "hero" / "build"))
+    assert not logic.has_build(asset.path)
+    (tmp_path / "hero" / "build" / "model.scene").write_text("{}")
+    assert logic.has_build(asset.path)
+
+
+# -- libraries ------------------------------------------------------------------
+
+
+def test_no_library_until_one_is_set(clean_settings):
+    assert logic.library() == ""
+
+
+def test_set_library_remembers_one_library(tmp_path, clean_settings):
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    logic.set_library(str(a))
+    logic.set_library(str(b))
+    assert _norm(logic.library()) == _norm(str(b))
+
+
+def test_set_library_refuses_a_missing_folder_and_keeps_the_old_one(tmp_path, clean_settings):
+    logic.set_library(str(tmp_path))
+    with pytest.raises(FileNotFoundError):
+        logic.set_library(str(tmp_path / "nope"))
+    assert _norm(logic.library()) == _norm(str(tmp_path))
+
+
+def test_a_library_folder_that_is_gone_is_forgotten(tmp_path, clean_settings):
+    folder = tmp_path / "lib"
+    folder.mkdir()
+    logic.set_library(str(folder))
+    folder.rmdir()
+    assert logic.library() == ""
+
+
+def test_create_library_makes_an_empty_folder_and_switches_to_it(tmp_path, clean_settings):
+    path = logic.create_library(str(tmp_path), "props")
+    assert _norm(path) == _norm(str(tmp_path / "props"))
+    assert list((tmp_path / "props").iterdir()) == []
+    assert _norm(logic.library()) == _norm(path)
+
+
+@pytest.mark.parametrize("name", ["", "my props", "a/b", "../up"])
+def test_create_library_refuses_names_that_dont_work_as_folders(tmp_path, clean_settings, name):
+    with pytest.raises(ValueError):
+        logic.create_library(str(tmp_path), name)
+    assert list(tmp_path.iterdir()) == []
+    assert logic.library() == ""
+
+
+def test_create_library_refuses_an_existing_folder_or_missing_parent(tmp_path, clean_settings):
+    (tmp_path / "props").mkdir()
+    with pytest.raises(ValueError, match="already"):
+        logic.create_library(str(tmp_path), "props")
+    with pytest.raises(FileNotFoundError):
+        logic.create_library(str(tmp_path / "nope"), "props")
+    assert logic.library() == ""
+
+
+def test_the_list_of_libraries_is_gone():
+    for name in ("libraries", "add_library", "remove_library"):
+        assert not hasattr(logic, name), name
+
+
+# -- the current asset ----------------------------------------------------------
+
+
+def test_set_current_sets_asset_variable_and_remembers_it(tmp_path, clean_settings):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
+    assert _norm(logic.current().path) == _norm(asset.path)
+
+
+def test_set_current_refuses_a_folder_that_isnt_an_asset(tmp_path, clean_settings):
+    with pytest.raises(ValueError):
+        logic.set_current(str(tmp_path))
+    assert "ASSET" not in os.environ
+
+
+def test_restore_current_sets_the_variable_again_after_a_restart(tmp_path, clean_settings):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    del os.environ["ASSET"]  # a new Maya session
+    assert logic.restore_current().name == "hero"
+    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
+
+
+def test_restore_current_forgets_an_asset_that_is_gone(tmp_path, clean_settings):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    del os.environ["ASSET"]
+    os.remove(os.path.join(asset.path, logic.ASSET_FILE))
+    assert logic.restore_current() is None
+    assert "ASSET" not in os.environ
+    assert logic.current() is None
+
+
+def test_clear_current_unsets_the_variable(tmp_path, clean_settings):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    logic.clear_current()
+    assert "ASSET" not in os.environ
+    assert logic.current() is None
+
+
+def test_a_scene_path_under_the_current_asset_is_stored_with_the_variable(tmp_path, clean_settings):
+    from kaiju_suite.core import paths
+
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    model = os.path.join(asset.path, "files", "model.ma")
+    build = logic.build_folder(asset.path)
+    assert paths.to_portable(model, build) == "$ASSET/files/model.ma"
+
+
+# -- the tool and its startup hook ----------------------------------------------
+
+
+def test_asset_library_is_in_the_menu_with_a_startup_hook():
+    from kaiju_suite import registry
+
+    tool = registry.find("Asset Library")
+    assert tool is not None and tool.get("menu", True)
+    assert callable(tool["startup"])
+
+
+def test_startup_hook_sets_asset_again(tmp_path, clean_settings):
+    from kaiju_suite import registry
+
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    del os.environ["ASSET"]  # a new Maya session
+    registry.find("Asset Library")["startup"]()
+    assert _norm(os.environ["ASSET"]) == _norm(asset.path)
 
 
 # -- bringing a published file into the scene -----------------------------------
