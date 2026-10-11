@@ -42,7 +42,6 @@ class AssetLibraryWindow(ToolWindow):
     def build_ui(self):
         self._assets = []
         self.layout.setMenuBar(self._menu_bar())
-        self.layout.addLayout(self._library_row())
         self.current_label = QtWidgets.QLabel()
         self.layout.addWidget(self.current_label)
         self.search = QtWidgets.QLineEdit()
@@ -71,21 +70,27 @@ class AssetLibraryWindow(ToolWindow):
     # -- layout ----------------------------------------------------------------
 
     def _menu_bar(self):
+        """Library menu, New Asset, and the current library's path on the right."""
         bar = QtWidgets.QMenuBar()
         library = bar.addMenu("Library")
         library.addAction("Add Library...", self._add_library)
         remove = library.addAction("Remove Library", self._remove_library)
         library.aboutToShow.connect(lambda: remove.setEnabled(bool(self.library())))
+        self.new_action = bar.addAction("New Asset...", self._new_asset)
+        bar.setCornerWidget(self._library_path(), QtCore.Qt.TopRightCorner)
         return bar
 
-    def _library_row(self):
-        row = QtWidgets.QHBoxLayout()
+    def _library_path(self):
+        corner = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(corner)
+        row.setContentsMargins(4, 0, 4, 0)
         self.library_label = QtWidgets.QLabel()
         self.library_combo = QtWidgets.QComboBox()
+        self.library_combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
         self.library_combo.currentIndexChanged.connect(lambda *_: self._library_changed())
-        row.addWidget(self.library_label, 1)
-        row.addWidget(self.library_combo, 1)
-        return row
+        row.addWidget(self.library_label)
+        row.addWidget(self.library_combo)
+        return corner
 
     def _context_menu(self, pos):
         """Right-click an asset for its actions, or empty space for New Asset."""
@@ -125,15 +130,15 @@ class AssetLibraryWindow(ToolWindow):
         self.library_combo.blockSignals(True)
         self.library_combo.clear()
         for path in found:
-            self.library_combo.addItem(os.path.basename(os.path.normpath(path)) or path, path)
-            self.library_combo.setItemData(self.library_combo.count() - 1, path, QtCore.Qt.ToolTipRole)
+            self.library_combo.addItem(path, path)
         index = next((i for i, path in enumerate(found) if os.path.normcase(path) == os.path.normcase(select or "")), 0)
         self.library_combo.setCurrentIndex(index if found else -1)
         self.library_combo.blockSignals(False)
         # The drop-down only appears once there's more than one library.
         self.library_combo.setVisible(len(found) > 1)
         self.library_label.setVisible(len(found) <= 1)
-        self.library_label.setText(found[0] if found else "No library yet: pick Library > Add Library... to add a folder.")
+        self.library_label.setText(found[0] if found else "No library yet: pick Library > Add Library...")
+        self.new_action.setEnabled(bool(found))
         self._library_changed()
 
     def library(self):
