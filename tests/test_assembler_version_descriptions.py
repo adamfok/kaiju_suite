@@ -81,6 +81,13 @@ def test_describing_applies_to_versions_saved_inside_it(tmp_path):
     assert _descriptions(path) == {2: "", 1: "From the prompt"}
 
 
+def test_publish_left_blank_reads_no_description(tmp_path):
+    path = _write(tmp_path / "build.py", "a = 1\n")
+    with versions.describing(""):
+        versions.publish(path)
+    assert versions.description_text(versions.list_versions(path)[0]) == versions.NO_DESCRIPTION
+
+
 def test_a_given_description_wins_over_describing(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
     with versions.describing("From the prompt"):
