@@ -390,3 +390,59 @@ def test_skin_weight_edits_are_one_undo_step_each(new_scene):
 
         assert _all_weights(plane) == before
         assert sorted(cmds.skinCluster(cluster, query=True, influence=True)) == ["a", "b", "c"]
+
+
+# -- export / import --------------------------------------------------------
+
+
+def test_export_and_import_weights(new_scene, tmp_path):
+    plane, _ = _skinned_source()
+    before = _all_weights(plane)
+    path = logic.export_weights(str(tmp_path / "src.skin"), [plane])
+    assert path.endswith("src.skin")
+
+    cmds.skinCluster(logic.skin_cluster(plane), edit=True, unbind=True)
+    assert logic.skin_cluster(plane) is None
+    message = logic.import_weights(path)
+    assert message.startswith("Bound 1 mesh")
+    assert _all_weights(plane) == before
+
+
+def test_exported_file_is_an_assembler_skin_file(new_scene, tmp_path):
+    from kaiju_suite.tools.assembler.products import skin as skin_product
+
+    plane, _ = _skinned_source()
+    before = _all_weights(plane)
+    path = logic.export_weights(str(tmp_path / "src.skin"), [plane])
+    cmds.skinCluster(logic.skin_cluster(plane), edit=True, unbind=True)
+    skin_product.PRODUCT.run(path)
+    assert _all_weights(plane) == before
+
+
+def test_export_needs_skinned_meshes(new_scene, tmp_path):
+    bare = _plane("bare")
+    with pytest.raises(ValueError, match="No skinCluster on: bare"):
+        logic.export_weights(str(tmp_path / "bare.skin"), [bare])
+    with pytest.raises(ValueError, match="No meshes"):
+        logic.export_weights(str(tmp_path / "none.skin"), [])
+
+
+def test_import_refuses_another_kind_of_file(new_scene, tmp_path):
+    path = tmp_path / "a.skin"
+    path.write_text('{"kaiju": "mesh", "format": 1, "data": {}}')
+    with pytest.raises(ValueError):
+        logic.import_weights(str(path))
+
+
+def test_import_weights_is_one_undo_step(new_scene, tmp_path):
+    cmds.undoInfo(state=True)
+    plane, cluster = _skinned_source()
+    path = logic.export_weights(str(tmp_path / "src.skin"), [plane])
+    for v in range(cmds.polyEvaluate(plane, vertex=True)):
+        cmds.skinPercent(cluster, f"{plane}.vtx[{v}]", transformValue=[("left", 0.5), ("right", 0.5)])
+    before = _all_weights(plane)
+
+    logic.import_weights(path)
+    assert _all_weights(plane) != before
+    cmds.undo()
+    assert _all_weights(plane) == before
