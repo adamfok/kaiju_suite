@@ -92,6 +92,29 @@ class IkFkModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        chain = helpers.chain_names(params["start_joint"], params["end_joint"], 3) or []
+        numbers = [f"{i:02d}" for i in range(1, len(chain) + 1)]
+        names = [f"{name}_ikfk_grp", f"{name}_jnt_grp"]
+        names += [f"{name}_{n}_{side}_jnt" for side in ("ik", "fk") for n in numbers]
+        names += [
+            f"{name}_ik_ctrls_grp",
+            f"{name}_ik_ctrl_grp",
+            f"{name}_ik_ctrl",
+            f"{name}_ikHandle",
+            f"{name}_effector",
+            f"{name}_ik_end_orientConstraint",
+            f"{name}_pv_ctrl_grp",
+            f"{name}_pv_ctrl",
+            f"{name}_poleVectorConstraint",
+            f"{name}_fk_ctrls_grp",
+        ]
+        for n in numbers:
+            names += [f"{name}_{n}_fk_ctrl_grp", f"{name}_{n}_fk_ctrl", f"{name}_{n}_fk_parentConstraint"]
+        names += [f"{name}_switch_ctrl_grp", f"{name}_switch_ctrl", f"{name}_switch_parentConstraint"]
+        return names + [f"{name}_{n}_ikfk_parentConstraint" for n in numbers]
+
     def create(self, params):
         name = params["name"].strip()
         chain = [helpers.short(j) for j in helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())]

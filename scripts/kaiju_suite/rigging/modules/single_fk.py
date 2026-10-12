@@ -38,6 +38,10 @@ class SingleFkModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        return [f"{name}_fk_grp", f"{name}_fk_ctrl_grp", f"{name}_fk_ctrl", f"{name}_fk_parentConstraint"]
+
     def create(self, params):
         name = params["name"].strip()
         joint = cmds.ls(params["joint"].strip(), long=True)[0]

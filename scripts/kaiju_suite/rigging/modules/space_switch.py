@@ -103,6 +103,19 @@ class SpaceSwitchModule(RigModule):
                 found.append(f"Driven group {driven} has locked or connected {attr}; the spaces can't move it.")
         return found
 
+    def names(self, params):
+        control = params["control"].strip()
+        name = (helpers.short(control) if len(cmds.ls(control)) == 1 else control).replace("|", "_")
+        names = [] if params["driven"].strip() else [f"{name}_space_grp"]
+        return names + [f"{name}_space_parentConstraint"]
+
+    def node_refs(self, params):
+        refs = super().node_refs(params)
+        spaces = self.complete(params)["spaces"]
+        if not space_switch.spaces_problems(spaces):
+            refs += [(f"Space {label!r} node", node) for label, node in space_switch.parse_spaces(spaces)]
+        return refs
+
     def create(self, params):
         control = _long(params["control"].strip())
         name = helpers.short(control).replace("|", "_")

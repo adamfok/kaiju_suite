@@ -50,6 +50,10 @@ class RootModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        return [f"{name}_root_grp", f"{name}_root_ctrl", f"{name}_offset_ctrl"]
+
     def create(self, params):
         name = params["name"].strip()
         size = float(params["control_size"])

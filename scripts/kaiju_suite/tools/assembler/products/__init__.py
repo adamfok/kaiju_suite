@@ -186,6 +186,19 @@ class Product:
         to restore a version. Does nothing unless overridden."""
         return None
 
+    # -- dry run (see ..dryrun) -----------------------------------------------
+
+    def outputs(self, path):
+        """The names of the nodes running ``path`` would make, or ``None`` if
+        it can't say (the default). May raise ``OSError``, ``ValueError`` or
+        ``LookupError`` for a file it can't read."""
+        return None
+
+    def node_refs(self, path):
+        """``[(label, name), ...]``: the scene nodes running ``path`` needs,
+        e.g. ``("Parent", "main_offset_ctrl")``. Empty unless overridden."""
+        return []
+
     # -- build plans (see ..plan) ---------------------------------------------
 
     def to_plan(self, path):

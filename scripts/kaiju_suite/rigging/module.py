@@ -3,7 +3,9 @@
 A rig module lists its parameters, so parameter files can be filled with
 defaults and the Rig Module Editor can build its form from them. It checks
 parameters in :meth:`RigModule.problems` and builds in
-:meth:`RigModule.create`. No Qt here.
+:meth:`RigModule.create`. :meth:`RigModule.outputs` names what a build
+would make, and :meth:`RigModule.node_refs` the scene nodes it needs, so a
+build can be checked before anything is built. No Qt here.
 """
 
 from dataclasses import dataclass
@@ -38,7 +40,7 @@ class ParamError(ValueError):
 
 class RigModule:
     """Subclass, set ``key`` (saved in parameter files), ``name`` and
-    ``params``, and implement :meth:`check` and :meth:`create`."""
+    ``params``, and implement :meth:`check`, :meth:`create` and :meth:`names`."""
 
     key = ""
     name = ""
@@ -75,6 +77,24 @@ class RigModule:
                 found.extend(_value_problems(known[key], value))
         return found
 
+    def outputs(self, params):
+        """The names of every transform (groups, controls, joints, handles,
+        constraints, ...) a build from ``params`` would make, without changing
+        the scene. Names that depend on a joint chain are only listed if the
+        chain is in the scene."""
+        return self.names(self.complete(params))
+
+    def node_refs(self, params):
+        """``[(label, name), ...]``: the scene nodes a build from ``params``
+        needs, from its filled-in "node" parameters."""
+        params = self.complete(params)
+        refs = []
+        for param in self.params:
+            value = params[param.key]
+            if param.kind == "node" and isinstance(value, str) and value.strip():
+                refs.append((param.label, value.strip()))
+        return refs
+
     def build(self, params):
         """Check ``params``, then build as one undo step. Raises
         :class:`ParamError` listing the problems before changing anything."""
@@ -94,6 +114,11 @@ class RigModule:
 
     def create(self, params):
         """Build in the scene from checked, complete ``params``."""
+        raise NotImplementedError
+
+    def names(self, params):
+        """:meth:`outputs` for complete ``params``; must match what
+        :meth:`create` makes. May read the scene, never change it."""
         raise NotImplementedError
 
 

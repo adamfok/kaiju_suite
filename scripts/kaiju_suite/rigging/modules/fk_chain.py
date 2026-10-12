@@ -45,6 +45,17 @@ class FkChainModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        names = [f"{name}_fkChain_grp"]
+        chain = helpers.chain_names(params["start_joint"], params["end_joint"], 2)
+        if chain:
+            joints = chain if params["end_control"] else chain[:-1]
+            for number in range(1, len(joints) + 1):
+                control = f"{name}_{number:02d}_fk_ctrl"
+                names += [f"{control}_grp", control, f"{control}_parentConstraint"]
+        return names
+
     def create(self, params):
         name = params["name"].strip()
         chain = helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())

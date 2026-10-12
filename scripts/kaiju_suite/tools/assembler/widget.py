@@ -5,7 +5,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import compare, logic, plan, products, report, republish, runlog, versions
+from kaiju_suite.tools.assembler import compare, dryrun, logic, plan, products, report, republish, runlog, versions
 from kaiju_suite.tools.assembler.report_widget import ReportDialog
 from kaiju_suite.tools.assembler.versions_widget import VersionsDialog, ask_description
 from kaiju_suite.ui.base_window import ToolWindow
@@ -752,9 +752,15 @@ class AssemblerWindow(ToolWindow):
             if path:
                 menu.addAction(f"Run '{os.path.basename(directory)}'", lambda: self._run_folder(directory))
             plan_menu = menu.addMenu("Build")
+            plan_menu.setToolTipsVisible(True)
             # A folder's plan holds the folder itself; the whole tree's, just its contents.
             plan_menu.addAction("Export...", lambda: self._export_plan(directory, include_folder=bool(path)))
             plan_menu.addAction("Import...", lambda: self._import_plan(directory))
+            check = plan_menu.addAction("Check Nodes", lambda: self._check_nodes(directory))
+            check.setToolTip(
+                "Without building anything, lists every node a Rig Module item needs (its parent, joints, "
+                "spaces...) that isn't in the scene and isn't made by an earlier item."
+            )
         if toggles:
             enabled = [logic.is_enabled(p) for p in toggles]
             if any(enabled):
@@ -986,6 +992,20 @@ class AssemblerWindow(ToolWindow):
             return
         self.populate()
         _notify(f"Imported {len(created)} item{'s' if len(created) != 1 else ''} from {os.path.basename(source)}")
+
+    def _check_nodes(self, directory):
+        name = os.path.basename(os.path.normpath(directory)) or "the build"
+        try:
+            found = dryrun.problems(directory)
+        except Exception as e:
+            log.exception("Node check failed")
+            _warn(f"Failed to check the nodes of {name}: {e}")
+            return
+        if not found:
+            _notify(f"Every node {name} needs is in the scene or made by an earlier item")
+            return
+        # Can be a long list: show it in a box, not the status line.
+        QtWidgets.QMessageBox.warning(self, "Missing Nodes", "\n".join(found))
 
     def _create(self, product, creator, item):
         """Create into the folder ``item`` is, or below the file ``item`` is,

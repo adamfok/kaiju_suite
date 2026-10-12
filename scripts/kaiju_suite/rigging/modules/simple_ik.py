@@ -52,6 +52,20 @@ class SimpleIkModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        return [
+            f"{name}_ik_grp",
+            f"{name}_ik_ctrl_grp",
+            f"{name}_ik_ctrl",
+            f"{name}_ikHandle",
+            f"{name}_effector",
+            f"{name}_end_orientConstraint",
+            f"{name}_pv_ctrl_grp",
+            f"{name}_pv_ctrl",
+            f"{name}_poleVectorConstraint",
+        ]
+
     def create(self, params):
         name = params["name"].strip()
         chain = helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())

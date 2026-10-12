@@ -100,6 +100,13 @@ class SplineIkModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        names = [f"{name}_splineIk_grp"]
+        for part in ("hip", "chest"):
+            names += [f"{name}_{part}_ctrl_grp", f"{name}_{part}_ctrl", f"{name}_{part}_drv_jnt"]
+        return names + [f"{name}_splineIk_crv", f"{name}_ikHandle", f"{name}_effector"]
+
     def create(self, params):
         name = params["name"].strip()
         chain = helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())
