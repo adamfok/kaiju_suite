@@ -238,3 +238,38 @@ def test_parse_plan_text(tmp_path):
         plan.parse_plan("not json")
     with pytest.raises(DataFormatError):
         plan.parse_plan(json.dumps({"kaiju": "mesh", "format": 1, "data": {}}))
+
+
+# -- starting a new build ---------------------------------------------------------
+
+
+def test_start_build_adds_a_build_folder_holding_an_output_saving_to_the_file(tmp_path):
+    from kaiju_suite.tools.assembler.products import output
+
+    root = tmp_path / "proxy"
+    root.mkdir()
+    target = str(tmp_path / "publish" / "proxy" / "hero_proxy.ma")
+    created = plan.start_build(str(root), target)
+    (folder,) = logic.scan(str(root))
+    assert folder.name == "build"
+    assert [e.name for e in folder.children] == ["output.out"]
+    assert [os.path.basename(p) for p in created] == ["build"]
+    out = str(root / "build" / "output.out")
+    assert os.path.normcase(output.target(out)) == os.path.normcase(target)
+    # Published as v001, so it doesn't show as unpublished.
+    assert versions.item_state(out) == 1
+
+
+def test_start_build_refuses_a_missing_folder(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        plan.start_build(str(tmp_path / "nope"), str(tmp_path / "a.ma"))
+
+
+def test_the_assembler_tool_can_start_a_build(tmp_path):
+    from kaiju_suite import registry
+
+    root = tmp_path / "rig"
+    root.mkdir()
+    registry.find("Assembler")["start_build"](str(root), str(tmp_path / "a.ma"))
+    assert [e.name for e in logic.scan(str(root))] == ["build"]
+    assert os.path.isfile(root / "build" / "output.out")

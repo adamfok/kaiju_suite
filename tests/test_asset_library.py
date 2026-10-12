@@ -114,26 +114,126 @@ def test_type_tag_and_note_helpers_are_gone():
         assert not hasattr(logic, name), name
 
 
-# -- published files ------------------------------------------------------------
+# -- rigs -----------------------------------------------------------------------
 
 
-def test_latest_publish_is_the_newest_maya_or_fbx_file(tmp_path):
+def test_a_new_asset_has_no_rigs(tmp_path):
     asset = logic.create_asset(str(tmp_path), "hero")
-    publish = tmp_path / "hero" / "publish"
-    assert logic.latest_publish(asset.path) is None
+    assert logic.rigs(asset.path) == []
+
+
+def test_add_rig_makes_its_build_and_publish_folders_and_lists_it(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "skeleton")
+    logic.add_rig(asset.path, "puppet")
+    assert logic.rigs(asset.path) == ["skeleton", "puppet"]  # in the order they were added
+    for rig in ("skeleton", "puppet"):
+        assert (tmp_path / "hero" / "build" / rig).is_dir()
+        assert (tmp_path / "hero" / "publish" / rig).is_dir()
+    assert _norm(logic.build_folder(asset.path, "puppet")) == _norm(str(tmp_path / "hero" / "build" / "puppet"))
+    assert _norm(logic.publish_folder(asset.path, "puppet")) == _norm(str(tmp_path / "hero" / "publish" / "puppet"))
+
+
+def test_add_rig_keeps_other_fields_in_the_asset_file(tmp_path):
+    folder = tmp_path / "old"
+    folder.mkdir()
+    datafile.write(str(folder / logic.ASSET_FILE), logic.KIND, {"notes": "hi"})
+    logic.add_rig(str(folder), "proxy")
+    assert datafile.read(str(folder / logic.ASSET_FILE), logic.KIND) == {"notes": "hi", "rigs": ["proxy"]}
+
+
+def test_add_rig_refuses_a_rig_it_already_has_ignoring_case(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
+    with pytest.raises(ValueError, match="already"):
+        logic.add_rig(asset.path, "Proxy")
+    assert logic.rigs(asset.path) == ["proxy"]
+
+
+@pytest.mark.parametrize("name", ["", "my rig", "a/b", "../up", "h\u00e9"])
+def test_add_rig_refuses_names_that_dont_work_as_folders(tmp_path, name):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    with pytest.raises(ValueError):
+        logic.add_rig(asset.path, name)
+    assert logic.rigs(asset.path) == []
+    assert os.listdir(os.path.join(asset.path, "build")) == []
+
+
+def test_add_rig_refuses_a_folder_that_isnt_an_asset(tmp_path):
+    with pytest.raises(ValueError):
+        logic.add_rig(str(tmp_path), "proxy")
+
+
+def test_add_rig_uses_existing_folders(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    (tmp_path / "hero" / "build" / "hero").mkdir()
+    (tmp_path / "hero" / "build" / "hero" / "a.py").write_text("")
+    logic.add_rig(asset.path, "hero")
+    # A build folder that already has items is left as it is.
+    assert os.listdir(tmp_path / "hero" / "build" / "hero") == ["a.py"]
+    assert logic.rigs(asset.path) == ["hero"]
+
+
+def test_add_rig_starts_the_build_with_a_build_folder_and_an_output_to_publish(tmp_path, clean_settings):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    logic.add_rig(asset.path, "proxy")
+    build = tmp_path / "hero" / "build" / "proxy"
+    assert (build / "build" / "output.out").is_file()
+    assert sorted(os.listdir(build)) == [".assembler.json", "build"]  # nothing beside the folder
+    out = datafile.read(str(build / "build" / "output.out"), "output")
+    # Stored with the variable, so it follows the asset if it moves.
+    assert out["path"] == "$ASSET/publish/proxy/hero_proxy.ma"
+
+
+def test_add_rig_output_is_absolute_when_another_asset_is_current(tmp_path, clean_settings):
+    other = logic.create_asset(str(tmp_path), "other")
+    logic.set_current(other.path)
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
+    out = datafile.read(os.path.join(logic.build_folder(asset.path, "proxy"), "build", "output.out"), "output")
+    assert _norm(out["path"]) == _norm(os.path.join(logic.publish_folder(asset.path, "proxy"), "hero_proxy.ma"))
+
+
+def test_add_rig_without_the_assembler_still_adds_the_rig(tmp_path, monkeypatch):
+    from kaiju_suite import registry
+
+    monkeypatch.setattr(registry, "find", lambda name: None)
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
+    assert logic.rigs(asset.path) == ["proxy"]
+    assert os.listdir(logic.build_folder(asset.path, "proxy")) == []
+
+
+def test_an_old_flat_asset_has_no_rigs(tmp_path):
+    """Old assets keep build/ and publish/ flat; their folders aren't rigs."""
+    asset = logic.create_asset(str(tmp_path), "hero")
+    (tmp_path / "hero" / "build" / "skeleton").mkdir()  # an Assembler folder item
+    (tmp_path / "hero" / "publish" / "hero.ma").write_text("x")
+    assert logic.rigs(asset.path) == []
+
+
+def test_rigs_skips_bad_entries_in_the_asset_file(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    path = os.path.join(asset.path, logic.ASSET_FILE)
+    datafile.write(path, logic.KIND, {"rigs": ["proxy", 3, "../up", "Proxy", "hero"]})
+    assert logic.rigs(asset.path) == ["proxy", "hero"]
+    datafile.write(path, logic.KIND, {"rigs": "proxy"})
+    assert logic.rigs(asset.path) == []
+
+
+def test_latest_publish_is_the_newest_maya_or_fbx_file_of_the_rig(tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
+    logic.add_rig(asset.path, "puppet")
+    publish = tmp_path / "hero" / "publish" / "proxy"
+    assert logic.latest_publish(asset.path, "proxy") is None
     for i, name in enumerate(["hero_v001.ma", "notes.txt", "hero_v002.mb", "hero.fbx"]):
         (publish / name).write_text("x")
         os.utime(publish / name, (time.time() + i, time.time() + i))
     os.utime(publish / "hero_v002.mb", (time.time() + 10, time.time() + 10))
-    assert _norm(logic.latest_publish(asset.path)) == _norm(str(publish / "hero_v002.mb"))
-
-
-def test_build_folder_is_known_only_when_it_has_items(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    assert _norm(logic.build_folder(asset.path)) == _norm(str(tmp_path / "hero" / "build"))
-    assert not logic.has_build(asset.path)
-    (tmp_path / "hero" / "build" / "model.scene").write_text("{}")
-    assert logic.has_build(asset.path)
+    assert _norm(logic.latest_publish(asset.path, "proxy")) == _norm(str(publish / "hero_v002.mb"))
+    assert logic.latest_publish(asset.path, "puppet") is None
 
 
 # -- libraries ------------------------------------------------------------------
@@ -219,8 +319,9 @@ def test_a_scene_path_under_the_current_asset_is_stored_with_the_variable(tmp_pa
 
     asset = logic.create_asset(str(tmp_path), "hero")
     logic.set_current(asset.path)
+    logic.add_rig(asset.path, "proxy")
     model = os.path.join(asset.path, "files", "model.ma")
-    build = logic.build_folder(asset.path)
+    build = logic.build_folder(asset.path, "proxy")
     assert paths.to_portable(model, build) == "$ASSET/files/model.ma"
 
 
@@ -248,52 +349,61 @@ def test_startup_hook_sets_asset_again(tmp_path, clean_settings):
 # -- bringing a published file into the scene -----------------------------------
 
 
-def _published(tmp_path, name="hero", node="hero_rig"):
+def _published(tmp_path, name="hero", rig="proxy", node="hero_rig"):
     from maya import cmds
 
     asset = logic.create_asset(str(tmp_path), name)
+    logic.add_rig(asset.path, rig)
     cmds.file(new=True, force=True)
     cmds.createNode("transform", name=node)
-    path = os.path.join(asset.path, "publish", f"{name}_rig.ma")
+    path = os.path.join(logic.publish_folder(asset.path, rig), f"{name}_{rig}.ma")
     cmds.file(rename=path)
     cmds.file(save=True, type="mayaAscii")
     cmds.file(new=True, force=True)
     return asset
 
 
-def test_import_asset_brings_in_the_latest_publish(new_scene, tmp_path):
+def test_import_asset_brings_in_the_rigs_latest_publish(new_scene, tmp_path):
     from maya import cmds
 
     asset = _published(tmp_path)
-    logic.import_asset(asset.path)
+    logic.import_asset(asset.path, "proxy")
     assert cmds.objExists("hero_rig")
 
 
-def test_reference_asset_uses_the_asset_name_as_namespace(new_scene, tmp_path):
+def test_reference_asset_uses_asset_and_rig_as_namespace(new_scene, tmp_path):
     from maya import cmds
 
     asset = _published(tmp_path)
-    logic.reference_asset(asset.path)
-    assert cmds.objExists("hero:hero_rig")
+    logic.reference_asset(asset.path, "proxy")
+    assert cmds.objExists("hero_proxy:hero_rig")
     assert len(cmds.file(query=True, reference=True)) == 1
 
 
-def test_open_asset_opens_the_latest_publish(new_scene, tmp_path):
+def test_open_asset_opens_the_rigs_latest_publish(new_scene, tmp_path):
     from maya import cmds
 
     asset = _published(tmp_path)
-    logic.open_asset(asset.path)
-    assert _norm(cmds.file(query=True, sceneName=True)) == _norm(logic.latest_publish(asset.path))
+    logic.open_asset(asset.path, "proxy")
+    assert _norm(cmds.file(query=True, sceneName=True)) == _norm(logic.latest_publish(asset.path, "proxy"))
 
 
 @pytest.mark.parametrize("action", ["import_asset", "reference_asset", "open_asset"])
-def test_actions_on_an_asset_with_nothing_published_say_so(new_scene, tmp_path, action):
+def test_actions_on_a_rig_with_nothing_published_say_so(new_scene, tmp_path, action):
     asset = logic.create_asset(str(tmp_path), "hero")
-    with pytest.raises(LookupError, match="hero has nothing published"):
-        getattr(logic, action)(asset.path)
+    logic.add_rig(asset.path, "proxy")
+    with pytest.raises(LookupError, match="hero proxy has nothing published"):
+        getattr(logic, action)(asset.path, "proxy")
 
 
-# -- opening an asset's build in the Assembler ----------------------------------
+@pytest.mark.parametrize("action", ["import_asset", "reference_asset", "open_asset"])
+def test_actions_on_a_rig_the_asset_doesnt_have_say_so(new_scene, tmp_path, action):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    with pytest.raises(LookupError, match="hero has no rig called proxy"):
+        getattr(logic, action)(asset.path, "proxy")
+
+
+# -- opening a rig's build in the Assembler -------------------------------------
 
 
 def test_the_assembler_can_be_opened_on_a_folder():
@@ -302,14 +412,15 @@ def test_the_assembler_can_be_opened_on_a_folder():
     assert callable(registry.find("Assembler")["open"])
 
 
-def test_open_in_assembler_makes_the_asset_current_and_opens_its_build(tmp_path, clean_settings, monkeypatch):
+def test_open_in_assembler_makes_the_asset_current_and_opens_the_rigs_build(tmp_path, clean_settings, monkeypatch):
     from kaiju_suite import registry
 
     opened = []
     monkeypatch.setattr(registry, "find", lambda name: {"name": name, "open": opened.append} if name == "Assembler" else None)
     asset = logic.create_asset(str(tmp_path), "hero")
-    logic.open_in_assembler(asset.path)
-    assert [_norm(p) for p in opened] == [_norm(logic.build_folder(asset.path))]
+    logic.add_rig(asset.path, "proxy")
+    logic.open_in_assembler(asset.path, "proxy")
+    assert [_norm(p) for p in opened] == [_norm(logic.build_folder(asset.path, "proxy"))]
     assert _norm(os.environ["ASSET"]) == _norm(asset.path)
 
 
@@ -320,9 +431,22 @@ def test_open_in_assembler_makes_a_missing_build_folder(tmp_path, clean_settings
 
     monkeypatch.setattr(registry, "find", lambda name: {"name": name, "open": lambda path: None})
     asset = logic.create_asset(str(tmp_path), "hero")
-    shutil.rmtree(logic.build_folder(asset.path))
-    logic.open_in_assembler(asset.path)
-    assert os.path.isdir(logic.build_folder(asset.path))
+    logic.add_rig(asset.path, "proxy")
+    shutil.rmtree(logic.build_folder(asset.path, "proxy"))
+    logic.open_in_assembler(asset.path, "proxy")
+    assert os.path.isdir(logic.build_folder(asset.path, "proxy"))
+
+
+def test_open_in_assembler_refuses_a_rig_the_asset_doesnt_have(tmp_path, clean_settings, monkeypatch):
+    from kaiju_suite import registry
+
+    opened = []
+    monkeypatch.setattr(registry, "find", lambda name: {"name": name, "open": opened.append})
+    asset = logic.create_asset(str(tmp_path), "hero")
+    with pytest.raises(LookupError, match="no rig called proxy"):
+        logic.open_in_assembler(asset.path, "proxy")
+    assert opened == []
+    assert "ASSET" not in os.environ
 
 
 def test_open_in_assembler_without_the_assembler_says_so_and_changes_nothing(tmp_path, clean_settings, monkeypatch):
@@ -330,9 +454,12 @@ def test_open_in_assembler_without_the_assembler_says_so_and_changes_nothing(tmp
 
     monkeypatch.setattr(registry, "find", lambda name: None)
     asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
     with pytest.raises(LookupError, match="Assembler"):
-        logic.open_in_assembler(asset.path)
+        logic.open_in_assembler(asset.path, "proxy")
     assert "ASSET" not in os.environ
+
+
 # -- thumbnails -----------------------------------------------------------------
 
 

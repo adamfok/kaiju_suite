@@ -4,11 +4,18 @@ An asset is a folder holding an ``asset.json`` (a Kaiju data file that marks
 the folder as an asset; its name is the folder's name) in this layout::
 
     hero/
-      asset.json
+      asset.json      lists the asset's rigs
       thumbnail.png   optional
       files/          source files (model, textures)
-      build/          Assembler build folder
-      publish/        finished rigs
+      build/<rig>/    one Assembler build folder per rig
+      publish/<rig>/  each rig's published files
+
+An asset holds several rigs (e.g. skeleton, puppet, proxy, hero,
+simulation), so they share its source files and each other's outputs.
+The rigs are the ones listed in ``asset.json``, in the order they were
+added; folders in ``build/`` aren't rigs by themselves, since Assembler
+folder items are folders too. Assets made before rigs (a flat ``build/``
+and ``publish/``) have no rigs.
 
 The current asset is the one the ``ASSET`` environment variable points to,
 so Assembler Scene and Output items under it store ``$ASSET/...`` paths.
@@ -36,6 +43,7 @@ THUMBNAIL = "thumbnail.png"
 THUMBNAIL_SIZE = 256
 FOLDERS = ("files", "build", "publish")
 PUBLISH_EXTENSIONS = (".ma", ".mb", ".fbx")
+RIGS = "rigs"
 VARIABLE = "ASSET"
 SETTINGS_KEY = "asset_library"
 
@@ -70,10 +78,15 @@ def read_asset(folder):
     return Asset(folder, os.path.basename(folder))
 
 
+def _check_name(what, name):
+    if not isinstance(name, str) or not _NAME.match(name):
+        raise ValueError(f"{what} name {name!r} can't be used: use letters, digits, _ and -.")
+
+
 def create_asset(library, name):
-    """Make asset ``name`` in ``library`` with the folder layout; returns it."""
-    if not _NAME.match(name or ""):
-        raise ValueError(f"Asset name {name!r} can't be used: use letters, digits, _ and -.")
+    """Make asset ``name`` in ``library`` with the folder layout and no
+    rigs yet; returns it."""
+    _check_name("Asset", name)
     if not os.path.isdir(library):
         raise FileNotFoundError(f"The library folder {library} doesn't exist.")
     folder = os.path.join(library, name)
@@ -108,23 +121,81 @@ def filter_assets(assets, text=""):
     return [asset for asset in assets if text in asset.name.lower()]
 
 
-# -- folders in an asset --------------------------------------------------------
+# -- rigs -----------------------------------------------------------------------
 
 
-def build_folder(folder):
-    return os.path.join(folder, "build")
+def _fields(folder):
+    data = datafile.read(os.path.join(folder, ASSET_FILE), KIND)
+    return data if isinstance(data, dict) else {}
 
 
-def has_build(folder):
-    """Whether the asset's build folder exists and has something in it."""
-    build = build_folder(folder)
-    return os.path.isdir(build) and bool(os.listdir(build))
+def rigs(folder):
+    """The names of the asset's rigs, in the order they were added. Entries
+    in ``asset.json`` that aren't usable rig names (or repeat one, ignoring
+    case) are left out."""
+    listed = _fields(folder).get(RIGS)
+    if not isinstance(listed, list):
+        return []
+    found = []
+    for name in listed:
+        if isinstance(name, str) and _NAME.match(name) and name.lower() not in (n.lower() for n in found):
+            found.append(name)
+    return found
 
 
-def latest_publish(folder):
-    """The newest ``.ma``, ``.mb`` or ``.fbx`` file in the asset's
-    ``publish/`` folder, or ``None`` if there's none."""
-    publish = os.path.join(folder, "publish")
+def add_rig(folder, name):
+    """Add rig ``name`` to the asset in ``folder``: make its ``build/<rig>/``
+    and ``publish/<rig>/`` folders (keeping any already there) and list it
+    in ``asset.json``. An empty build folder is started by the Assembler: a
+    ``build`` folder holding an Output saving to ``publish/<rig>/<asset>_<rig>.ma``
+    (stored as ``$ASSET/...`` when this asset is current). Returns the name."""
+    if not is_asset(folder):
+        raise ValueError(f"{folder} isn't an asset (it has no {ASSET_FILE}).")
+    _check_name("Rig", name)
+    existing = rigs(folder)
+    if name.lower() in (rig.lower() for rig in existing):
+        raise ValueError(f"{_asset_name(folder)} already has a rig called {name}.")
+    os.makedirs(build_folder(folder, name), exist_ok=True)
+    os.makedirs(publish_folder(folder, name), exist_ok=True)
+    fields = _fields(folder)
+    fields[RIGS] = existing + [name]
+    datafile.write(os.path.join(folder, ASSET_FILE), KIND, fields)
+    _start_build(folder, name)
+    return name
+
+
+def _start_build(folder, rig):
+    build = build_folder(folder, rig)
+    if os.listdir(build):
+        return
+    tool = registry.find("Assembler")
+    if tool is None or not callable(tool.get("start_build")):
+        log.warning("The Assembler isn't available, so %s was left empty.", build)
+        return
+    tool["start_build"](build, os.path.join(publish_folder(folder, rig), f"{_asset_name(folder)}_{rig}.ma"))
+
+
+def _asset_name(folder):
+    return os.path.basename(os.path.normpath(folder))
+
+
+def _check_rig(folder, rig):
+    if rig not in rigs(folder):
+        raise LookupError(f"{_asset_name(folder)} has no rig called {rig}.")
+
+
+def build_folder(folder, rig):
+    return os.path.join(folder, "build", rig)
+
+
+def publish_folder(folder, rig):
+    return os.path.join(folder, "publish", rig)
+
+
+def latest_publish(folder, rig):
+    """The newest ``.ma``, ``.mb`` or ``.fbx`` file in the rig's
+    ``publish/<rig>/`` folder, or ``None`` if there's none."""
+    publish = publish_folder(folder, rig)
     if not os.path.isdir(publish):
         return None
     files = [
@@ -135,30 +206,32 @@ def latest_publish(folder):
     return max(files, key=os.path.getmtime, default=None)
 
 
-def _publish_or_raise(folder):
-    path = latest_publish(folder)
+def _publish_or_raise(folder, rig):
+    _check_rig(folder, rig)
+    path = latest_publish(folder, rig)
     if path is None:
-        raise LookupError(f"{os.path.basename(os.path.normpath(folder))} has nothing published (no .ma, .mb or .fbx in publish/).")
+        raise LookupError(
+            f"{_asset_name(folder)} {rig} has nothing published (no .ma, .mb or .fbx in publish/{rig}/)."
+        )
     return path
 
 
-def import_asset(folder):
-    """Import the asset's latest published file; returns the new nodes."""
-    return cmds.file(_publish_or_raise(folder), i=True, returnNewNodes=True)
+def import_asset(folder, rig):
+    """Import the rig's latest published file; returns the new nodes."""
+    return cmds.file(_publish_or_raise(folder, rig), i=True, returnNewNodes=True)
 
 
-def reference_asset(folder):
-    """Reference the asset's latest published file under a namespace named
-    after the asset (Maya numbers it if it's taken); returns the file."""
-    path = _publish_or_raise(folder)
-    namespace = os.path.basename(os.path.normpath(folder))
-    return cmds.file(path, reference=True, namespace=namespace)
+def reference_asset(folder, rig):
+    """Reference the rig's latest published file under the namespace
+    ``<asset>_<rig>`` (Maya numbers it if it's taken); returns the file."""
+    path = _publish_or_raise(folder, rig)
+    return cmds.file(path, reference=True, namespace=f"{_asset_name(folder)}_{rig}")
 
 
-def open_asset(folder):
-    """Open the asset's latest published file, dropping unsaved changes:
+def open_asset(folder, rig):
+    """Open the rig's latest published file, dropping unsaved changes:
     ask the user first."""
-    path = _publish_or_raise(folder)
+    path = _publish_or_raise(folder, rig)
     cmds.file(path, open=True, force=True)
     return path
 
@@ -274,14 +347,15 @@ def clear_current():
 # -- the Assembler --------------------------------------------------------------
 
 
-def open_in_assembler(folder):
-    """Make the asset in ``folder`` current and open the Assembler on its
-    build folder (made if it's missing). Returns the asset."""
+def open_in_assembler(folder, rig):
+    """Make the asset in ``folder`` current and open the Assembler on the
+    rig's build folder (made if it's missing). Returns the asset."""
     tool = registry.find("Assembler")
     if tool is None or not callable(tool.get("open")):
         raise LookupError("The Assembler isn't available, so the build can't be opened.")
+    _check_rig(folder, rig)
     asset = set_current(folder)
-    build = build_folder(asset.path)
+    build = build_folder(asset.path, rig)
     os.makedirs(build, exist_ok=True)
     tool["open"](build)
     return asset
