@@ -267,20 +267,38 @@ class _PanelDialog(QtWidgets.QDialog):
 
 
 def _show_problems(parent, title, text, lines, proceed=None):
-    """Show ``text`` and a scrollable list of ``lines`` (e.g. missing objects).
+    """Show ``text`` and a list of ``lines`` (e.g. missing objects), one row
+    each. Picking rows that are :class:`products.Line` with ``nodes`` selects
+    those nodes in Maya.
 
     With ``proceed`` (a button label), ask: returns whether the user pressed
-    it rather than Cancel. Without, there is only a Close button.
+    it rather than Cancel. Proceeding puts back the Maya selection from
+    before the dialog first (publishing uses it). Without, there is only a
+    Close button.
     """
+    before = cmds.ls(selection=True, long=True) or []
     dialog = QtWidgets.QDialog(parent)
     dialog.setWindowTitle(title)
     dialog.resize(520, 320)
     layout = QtWidgets.QVBoxLayout(dialog)
-    label = QtWidgets.QLabel(text)
+    selectable = any(getattr(line, "nodes", ()) for line in lines)
+    label = QtWidgets.QLabel(text + ("\nClick a row to select it in Maya." if selectable else ""))
     label.setWordWrap(True)
     layout.addWidget(label)
-    listing = QtWidgets.QPlainTextEdit("\n".join(lines))
-    listing.setReadOnly(True)
+    listing = QtWidgets.QListWidget()
+    listing.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+    for line in lines:
+        item = QtWidgets.QListWidgetItem(str(line))
+        item.setData(QtCore.Qt.ItemDataRole.UserRole, tuple(getattr(line, "nodes", ())))
+        listing.addItem(item)
+
+    def select_nodes():
+        nodes = [n for item in listing.selectedItems() for n in item.data(QtCore.Qt.ItemDataRole.UserRole)]
+        nodes = cmds.ls(nodes, long=True) or []  # only those still in the scene
+        if nodes:
+            cmds.select(nodes, replace=True)
+
+    listing.itemSelectionChanged.connect(select_nodes)
     layout.addWidget(listing, 1)
     Button = QtWidgets.QDialogButtonBox.StandardButton
     buttons = QtWidgets.QDialogButtonBox(Button.Cancel if proceed else Button.Close)
@@ -289,7 +307,10 @@ def _show_problems(parent, title, text, lines, proceed=None):
     buttons.accepted.connect(dialog.accept)
     buttons.rejected.connect(dialog.reject)
     layout.addWidget(buttons)
-    return dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+    accepted = dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
+    if accepted:
+        cmds.select(cmds.ls(before, long=True) or [], replace=True)
+    return accepted
 
 
 class _DiffView(QtWidgets.QWidget):
@@ -851,19 +872,13 @@ class AssemblerWindow(ToolWindow):
     def _publish(self, path):
         problems = versions.publish_problems(path)
         if problems:
-            QtWidgets.QMessageBox.information(self, f"Can't Publish {os.path.basename(path)}", "\n".join(problems))
+            name = os.path.basename(path)
+            _show_problems(self, f"Can't Publish {name}", f"Can't publish {name}:", problems)
             return
         warnings = versions.publish_warnings(path)
         if warnings:
-            Button = QtWidgets.QMessageBox.StandardButton
-            answer = QtWidgets.QMessageBox.question(
-                self,
-                f"Publish {os.path.basename(path)}?",
-                "\n".join(warnings) + "\n\nPublish anyway?",
-                Button.Yes | Button.No,
-                Button.No,
-            )
-            if answer != Button.Yes:
+            name = os.path.basename(path)
+            if not _show_problems(self, f"Publish {name}?", f"Publish {name} anyway?", warnings, proceed="Publish Anyway"):
                 return
         self._do_and_refresh(versions.publish_action(path), path)
 

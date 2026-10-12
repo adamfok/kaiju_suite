@@ -45,6 +45,19 @@ class Action:
 
 
 @dataclass
+class Line:
+    """One row of a list of messages, e.g. a publish warning. ``nodes`` are
+    the scene objects (long names) that picking the row selects; none for a
+    row about something that isn't in the scene. Reads as its ``text``."""
+
+    text: str
+    nodes: tuple = ()
+
+    def __str__(self):
+        return self.text
+
+
+@dataclass
 class Toggle:
     """A checkbox in a :class:`Panel`'s list. ``fn(on)`` may return a message.
 

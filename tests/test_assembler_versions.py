@@ -532,3 +532,10 @@ def test_paste_replaces_stale_history_left_under_the_new_name(tmp_path):
 
     (copy,) = logic.paste_paths([path], str(tmp_path / "other"), None)
     assert _numbers(copy) == [1]
+
+
+def test_a_line_reads_as_its_text_and_selects_nothing_by_default():
+    line = products.Line("Removed: end")
+    assert str(line) == "Removed: end"
+    assert line.nodes == ()
+    assert products.Line("Moved: end", ("|root|end",)).nodes == ("|root|end",)

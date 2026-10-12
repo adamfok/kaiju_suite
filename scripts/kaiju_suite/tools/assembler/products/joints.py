@@ -15,6 +15,7 @@ from maya import cmds
 
 from kaiju_suite.core.selection import short_name
 from kaiju_suite.tools.assembler import data, versions
+from kaiju_suite.tools.assembler.products import Line
 
 _VECTORS = ("translate", "rotate", "jointOrient", "scale", "preferredAngle")
 _INTS = ("rotateOrder", "side", "type")
@@ -93,19 +94,19 @@ def _contract_changes(old, new):
     return removed, list(renamed.items()), moved
 
 
-def _contract_warning(version, old, new):
-    """The publish warning for ``_contract_changes(old, new)``, or ``None``."""
+def _contract_warnings(version, old, new, paths):
+    """One :class:`Line` per change of ``_contract_changes(old, new)``, each
+    selecting the joint it's about (``paths`` maps a name to the selected
+    joints' long names); a removed joint selects nothing."""
     removed, renamed, moved = _contract_changes(old, new)
-    if not (removed or renamed or moved):
-        return None
-    lines = [f"Compared with {version.tag}, this changes joints that other rigs find by name:"]
-    if removed:
-        lines.append(f"    Removed: {', '.join(removed)}")
-    if renamed:
-        lines.append(f"    Renamed: {', '.join(f'{a} → {b}' for a, b in renamed)}")
-    for name, was, now in moved:
-        lines.append(f"    Moved to a new parent: {name} (was under {was or 'the world'}, now under {now or 'the world'})")
-    return "\n".join(lines)
+    since = f"since {version.tag}"
+    lines = [Line(f"Removed {since}: {name}") for name in removed]
+    lines += [Line(f"Renamed {since}: {was} → {now}", paths[now]) for was, now in renamed]
+    lines += [
+        Line(f"Moved {since}: {name}, was under {was or 'the world'}, now under {now or 'the world'}", paths[name])
+        for name, was, now in moved
+    ]
+    return lines
 
 
 def _set_values(path, record):
@@ -142,13 +143,16 @@ class JointsProduct(data.DataProduct):
         latest = next(iter(versions.list_versions(path)), None)
         if latest is None:
             return warnings
+        selection = cmds.ls(selection=True, long=True) or []
+        paths = {}
+        for joint in _joints_under(selection):
+            paths.setdefault(short_name(joint), []).append(joint)
         try:
             old = data.read(latest.path, self.kind)["joints"]
-            new = self.gather(cmds.ls(selection=True, long=True) or [])["joints"]
-            warning = _contract_warning(latest, old, new)
+            new = self.gather(selection)["joints"]
+            return warnings + _contract_warnings(latest, old, new, {k: tuple(v) for k, v in paths.items()})
         except (OSError, ValueError, KeyError, TypeError, RuntimeError):
             return warnings  # nothing to publish, or a version this can't read
-        return warnings + ([warning] if warning else [])
 
     def gather(self, selection):
         paths = _joints_under(selection)
