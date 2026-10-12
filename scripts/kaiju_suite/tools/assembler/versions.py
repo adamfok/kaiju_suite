@@ -268,7 +268,7 @@ def _next_target(path):
 # -- folders ------------------------------------------------------------------
 
 
-def _walk(folder, prefix=""):
+def walk(folder, prefix=""):
     """``(relative path, path)`` of the items under ``folder``, recursively:
     what the tree shows (no dot-names, ``__pycache__`` or unclaimed files).
     Relative paths use ``/``, e.g. ``sub/b.py``."""
@@ -278,7 +278,7 @@ def _walk(folder, prefix=""):
         path = os.path.join(folder, name)
         if os.path.isdir(path):
             yield prefix + name, path
-            yield from _walk(path, f"{prefix}{name}/")
+            yield from walk(path, f"{prefix}{name}/")
         elif product_for(path) is not None:
             yield prefix + name, path
 
@@ -298,7 +298,7 @@ def item_state(path):
 
 def unpublished_items(folder):
     """Relative paths of the items under ``folder`` with unpublished changes."""
-    return [rel for rel, path in _walk(folder) if item_state(path) == UNPUBLISHED]
+    return [rel for rel, path in walk(folder) if item_state(path) == UNPUBLISHED]
 
 
 def folder_publish_problems(folder):
@@ -313,7 +313,7 @@ def _save_folder_version(folder, latest=False, description=None):
     problems = folder_publish_problems(folder)
     if problems:
         raise ValueError(f"Can't publish {os.path.basename(folder)}. {problems[0]}")
-    if not any(True for _ in _walk(folder)) or _is_saved(folder, latest):
+    if not any(True for _ in walk(folder)) or _is_saved(folder, latest):
         return None
     text = _new_description(folder, description)
     number, target = _next_target(folder)

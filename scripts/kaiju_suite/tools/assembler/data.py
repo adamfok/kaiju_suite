@@ -51,8 +51,8 @@ class DataProduct(Product):
     Subclasses set ``name``, ``order`` and ``datatype``: the
     :mod:`kaiju_suite.datatypes` module that gathers, applies and describes
     the data (``kind`` and ``extension`` come from it). The rest (New, Run,
-    Publish, versions, the double-click panel, right-click **Update from
-    Scene**) comes from here.
+    Publish, versions, the double-click panel, right-click **Republish** and
+    **Select Objects**) comes from here.
 
     Products not moved to :mod:`kaiju_suite.datatypes` yet set ``kind`` and
     ``extension`` (one, lower case, with the dot) themselves and implement
@@ -116,7 +116,7 @@ class DataProduct(Product):
         """The names of the nodes (or components) ``payload`` was gathered
         from, such that :meth:`gather` on them gathers the same kind of
         payload again. Products whose datatype has it, or that implement it,
-        get right-click **Update from Scene**; the others don't."""
+        get right-click **Republish** and **Select Objects**; the others don't."""
         if self.datatype is None:
             raise NotImplementedError
         return self.datatype.nodes(payload)
@@ -129,17 +129,21 @@ class DataProduct(Product):
         view = getattr(self.datatype, "compare_view", None)
         return view(payload) if view else payload
 
-    # -- Update from Scene ---------------------------------------------------
+    # -- Republish and Select Objects ----------------------------------------
 
     @property
-    def can_update(self):
-        """Whether items get **Update from Scene** (the product or its datatype has :meth:`nodes`)."""
+    def can_republish(self):
+        """Whether items get **Republish** and **Select Objects** (the product
+        or its datatype has :meth:`nodes`)."""
         if self.datatype is not None:
             return hasattr(self.datatype, "nodes")
         return type(self).nodes is not DataProduct.nodes
 
-    def _update_targets(self, path):
-        """``(paths, problems)`` for re-gathering ``path`` from the scene."""
+    def republishable(self, path):
+        return self.can_republish and not is_empty(path)
+
+    def _named_nodes(self, path):
+        """``(paths, problems)`` for the scene objects named in ``path``."""
         if is_empty(path):
             return [], [f"{os.path.basename(path)} is empty. Publish it from a selection first."]
         try:
@@ -148,25 +152,48 @@ class DataProduct(Product):
             return [], [f"Can't read {os.path.basename(path)}: {e}"]
         return resolve_nodes(names)
 
-    def update_problems(self, path):
-        """Why ``path`` can't be updated from the scene now, as messages:
-        nodes in its file that are missing or match several nodes."""
-        return self._update_targets(path)[1]
+    def republish_problems(self, path):
+        """Why ``path`` can't be republished now, as messages: objects named
+        in its file that are missing from the scene or match several nodes."""
+        return self._named_nodes(path)[1]
 
-    def update_from_scene(self, path):
-        """Gather again from the nodes named in ``path`` and publish the
+    def republish(self, path):
+        """Gather again from the objects named in ``path`` and publish the
         result as its next version, whatever is selected. Raises, saving
-        nothing, if any of those nodes is missing or ambiguous."""
-        paths, problems = self._update_targets(path)
+        nothing, if any of those objects is missing or ambiguous."""
+        paths, problems = self._named_nodes(path)
         if problems:
-            raise RuntimeError(f"Can't update {os.path.basename(path)} from the scene. {' '.join(problems)}")
+            raise RuntimeError(f"Can't republish {os.path.basename(path)}. {' '.join(problems)}")
         payload = self.gather(paths)
         return versions.export_into(path, lambda target: write(target, self.kind, payload))
 
+    def select_objects(self, path):
+        """Select the objects named in ``path``. Returns a message that names
+        the ones missing from the scene or matching several nodes."""
+        paths, problems = self._named_nodes(path)
+        if paths:
+            cmds.select(paths, replace=True)
+        else:
+            cmds.select(clear=True)
+        message = f"Selected {plural(len(paths), 'object')} from {os.path.basename(path)}"
+        if problems:
+            cmds.warning(" ".join(problems))
+            message += ". " + " ".join(problems)
+        return message
+
     def actions(self, path):
-        if not self.can_update or is_empty(path):
+        if not self.republishable(path):
             return []
-        return [Action("Update from Scene", lambda: self.update_from_scene(path), describe=True)]
+        return [
+            Action(
+                "Republish",
+                lambda: self.republish(path),
+                describe=True,
+                tooltip="Publishes again from the objects in this file, ignoring the selection.",
+                problems=lambda: self.republish_problems(path),
+            ),
+            Action("Select Objects", lambda: self.select_objects(path)),
+        ]
 
     # -- Product -------------------------------------------------------------
 
@@ -216,7 +243,9 @@ class DataProduct(Product):
         if is_empty(path):
             return Panel(["Empty: nothing published into it yet."], [])
         try:
-            lines = self.describe(read(path, self.kind))
+            lines = list(self.describe(read(path, self.kind)))
         except (OSError, ValueError) as e:
-            lines = [f"Can't read {os.path.basename(path)}: {e}"]
-        return Panel(list(lines), [])
+            return Panel([f"Can't read {os.path.basename(path)}: {e}"], [])
+        if self.can_republish:
+            lines += self.republish_problems(path)
+        return Panel(lines, [])
