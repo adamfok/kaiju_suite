@@ -5,7 +5,7 @@ and reports every node an item needs (e.g. a Rig Module's parent or joints)
 that is neither in the scene nor made by an earlier item. Products say what
 an item needs and makes through ``Product.node_refs`` and
 ``Product.outputs``; items whose product can't say what it makes (Scripts,
-Scenes, Joints, ...) are named in the message, since they might make it.
+Import Scenes, Joints, ...) are named in the message, since they might make it.
 Changes nothing in the scene. No Qt here.
 """
 

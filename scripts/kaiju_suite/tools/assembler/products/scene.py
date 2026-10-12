@@ -1,9 +1,9 @@
-"""Scenes (.scene): point to a Maya file (.ma, .mb) that a build imports.
+"""Import Scenes (.scene): point to a Maya file (.ma, .mb) that a build imports.
 
 The entry holds only the file's path, as JSON (``{"path": ...}``); the
 Maya file itself stays where it is. Right-click Publish opens a file
 browser and saves the picked file as the entry's next version, so
-Versions can point it back to an earlier file. Double-clicking a scene,
+Versions can point it back to an earlier file. Double-clicking one,
 or right-click Info, shows the path.
 
 The path is stored portably (see :mod:`kaiju_suite.core.paths`):
@@ -25,7 +25,7 @@ from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product
 
 EXTENSION = ".scene"
 
-# What a scene can point to.
+# What an Import Scene can point to.
 MAYA_EXTENSIONS = (".ma", ".mb")
 
 _FILE_FILTER = "Maya Scenes (*.ma *.mb);;Maya ASCII (*.ma);;Maya Binary (*.mb)"
@@ -84,7 +84,7 @@ def stored(path):
 
 def point_to(path, maya_file):
     """Point the entry at ``path`` to ``maya_file`` and save that as its next
-    version. Returns a message, e.g. ``Published Scene hero.scene v002``."""
+    version. Returns a message, e.g. ``Published Import Scene hero.scene v002``."""
     if ext_of(maya_file) not in MAYA_EXTENSIONS:
         raise ValueError(f"Not a Maya scene: {os.path.basename(maya_file)}")
     root = build_root(path)
@@ -105,7 +105,7 @@ def pick_scene_file(start_dir):
     """Ask for a Maya file with a file browser opened in ``start_dir``.
     Returns its path, or ``None`` if cancelled. GUI Maya only."""
     picked = cmds.fileDialog2(
-        caption="Publish Scene",
+        caption="Publish Import Scene",
         fileMode=1,
         fileFilter=_FILE_FILTER,
         dialogStyle=2,
@@ -136,13 +136,13 @@ def publish_from_browser(path):
 
 
 class SceneProduct(Product):
-    name = "Scene"
+    name = "Import Scene"
     extensions = (EXTENSION,)
     order = 30
     menu_slot = (0, 1)  # with Script, just after it: no divider between them
     runnable = True
     versioned = True
-    creators = (Creator("Scene", lambda directory, name, _ext: create_scene(directory, name)),)
+    creators = (Creator("Import Scene", lambda directory, name, _ext: create_scene(directory, name)),)
 
     def run(self, path):
         maya_file = target(path)

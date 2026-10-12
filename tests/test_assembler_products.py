@@ -49,10 +49,10 @@ def with_json(monkeypatch):
 def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
-        "Script", "Folder", "Scene", "Joints", "Mesh", "Curves", "SkinCluster",
+        "Script", "Folder", "Import Scene", "Joints", "Mesh", "Curves", "SkinCluster",
         "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives", "Material", "Pose", "Animation",
         "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers", "ControlShape", "Separator",
-        "Rig Module", "QC", "Output",
+        "Rig Module", "QC", "Export Scene",
     ]
     exts = [ext for p in found for ext in p.extensions]
     assert len(exts) == len(set(exts)), "two products claim the same extension"
@@ -61,8 +61,8 @@ def test_discover_finds_every_product_in_order():
 def test_discover_finds_builtin_products_in_order():
     found = products.discover()
     names = [p.name for p in found]
-    assert {"Script", "Folder", "Scene"} <= set(names)
-    assert names[:3] == ["Script", "Folder", "Scene"]
+    assert {"Script", "Folder", "Import Scene"} <= set(names)
+    assert names[:3] == ["Script", "Folder", "Import Scene"]
     assert found == sorted(found, key=lambda p: p.order)
     assert found[1] is folder.PRODUCT
 
@@ -111,7 +111,7 @@ def test_broken_product_module_is_skipped(monkeypatch, tmp_path):
     monkeypatch.setattr(products, "__path__", list(products.__path__) + [str(tmp_path)])
     try:
         names = [p.name for p in products.discover()]
-        assert names[:3] == ["Script", "Folder", "Scene"]
+        assert names[:3] == ["Script", "Folder", "Import Scene"]
         assert f"{products.__name__}.broken_product" not in sys.modules
     finally:
         sys.modules.pop(f"{products.__name__}.broken_product", None)
@@ -172,7 +172,7 @@ def _menu_labels():
 
 def test_new_menu_groups_products_with_dividers():
     assert _menu_labels() == [
-        "Script", "Scene",
+        "Script", "Import Scene",
         None,
         "Mesh", "Material", "Joints", "ControlShape", "Curves",
         None,
@@ -182,7 +182,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         *(module.name for module in rigging.all_modules()),
         None,
-        "QC", "Output",
+        "QC", "Export Scene",
     ]
     assert "Simple IK" in _menu_labels()
     assert folder.PRODUCT.creators[0].choices is None
@@ -190,7 +190,7 @@ def test_new_menu_groups_products_with_dividers():
 
 def test_script_and_scene_share_a_group_with_no_divider_between():
     labels = _menu_labels()
-    assert labels[:3] == ["Script", "Scene", None]
+    assert labels[:3] == ["Script", "Import Scene", None]
 
 
 def test_new_menu_is_labelled_new():

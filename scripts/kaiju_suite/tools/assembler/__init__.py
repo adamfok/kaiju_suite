@@ -14,7 +14,7 @@ def open_folder(path):
 
 def start_build(path, output_path):
     """Start the empty build folder ``path``: a ``build`` folder holding an
-    Output saving to ``output_path`` (e.g. for a new Asset Library rig)."""
+    Export Scene saving to ``output_path`` (e.g. for a new Asset Library rig)."""
     from kaiju_suite.tools.assembler import plan
 
     return plan.start_build(path, output_path)

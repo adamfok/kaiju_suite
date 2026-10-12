@@ -1,25 +1,24 @@
-"""Outputs (.out): save the built rig to a deliverable file, as a build step.
+"""Export Scenes (.out): save the built rig to a deliverable file, as a build step.
 
-The entry is a Kaiju data file (``{"kaiju": "output", "format": 1, "data":
-{...}}``) holding where to save, the format coming from that file's
-extension (``.ma``, ``.mb`` or ``.fbx``), and two optional clean-ups run
-first: delete unused nodes (as Hypershade's Delete Unused Nodes) and hide
-joints (draw style None). Run exports the whole scene there; the open
+The counterpart of an Import Scene: the entry holds only a path, here the
+file to save to. It's a Kaiju data file (``{"kaiju": "output", "format": 1,
+"data": {"path": ...}}``); the format comes from the path's extension
+(``.ma``, ``.mb`` or ``.fbx``). Run exports the whole scene there; the open
 scene keeps its own name. Usually the last step, so Run All ends with a
 file to hand over.
 
 Right-click Publish opens a save-file browser and saves the picked path as
 the entry's next version, stored portably with :mod:`kaiju_suite.core.paths`
-(relative to the folder holding the entry, or ``$ASSET/...``); the Info window turns the clean-ups on and off,
-each change a version too. No Qt here.
+(relative to the folder holding the entry, or ``$ASSET/...``). Entries
+written before this may also hold ``delete_unused`` and ``hide_joints``
+clean-up switches; they're ignored. No Qt here.
 """
 
 import os
 
-from maya import cmds, mel
+from maya import cmds
 
 from kaiju_suite.core import datafile, paths
-from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.assembler import runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, ext_of, is_empty, new_path
 
@@ -34,14 +33,7 @@ FORMATS = {
 }
 FBX_PLUGIN = "fbxmaya"
 
-# Clean-up options, in the order the Info window shows them, with their labels.
-OPTIONS = {"delete_unused": "Delete Unused Nodes", "hide_joints": "Hide Joints"}
-
 _FILE_FILTER = "Maya ASCII (*.ma);;Maya Binary (*.mb);;FBX (*.fbx)"
-
-# Joint draw style that hides the joint without hiding what's below it.
-_DRAW_STYLE_NONE = 2
-
 
 # -- the entry ------------------------------------------------------------------
 
@@ -73,26 +65,20 @@ def problems(data):
         found.append(f"path must be the file to save, not {out_path!r}")
     elif ext_of(out_path) not in FORMATS:
         found.append(f"path must end in .ma, .mb or .fbx, not {out_path!r}")
-    for key in OPTIONS:
-        if not isinstance(data.get(key, False), bool):
-            found.append(f"{key} must be true or false, not {data[key]!r}")
     return found
 
 
-def _normalized(out_path, delete_unused, hide_joints):
-    return {"path": out_path, "delete_unused": delete_unused, "hide_joints": hide_joints}
-
-
 def settings(path):
-    """The entry's settings, ``{"path", "delete_unused", "hide_joints"}``, or
-    ``None`` if it's empty. Raises ``ValueError`` if it isn't an output entry."""
+    """The entry's settings, ``{"path": ...}``, or ``None`` if it's empty.
+    Raises ``ValueError`` if it isn't an output entry. Fields other than
+    ``path`` (old clean-up switches) are dropped."""
     if is_empty(path):
         return None
     data = datafile.read(path, KIND)
     found = problems(data)
     if found:
         raise datafile.DataFormatError(f"{os.path.basename(path)}: {'; '.join(found)}")
-    return _normalized(data["path"], data.get("delete_unused", False), data.get("hide_joints", False))
+    return {"path": data["path"]}
 
 
 def _write(target, data):
@@ -112,33 +98,20 @@ def target(path):
     return None if current is None else paths.resolve(current["path"], build_root(path))
 
 
-def set_output(path, out_path, delete_unused=False, hide_joints=False, description=None):
-    """Make the entry at ``path`` save to ``out_path`` with these clean-ups,
-    as its next version, described as ``description`` (see
+def set_output(path, out_path, description=None):
+    """Make the entry at ``path`` save to ``out_path``, as its next version,
+    described as ``description`` (see
     ``versions.save_version``). ``out_path`` is stored portably: relative to the
     entry's folder when under it, else ``$ASSET/...`` when under that, else
     absolute; relative text is taken as relative to the entry's folder.
-    Returns a message, e.g. ``Published Output rig.out v002``."""
-    data = _normalized(out_path, delete_unused, hide_joints)
+    Returns a message, e.g. ``Published Export Scene rig.out v002``."""
+    data = {"path": out_path}
     found = problems(data)
     if found:
         raise ValueError("; ".join(found))
     root = build_root(path)
     data["path"] = paths.to_portable(paths.resolve(out_path, root), root)
     return versions.export_into(path, lambda target: _write(target, data), description)
-
-
-def set_option(path, key, value):
-    """Turn clean-up ``key`` (see :data:`OPTIONS`) on or off, as the entry's
-    next version, described as e.g. "Output: hide joints on". Returns a message."""
-    if key not in OPTIONS:
-        raise ValueError(f"Not an output option: {key}")
-    current = settings(path)
-    if current is None:
-        raise ValueError(f"{os.path.basename(path)} has no output file yet: publish it first")
-    current[key] = bool(value)
-    description = f"Output: {OPTIONS[key].lower()} {_on_off(value)}"
-    return set_output(path, current["path"], current["delete_unused"], current["hide_joints"], description)
 
 
 # -- the file browser -----------------------------------------------------------
@@ -148,7 +121,7 @@ def pick_output_file(start_dir):
     """Ask where to save with a file browser opened in ``start_dir``.
     Returns the path, or ``None`` if cancelled. GUI Maya only."""
     picked = cmds.fileDialog2(
-        caption="Publish Output",
+        caption="Publish Export Scene",
         fileMode=0,
         fileFilter=_FILE_FILTER,
         dialogStyle=2,
@@ -168,16 +141,12 @@ def _start_dir(path):
 
 
 def publish_from_browser(path):
-    """Pick where to save, keeping the clean-up options. Returns ``None`` (no
-    message) if the browser is cancelled."""
+    """Pick where to save. Returns ``None`` (no message) if the browser is
+    cancelled."""
     picked = pick_output_file(_start_dir(path))
     if not picked:
         return None
-    try:
-        current = settings(path) or {}
-    except ValueError:
-        current = {}
-    return set_output(path, picked, current.get("delete_unused", False), current.get("hide_joints", False))
+    return set_output(path, picked)
 
 
 # -- running ----------------------------------------------------------------------
@@ -200,34 +169,6 @@ def ensure_fbx_plugin():
         ) from e
 
 
-def hide_joints():
-    """Set every joint's draw style to None. Joints whose draw style is locked
-    or connected are skipped, with one warning naming them."""
-    skipped = []
-    for joint in cmds.ls(type="joint", long=True):
-        attr = f"{joint}.drawStyle"
-        if cmds.getAttr(attr, lock=True) or cmds.connectionInfo(attr, isDestination=True):
-            skipped.append(joint.rsplit("|", 1)[-1])
-            continue
-        cmds.setAttr(attr, _DRAW_STYLE_NONE)
-    if skipped:
-        runlog.warning(f"Couldn't hide joints with a locked or connected draw style: {', '.join(skipped)}")
-
-
-def delete_unused_nodes():
-    """Delete unused shading nodes, as Hypershade's Delete Unused Nodes."""
-    mel.eval("MLdeleteUnused")
-
-
-@undoable
-def clean_up(delete_unused=False, hide=False):
-    """Run the chosen clean-ups on the scene, as one undo step."""
-    if delete_unused:
-        delete_unused_nodes()
-    if hide:
-        hide_joints()
-
-
 def save_scene(out_path):
     """Export the whole scene to ``out_path`` in the format its extension
     names, creating its folder if needed. The open scene keeps its name."""
@@ -242,17 +183,12 @@ def save_scene(out_path):
 
 
 def run_output(path):
-    """Clean up the scene as the entry at ``path`` says, then save it."""
+    """Save the scene where the entry at ``path`` says."""
     current = settings(path)
     if current is None:
         runlog.warning(f"{os.path.basename(path)} has no output file set: nothing saved. Publish it to pick one.")
         return None
     out_path = paths.resolve(current["path"], build_root(path))
-    format_name(out_path)
-    # Check FBX can be written before cleaning anything up.
-    if ext_of(out_path) == ".fbx":
-        ensure_fbx_plugin()
-    clean_up(current["delete_unused"], current["hide_joints"])
     save_scene(out_path)
     runlog.info(f"Saved {format_name(out_path)} to {out_path}")
     return out_path
@@ -261,24 +197,20 @@ def run_output(path):
 # -- the product ------------------------------------------------------------------
 
 
-def _on_off(value):
-    return "on" if value else "off"
-
-
 class OutputProduct(Product):
-    name = "Output"
+    name = "Export Scene"
     extensions = (EXTENSION,)
     order = 150
     menu_slot = (6, 1)  # last, after Check: usually the build's last step
     runnable = True
     versioned = True
-    creators = (Creator("Output", lambda directory, name, _ext: create_output(directory, name)),)
+    creators = (Creator("Export Scene", lambda directory, name, _ext: create_output(directory, name)),)
 
     def run(self, path):
         run_output(path)
 
     def publish(self, path):
-        # No question first: the settings it replaces are kept as a version.
+        # No question first: the path it replaces is kept as a version.
         return Action("Publish", lambda: publish_from_browser(path))
 
     def to_plan(self, path):
@@ -286,14 +218,12 @@ class OutputProduct(Product):
         return {} if current is None else dict(current)
 
     def plan_problems(self, item):
-        fields = {k: item[k] for k in ("path", *OPTIONS) if k in item}
-        if not fields:
-            return []
-        return problems(fields)
+        # Old plans may also hold clean-up switches; they're ignored.
+        return problems({"path": item["path"]}) if "path" in item else []
 
     def from_plan(self, path, item):
         if item.get("path"):
-            _write(path, _normalized(item["path"], item.get("delete_unused", False), item.get("hide_joints", False)))
+            _write(path, {"path": item["path"]})
         else:
             super().from_plan(path, item)
 
@@ -309,18 +239,9 @@ class OutputProduct(Product):
             f"Saves to: {saves_to}",
             *([f"Stored as: {current['path']}"] if current["path"] != saves_to else []),
             f"Format: {format_name(current['path'])}",
-            f"Delete unused nodes: {_on_off(current['delete_unused'])}",
-            f"Hide joints: {_on_off(current['hide_joints'])}",
             versions.summary(path),
         ]
-        actions = [
-            Action(
-                f"Turn {'Off' if current[key] else 'On'} {label}",
-                lambda key=key, value=not current[key]: set_option(path, key, value),
-            )
-            for key, label in OPTIONS.items()
-        ]
-        return Panel(info, actions)
+        return Panel(info, [])
 
 
 PRODUCT = OutputProduct()

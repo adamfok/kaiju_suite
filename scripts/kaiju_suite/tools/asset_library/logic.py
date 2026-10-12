@@ -18,7 +18,7 @@ folder items are folders too. Assets made before rigs (a flat ``build/``
 and ``publish/``) have no rigs.
 
 The current asset is the one the ``ASSET`` environment variable points to,
-so Assembler Scene and Output items under it store ``$ASSET/...`` paths.
+so Assembler Import Scene and Export Scene items under it store ``$ASSET/...`` paths.
 It's remembered per user and set again by :func:`restore_current`.
 """
 
@@ -147,7 +147,7 @@ def add_rig(folder, name):
     """Add rig ``name`` to the asset in ``folder``: make its ``build/<rig>/``
     and ``publish/<rig>/`` folders (keeping any already there) and list it
     in ``asset.json``. An empty build folder is started by the Assembler: a
-    ``build`` folder holding an Output saving to ``publish/<rig>/<asset>_<rig>.ma``
+    ``build`` folder holding an Export Scene saving to ``publish/<rig>/<asset>_<rig>.ma``
     (stored as ``$ASSET/...`` when this asset is current). Returns the name."""
     if not is_asset(folder):
         raise ValueError(f"{folder} isn't an asset (it has no {ASSET_FILE}).")

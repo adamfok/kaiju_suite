@@ -64,7 +64,7 @@ def test_qc_is_runnable_and_versioned():
 def test_qc_is_in_the_last_new_menu_group_before_output(tmp_path):
     entries = products.new_menu()
     labels = [None if e is None else e[1].label for e in entries]
-    assert labels[-3:] == [None, "QC", "Output"]
+    assert labels[-3:] == [None, "QC", "Export Scene"]
     (creator,) = qc.PRODUCT.creators
     assert creator.choices is None and not creator.open_after
     assert creator.fn(str(tmp_path), "rig", None) == str(tmp_path / "rig.qc")

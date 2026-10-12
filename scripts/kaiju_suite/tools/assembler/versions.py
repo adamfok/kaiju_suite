@@ -327,7 +327,7 @@ def _save_folder_version(folder, latest=False, description=None):
 
 def published_message(path, version):
     """What to tell the user once ``path`` is published as ``version``,
-    e.g. ``Published Scene ball.ma v003``."""
+    e.g. ``Published Import Scene ball.scene v003``."""
     product = product_for(path)
     kind = f"{product.type_name(path)} " if product is not None else ""
     return f"Published {kind}{os.path.basename(path)} {version.tag}"
