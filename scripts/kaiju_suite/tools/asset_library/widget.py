@@ -87,16 +87,18 @@ class AssetLibraryWindow(ToolWindow):
         asset = self.selected()
         menu = QtWidgets.QMenu(self)
         if asset is not None:
-            published = bool(logic.latest_publish(asset.path))
+            rigs = self._rigs(asset)
+            published = {rig for rig in rigs if logic.latest_publish(asset.path, rig)}
             for label, slot in (
-                ("Import", lambda: self._run(logic.import_asset, "Imported")),
-                ("Reference", lambda: self._run(logic.reference_asset, "Referenced")),
+                ("Import", lambda rig: self._run(logic.import_asset, rig, "Imported")),
+                ("Reference", lambda rig: self._run(logic.reference_asset, rig, "Referenced")),
                 ("Open", self._open),
             ):
-                menu.addAction(label, slot).setEnabled(published)
+                self._rig_menu(menu, label, rigs, slot, published)
             menu.addSeparator()
-            menu.addAction("Open in Assembler", self._open_in_assembler).setToolTip(
-                "Make this the Asset and open its build/ folder in the Assembler"
+            self._rig_menu(menu, "Open in Assembler", rigs, self._open_in_assembler)
+            menu.addAction("New Rig...", self._new_rig).setToolTip(
+                "Add a rig (e.g. skeleton, puppet, proxy) with its own build/ and publish/ folders"
             )
             menu.addAction("Show in Explorer", self._show_in_explorer)
             menu.addSeparator()
@@ -110,6 +112,27 @@ class AssetLibraryWindow(ToolWindow):
             return
         menu.setToolTipsVisible(True)
         menu.exec(self.asset_list.viewport().mapToGlobal(pos))
+
+    def _rig_menu(self, menu, label, rigs, slot, enabled=None):
+        """A submenu listing ``rigs``; picking one calls ``slot(rig)``. Rigs
+        not in ``enabled`` (when given) are greyed out."""
+        sub = menu.addMenu(label)
+        if not rigs:
+            sub.addAction("No rigs yet: use New Rig...").setEnabled(False)
+        for rig in rigs:
+            action = sub.addAction(rig, lambda rig=rig: slot(rig))
+            if enabled is not None and rig not in enabled:
+                action.setEnabled(False)
+                action.setToolTip(f"Nothing published in publish/{rig}/ yet")
+        sub.setToolTipsVisible(True)
+        return sub
+
+    def _rigs(self, asset):
+        try:
+            return logic.rigs(asset.path)
+        except (OSError, ValueError) as e:
+            _warn(str(e))
+            return []
 
     # -- libraries -------------------------------------------------------------
 
@@ -165,16 +188,18 @@ class AssetLibraryWindow(ToolWindow):
         self.current_label.setText(f"Asset: <b>{current.name}</b>" if current else "Asset: none")
         self.current_label.setToolTip(f"ASSET = {current.path}" if current else "ASSET isn't set by the Asset Library")
         asset = self.selected()
-        published = logic.latest_publish(asset.path) if asset else None
         if asset is None:
             self.details.setText("")
             return
-        lines = [
-            f"<b>{asset.name}</b>",
-            f"Latest publish: {os.path.basename(published)}" if published else "Nothing published yet",
-            "Has an Assembler build" if logic.has_build(asset.path) else "",
-        ]
-        self.details.setText("<br>".join(line for line in lines if line))
+        lines = [f"<b>{asset.name}</b>"]
+        rigs = self._rigs(asset)
+        for rig in rigs:
+            published = logic.latest_publish(asset.path, rig)
+            build = "" if logic.has_build(asset.path, rig) else ", no build yet"
+            lines.append(f"{rig}: {os.path.basename(published) if published else 'nothing published'}{build}")
+        if not rigs:
+            lines.append("No rigs yet: right-click ▸ New Rig...")
+        self.details.setText("<br>".join(lines))
 
     # -- actions ---------------------------------------------------------------
 
@@ -188,25 +213,25 @@ class AssetLibraryWindow(ToolWindow):
             _warn(str(e))
         self._show_details()
 
-    def _run(self, action, verb):
+    def _run(self, action, rig, verb):
         asset = self.selected()
         if asset is None:
             return
         try:
-            action(asset.path)
+            action(asset.path, rig)
         except Exception as e:
             _warn(str(e))
             return
-        print(f"Kaiju Asset Library: {verb} {asset.name}.")
+        print(f"Kaiju Asset Library: {verb} {asset.name} {rig}.")
 
-    def _open(self):
+    def _open(self, rig):
         if cmds.file(query=True, modified=True):
             answer = QtWidgets.QMessageBox.question(
                 self, "Open Asset", "The current scene has unsaved changes. Open anyway and lose them?"
             )
             if answer != QtWidgets.QMessageBox.Yes:
                 return
-        self._run(logic.open_asset, "Opened")
+        self._run(logic.open_asset, rig, "Opened")
 
     def _new_asset(self):
         name, ok = QtWidgets.QInputDialog.getText(self, "New Asset", "Name (letters, digits, _ and -):")
@@ -219,6 +244,22 @@ class AssetLibraryWindow(ToolWindow):
             return
         logic.set_current(asset.path)
         self._rescan(select=asset.path)
+
+    def _new_rig(self):
+        asset = self.selected()
+        if asset is None:
+            return
+        name, ok = QtWidgets.QInputDialog.getText(
+            self, "New Rig", f"Rig name for {asset.name} (letters, digits, _ and -):"
+        )
+        if not ok:
+            return
+        try:
+            logic.add_rig(asset.path, name.strip())
+        except (OSError, ValueError) as e:
+            _warn(str(e))
+            return
+        self._show_details()
 
     def _set_thumbnail(self, action, *args):
         asset = self.selected()
@@ -241,12 +282,12 @@ class AssetLibraryWindow(ToolWindow):
         if picked:
             self._set_thumbnail(logic.set_thumbnail_from_file, picked)
 
-    def _open_in_assembler(self):
+    def _open_in_assembler(self, rig):
         asset = self.selected()
         if asset is None:
             return
         try:
-            logic.open_in_assembler(asset.path)
+            logic.open_in_assembler(asset.path, rig)
         except Exception as e:
             _warn(str(e))
         self._show_details()
