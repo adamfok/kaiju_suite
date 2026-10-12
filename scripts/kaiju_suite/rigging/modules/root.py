@@ -35,6 +35,7 @@ def _add_global_scale(control):
 class RootModule(RigModule):
     key = "root"
     name = "Root"
+    mirrorable = False  # there's one root, in the middle
     params = (
         Param("name", "Name", "string", "main", required=True, tooltip="Prefix of every node it creates, e.g. main."),
         Param("control_size", "Control size", "float", 10.0),

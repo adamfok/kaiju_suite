@@ -10,6 +10,7 @@ build can be checked before anything is built. No Qt here.
 
 from dataclasses import dataclass
 
+from kaiju_suite.core.naming import opposite_name
 from kaiju_suite.core.undo import undo_chunk
 
 # What a parameter holds. "node" is a scene node's name; editors offer to
@@ -17,6 +18,22 @@ from kaiju_suite.core.undo import undo_chunk
 # Drawing Overrides palette); 0 means Maya's default color.
 KINDS = ("string", "node", "float", "bool", "choice", "color")
 COLORS = range(32)
+
+# Added to a name with no side to mirror it, e.g. ``spine`` -> ``spine_mirrored``.
+# An underscore, since module names become node names.
+MIRRORED_SUFFIX = "_mirrored"
+
+
+def mirrored_name(name):
+    """``name`` for the other side: its side swapped (``L_arm`` -> ``R_arm``),
+    or, with no side, :data:`MIRRORED_SUFFIX` added or taken off again
+    (``spine`` <-> ``spine_mirrored``)."""
+    opposite = opposite_name(name)
+    if opposite is not None:
+        return opposite
+    if name.endswith(MIRRORED_SUFFIX) and len(name) > len(MIRRORED_SUFFIX):
+        return name[: -len(MIRRORED_SUFFIX)]
+    return name + MIRRORED_SUFFIX
 
 
 @dataclass(frozen=True)
@@ -45,6 +62,7 @@ class RigModule:
     key = ""
     name = ""
     params = ()
+    mirrorable = True  # Assembler items get a right-click Mirror (see :meth:`mirrored`)
 
     def defaults(self):
         return {p.key: p.default for p in self.params}
@@ -94,6 +112,33 @@ class RigModule:
             if param.kind == "node" and isinstance(value, str) and value.strip():
                 refs.append((param.label, value.strip()))
         return refs
+
+    def mirrored(self, params):
+        """``(params, unsided)``: ``params`` for the same module on the other
+        side, and the keys of the node parameters left as they were.
+
+        Every text and node parameter gets its side swapped. ``name`` always
+        changes (see :func:`mirrored_name`), so the two sides' nodes never
+        clash; other ones with no side stay, so the copy points at the same
+        nodes until edited. Nothing else changes: the modules line controls
+        up with the joints, so a behavior-mirrored skeleton gives
+        behavior-mirrored controls.
+        """
+        params = self.complete(params)
+        result, unsided = dict(params), []
+        for param in self.params:
+            value = params[param.key]
+            if param.kind not in ("string", "node") or not isinstance(value, str):
+                continue
+            if param.key == "name":
+                result["name"] = mirrored_name(value.strip())
+                continue
+            opposite = opposite_name(value)
+            if opposite is not None:
+                result[param.key] = opposite
+            elif param.kind == "node" and value.strip():
+                unsided.append(param.key)
+        return result, unsided
 
     def build(self, params):
         """Check ``params``, then build as one undo step. Raises

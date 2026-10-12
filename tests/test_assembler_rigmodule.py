@@ -190,3 +190,162 @@ def test_load_reports_a_wrong_kind_of_file(tmp_path):
 
     with pytest.raises(DataFormatError):
         rigmodule.PRODUCT.run(path)
+
+
+# -- Mirror ----------------------------------------------------------------------
+
+
+def _mirror_action(path):
+    return next((a for a in rigmodule.PRODUCT.actions(path) if a.label == "Mirror"), None)
+
+
+@pytest.fixture
+def both_arms(new_scene):
+    """L_ and R_ arm joints, mirrored across X."""
+    for side, x in (("L", 1), ("R", -1)):
+        _joint(f"{side}_shoulder", translate=(2 * x, 10, 0))
+        _joint(f"{side}_elbow", f"{side}_shoulder", translate=(5 * x, 0, -1))
+        _joint(f"{side}_wrist", f"{side}_elbow", translate=(5 * x, 0, 1))
+
+
+def _l_arm(tmp_path, **params):
+    return _item(tmp_path, name="L_arm", start_joint="L_shoulder", end_joint="L_wrist", **params)
+
+
+def test_mirror_writes_the_opposite_item_with_flipped_parameters(both_arms, tmp_path):
+    path = _l_arm(tmp_path, parent="main_offset_ctrl", pole_distance=7.5)
+
+    message = _mirror_action(path).fn()
+
+    mirrored = str(tmp_path / "R_arm.rig")
+    key, params = spec.read(mirrored)
+    assert key == "simple_ik"
+    assert params["name"] == "R_arm"
+    assert params["start_joint"] == "R_shoulder" and params["end_joint"] == "R_wrist"
+    assert params["parent"] == "main_offset_ctrl"  # no side: unchanged
+    assert params["pole_distance"] == 7.5
+    assert "R_arm.rig" in message
+
+
+def test_mirror_places_the_new_item_right_after_the_source(both_arms, tmp_path):
+    spec.write(str(tmp_path / "a_first.rig"), "simple_ik", {})
+    path = _l_arm(tmp_path)
+    spec.write(str(tmp_path / "z_last.rig"), "simple_ik", {})
+    logic.append_to_order(str(tmp_path), ["a_first.rig", "L_arm.rig", "z_last.rig"])
+
+    _mirror_action(path).fn()
+
+    assert logic.item_names(str(tmp_path)) == ["a_first.rig", "L_arm.rig", "R_arm.rig", "z_last.rig"]
+
+
+def test_mirror_saves_the_new_item_as_its_first_version(both_arms, tmp_path):
+    path = _l_arm(tmp_path)
+
+    _mirror_action(path).fn()
+
+    mirrored = str(tmp_path / "R_arm.rig")
+    assert versions.current_version(mirrored).number == 1
+
+
+def test_mirror_again_updates_the_existing_item_as_a_new_version(both_arms, tmp_path):
+    path = _l_arm(tmp_path)
+    _mirror_action(path).fn()
+    key, params = spec.read(path)
+    params["pole_distance"] = 12.0
+    spec.write(path, key, params)
+
+    _mirror_action(path).fn()
+
+    mirrored = str(tmp_path / "R_arm.rig")
+    assert spec.read(mirrored)[1]["pole_distance"] == 12.0
+    assert [v.number for v in versions.list_versions(mirrored)] == [2, 1]
+    assert logic.item_names(str(tmp_path)) == ["L_arm.rig", "R_arm.rig"]
+    versions.restore_version(mirrored, 1)
+    assert spec.read(mirrored)[1]["pole_distance"] == 5.0
+
+
+def test_mirror_works_from_the_right_side_too(both_arms, tmp_path):
+    path = _item(tmp_path, name="R_arm", start_joint="R_shoulder", end_joint="R_wrist")
+    os.rename(path, str(tmp_path / "arm_R.rig"))
+
+    _mirror_action(str(tmp_path / "arm_R.rig")).fn()
+
+    params = spec.read(str(tmp_path / "arm_L.rig"))[1]
+    assert (params["name"], params["start_joint"]) == ("L_arm", "L_shoulder")
+
+
+def test_mirror_of_an_unsided_item_adds_mirrored(new_scene, tmp_path):
+    _joint("spine_01")
+    _joint("spine_02", "spine_01", translate=(0, 2, 0))
+    path = _creator("FK Chain").fn(str(tmp_path), "spine", None)
+    spec.write(path, "fk_chain", {"name": "spine", "start_joint": "spine_01", "end_joint": "spine_02"})
+
+    message = _mirror_action(path).fn()
+
+    params = spec.read(str(tmp_path / "spine_mirrored.rig"))[1]
+    assert params["name"] == "spine_mirrored"
+    assert (params["start_joint"], params["end_joint"]) == ("spine_01", "spine_02")
+    assert "spine_01" in message and "same" in message
+
+
+def test_mirror_of_a_mirrored_copy_goes_back_to_the_original(new_scene, tmp_path):
+    _joint("spine_01")
+    _joint("spine_02", "spine_01", translate=(0, 2, 0))
+    path = _creator("FK Chain").fn(str(tmp_path), "spine", None)
+    spec.write(path, "fk_chain", {"name": "spine", "start_joint": "spine_01", "end_joint": "spine_02"})
+    _mirror_action(path).fn()
+
+    _mirror_action(str(tmp_path / "spine_mirrored.rig")).fn()
+
+    assert sorted(n for n in os.listdir(tmp_path) if not n.startswith(".")) == ["spine.rig", "spine_mirrored.rig"]
+
+
+def test_root_has_no_mirror(tmp_path):
+    path = _creator("Root").fn(str(tmp_path), "main", None)
+
+    assert _mirror_action(path) is None
+    assert rigging.get("root").mirrorable is False
+    assert all(m.mirrorable for m in rigging.all_modules() if m.key != "root")
+
+
+def test_mirror_stops_and_names_missing_opposite_joints(arm, tmp_path):
+    cmds.rename("shoulder", "L_shoulder")
+    path = _item(tmp_path, name="L_arm", start_joint="L_shoulder", end_joint="L_wrist")
+    cmds.rename("wrist", "L_wrist")
+    action = _mirror_action(path)
+
+    problems = action.problems()
+
+    assert any("R_shoulder" in p for p in problems) and any("R_wrist" in p for p in problems)
+    with pytest.raises(ValueError, match="R_shoulder"):
+        action.fn()
+    assert not os.path.exists(str(tmp_path / "R_arm.rig"))
+
+
+def test_mirror_refuses_to_overwrite_a_different_kind_of_item(both_arms, tmp_path):
+    path = _l_arm(tmp_path)
+    spec.write(str(tmp_path / "R_arm.rig"), "fk_chain", {})
+
+    assert any("FK Chain" in p for p in _mirror_action(path).problems())
+
+
+def test_mirrored_build_on_a_behavior_mirrored_skeleton_mirrors_control_behavior(new_scene, tmp_path):
+    """Rotating both sides' controls by the same amount gives mirror-image poses."""
+    _joint("L_upper", translate=(2, 10, 0))
+    _joint("L_lower", "L_upper", translate=(4, 0, -1))
+    _joint("L_tip", "L_lower", translate=(3, 0, 1))
+    cmds.joint("L_upper", edit=True, orientJoint="xyz", secondaryAxisOrient="yup", children=True, zeroScaleOrient=True)
+    cmds.mirrorJoint("L_upper", mirrorYZ=True, mirrorBehavior=True, searchReplace=("L_", "R_"))
+    path = _creator("FK Chain").fn(str(tmp_path), "L_limb", None)
+    spec.write(path, "fk_chain", {"name": "L_limb", "start_joint": "L_upper", "end_joint": "L_tip"})
+    _mirror_action(path).fn()
+
+    logic.run_steps([path, str(tmp_path / "R_limb.rig")])
+    for side in "LR":
+        cmds.setAttr(f"{side}_limb_01_fk_ctrl.rotate", 10, 20, 30)
+        cmds.setAttr(f"{side}_limb_02_fk_ctrl.rotate", -15, 5, 25)
+
+    for joint in ("upper", "lower", "tip"):
+        lx, ly, lz = cmds.xform(f"L_{joint}", query=True, worldSpace=True, translation=True)
+        rx, ry, rz = cmds.xform(f"R_{joint}", query=True, worldSpace=True, translation=True)
+        assert (rx, ry, rz) == pytest.approx((-lx, ly, lz), abs=1e-4)
