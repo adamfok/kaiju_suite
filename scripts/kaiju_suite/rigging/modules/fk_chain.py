@@ -67,6 +67,7 @@ class FkChainModule(RigModule):
         with helpers.kept_selection():
             group = helpers.group(f"{name}_fkChain_grp", params["parent"].strip())
             above = group
+            members = controls.module_set_name(group)
             for number, joint in enumerate(joints, start=1):
                 control_name = f"{name}_{number:02d}_fk_ctrl"
                 control_group = helpers.group(f"{control_name}_grp", above)
@@ -75,7 +76,7 @@ class FkChainModule(RigModule):
                 # Keeps the offset, so a tiny mismatch can't snap the joint.
                 cmds.parentConstraint(control, joint, maintainOffset=True, name=f"{control_name}_parentConstraint")
                 helpers.set_color(control, params["color"])
-                controls.add(control, parent=made[-1] if made else None)
+                controls.add(control, parent=made[-1] if made else None, module_set=members)
                 made.append(control)
                 above = control
 

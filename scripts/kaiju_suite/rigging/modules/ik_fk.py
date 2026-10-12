@@ -191,11 +191,12 @@ class IkFkModule(RigModule):
             for node in made:
                 helpers.set_color(node, params["color"])
             # Pickwalk: the switch, then the IK controls and the FK chain below it.
-            controls.add(switch)
-            controls.add(ik_control, parent=switch)
-            controls.add(pole_control, parent=ik_control)
+            members = controls.module_set_name(group)
+            controls.add(switch, module_set=members)
+            controls.add(ik_control, parent=switch, module_set=members)
+            controls.add(pole_control, parent=ik_control, module_set=members)
             for i, fk_control in enumerate(fk_controls):
-                controls.add(fk_control, parent=fk_controls[i - 1] if i else switch)
+                controls.add(fk_control, parent=fk_controls[i - 1] if i else switch, module_set=members)
 
         return {
             "group": helpers.short(group),

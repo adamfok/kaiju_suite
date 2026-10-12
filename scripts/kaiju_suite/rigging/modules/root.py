@@ -66,8 +66,9 @@ class RootModule(RigModule):
 
             for node in (control, offset):
                 helpers.set_color(node, params["color"])
-            controls.add(control)
-            controls.add(offset, parent=control)
+            members = controls.module_set_name(group)
+            controls.add(control, module_set=members)
+            controls.add(offset, parent=control, module_set=members)
 
         return {
             "group": helpers.short(group),

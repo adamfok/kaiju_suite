@@ -95,8 +95,9 @@ class SimpleIkModule(RigModule):
 
             for node in (control, pole_control):
                 helpers.set_color(node, params["color"])
-            controls.add(control)
-            controls.add(pole_control, parent=control)
+            members = controls.module_set_name(group)
+            controls.add(control, module_set=members)
+            controls.add(pole_control, parent=control, module_set=members)
 
         return {
             "group": helpers.short(group),

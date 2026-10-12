@@ -102,6 +102,23 @@ def test_controls_of_several_rigs_share_one_set(new_scene):
     assert _short(controls.all_controls()) == ["a_ctrl", "b_ctrl"]
 
 
+def test_add_puts_the_control_in_its_module_set_too(new_scene):
+    a = controls.add(_circle("a_ctrl"), module_set="L_arm_ik_controls_set")
+    controls.add(_circle("b_ctrl"), module_set="L_arm_ik_controls_set")
+    controls.add(_circle("c_ctrl"))
+
+    assert cmds.nodeType("L_arm_ik_controls_set") == "objectSet"
+    assert _short(cmds.sets("L_arm_ik_controls_set", query=True)) == ["a_ctrl", "b_ctrl"]
+    # The module set sits beside the rig-wide one, not in it.
+    assert _short(controls.all_controls()) == ["a_ctrl", "b_ctrl", "c_ctrl"]
+    assert controls.module_sets(a) == ["L_arm_ik_controls_set"]
+
+
+def test_module_set_name_follows_the_module_group():
+    assert controls.module_set_name("L_arm_ik_grp") == "L_arm_ik_controls_set"
+    assert controls.module_set_name("odd") == "odd_controls_set"
+
+
 # -- reset --------------------------------------------------------------------
 
 
@@ -188,6 +205,35 @@ PICKWALK = {
 }
 
 
+MODULE_SETS = {
+    "root": "main_root_controls_set",
+    "single_fk": "L_elbow_fk_controls_set",
+    "fk_chain": "L_finger_fkChain_controls_set",
+    "simple_ik": "L_arm_ik_controls_set",
+    "stretchy_ik": "L_arm_stretchIk_controls_set",
+    "ik_fk": "L_arm_ikfk_controls_set",
+    "spline_ik": "spine_splineIk_controls_set",
+}
+
+
+@pytest.mark.parametrize("key", sorted(MODULE_SETS))
+def test_every_module_makes_a_set_of_its_controls(new_scene, key):
+    params, expected = CASES[key]()
+
+    rigging.get(key).build(params)
+
+    assert _short(cmds.sets(MODULE_SETS[key], query=True)) == sorted(expected)
+
+
+def test_space_switch_makes_no_module_set(new_scene):
+    params, _ = CASES["space_switch"]()
+    before = set(cmds.ls(type="objectSet"))
+
+    rigging.get("space_switch").build(params)
+
+    assert set(cmds.ls(type="objectSet")) - before == {controls.SET}
+
+
 def test_every_rig_module_has_a_case():
     assert sorted(CASES) == sorted(m.key for m in rigging.all_modules())
 
@@ -245,3 +291,4 @@ def test_undoing_a_module_build_removes_its_controls(new_scene):
 
     assert controls.all_controls() == []
     assert cmds.ls(type="controller") == []
+    assert not cmds.objExists("L_arm_ik_controls_set")

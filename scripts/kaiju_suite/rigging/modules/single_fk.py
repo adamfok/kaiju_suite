@@ -55,7 +55,8 @@ class SingleFkModule(RigModule):
             cmds.parentConstraint(control, joint, maintainOffset=True, name=f"{name}_fk_parentConstraint")
 
             helpers.set_color(control, params["color"])
-            controls.add(control)
+            members = controls.module_set_name(group)
+            controls.add(control, module_set=members)
 
         return {
             "group": helpers.short(group),

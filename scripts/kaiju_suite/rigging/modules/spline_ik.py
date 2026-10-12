@@ -168,8 +168,9 @@ class SplineIkModule(RigModule):
 
             for node in (hip, chest):
                 helpers.set_color(node, params["color"])
-            controls.add(hip)
-            controls.add(chest, parent=hip)
+            members = controls.module_set_name(group)
+            controls.add(hip, module_set=members)
+            controls.add(chest, parent=hip, module_set=members)
 
         return {
             "group": helpers.short(group),

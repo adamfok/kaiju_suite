@@ -7,7 +7,9 @@ all of them. Imports only Maya, no Qt.
 - tags it with a Maya controller node, ``<control>_tag``, whose pickwalk
   parent is the control it's given (Maya's parallel evaluation also treats
   tagged controls better);
-- puts it in ``controls_set``, one set for every rig in the scene;
+- puts it in ``controls_set``, one set for every rig in the scene, and in
+  its module's set if given (see :func:`module_set_name`), so the controls
+  of one arm can be selected together;
 - stores its keyable values as built, as JSON in a ``kaijuDefaults`` string
   attribute, so :func:`reset` can put it back.
 
@@ -25,19 +27,35 @@ SET = "controls_set"
 DEFAULTS = "kaijuDefaults"
 
 
-def add(control, parent=None):
+def add(control, parent=None, module_set=None):
     """Make ``control`` a rig control, its pickwalk parent the control
-    ``parent`` if given. Adding it again keeps the defaults already stored
-    and adds those of any new keyable attributes (and keeps its pickwalk
-    parent unless given another). Returns ``control``."""
+    ``parent`` if given, also in the set ``module_set`` (made if missing) if
+    given. Adding it again keeps the defaults already stored and adds those
+    of any new keyable attributes (and keeps its pickwalk parent unless
+    given another). Returns ``control``."""
     if tag(control) is None:
         cmds.controller(control)
     if parent:
         cmds.controller(control, parent, parent=True)
-    _controls_set(create=True)
+    _set(SET, create=True)
     cmds.sets(control, add=SET)
+    if module_set:
+        cmds.sets(control, add=_set(module_set, create=True))
     _store_defaults(control)
     return control
+
+
+def module_set_name(group):
+    """The name of the set of a module's controls, from the module's top
+    group: ``L_arm_ik_grp`` gives ``L_arm_ik_controls_set``."""
+    base = group[: -len("_grp")] if group.endswith("_grp") else group
+    return f"{base}_controls_set"
+
+
+def module_sets(control):
+    """The module sets ``control`` is in (every controls set but the rig-wide one)."""
+    found = cmds.listSets(object=control) or []
+    return sorted(s for s in found if s != SET and s.endswith("_controls_set"))
 
 
 def tag(node):
@@ -69,7 +87,7 @@ def defaults(node):
 
 def all_controls():
     """Every rig control in the scene, as long paths."""
-    if _controls_set() is None:
+    if _set(SET) is None:
         return []
     return cmds.ls(cmds.sets(SET, query=True) or [], long=True)
 
@@ -109,9 +127,9 @@ def _store_defaults(control):
     cmds.setAttr(f"{control}.{DEFAULTS}", json.dumps(stored), type="string")
 
 
-def _controls_set(create=False):
-    if cmds.objExists(SET) and cmds.nodeType(SET) == "objectSet":
-        return SET
+def _set(name, create=False):
+    if cmds.objExists(name) and cmds.nodeType(name) == "objectSet":
+        return name
     if not create:
         return None
-    return cmds.sets(name=SET, empty=True)
+    return cmds.sets(name=name, empty=True)
