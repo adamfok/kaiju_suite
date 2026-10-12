@@ -6,10 +6,10 @@ from PySide6 import QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
-from kaiju_suite.tools.renamer import logic
+from kaiju_suite.tools.outliner_tool import logic
 from kaiju_suite.ui.base_window import ToolWindow
 
-SETTINGS_KEY = "renamer"
+SETTINGS_KEY = "outliner_tool"
 
 
 def _remove_callback(callback_id):
@@ -19,10 +19,10 @@ def _remove_callback(callback_id):
         pass  # already removed
 
 
-class RenamerWindow(ToolWindow):
+class OutlinerToolWindow(ToolWindow):
     """One text field; what you type decides the action (see ``logic.SHORTCUTS``)."""
 
-    TITLE = "Kaiju Renamer"
+    TITLE = "Kaiju Outliner Tool"
 
     def build_ui(self):
         row = QtWidgets.QHBoxLayout()
@@ -68,13 +68,13 @@ class RenamerWindow(ToolWindow):
     def _rename(self):
         nodes = selected()
         if not nodes:
-            cmds.warning("Kaiju Renamer: nothing selected.")
+            cmds.warning("Kaiju Outliner Tool: nothing selected.")
             return
         text = self.field.text()
         try:
             new = logic.rename(nodes, text)
         except ValueError as e:
-            cmds.warning(f"Kaiju Renamer: {e}")
+            cmds.warning(f"Kaiju Outliner Tool: {e}")
             return
         settings.set(SETTINGS_KEY, "text", text)
         cmds.select(new)
@@ -85,7 +85,7 @@ class RenamerWindow(ToolWindow):
             for example, action in logic.SHORTCUTS
         )
         label = QtWidgets.QLabel(
-            f"<b>Renamer shortcuts</b><table>{rows}</table><br>Enter applies to the selection."
+            f"<b>Outliner Tool shortcuts</b><table>{rows}</table><br>Enter applies to the selection."
         )
         label.setContentsMargins(10, 8, 10, 8)
         menu = QtWidgets.QMenu(self)

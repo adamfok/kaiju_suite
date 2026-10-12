@@ -6,7 +6,7 @@ Status is as of 2026-10-09: all ten are built (#1 in PR #25, #2 to #10 on branch
 ## Context
 Kaiju Suite is a rigging-focused Maya module. It has the **Assembler** (a build pipeline of versioned items:
 scripts, scenes, joints, meshes, skin, deltaMush, blendShapes, materials, poses, animation, control shapes,
-rig modules), the **Renamer**, the Rig Module Editor, and seven rig modules (Root, Single FK, FK Chain,
+rig modules), the **Outliner Tool** (renaming), the Rig Module Editor, and seven rig modules (Root, Single FK, FK Chain,
 Simple IK, Stretchy IK, IK/FK, Spline IK).
 
 The Utilities tools that work: Mesh, SkinCluster, DeltaMush, Pose and ControlShape Tool.

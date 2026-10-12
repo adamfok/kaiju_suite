@@ -2,7 +2,7 @@ import pytest
 
 from maya import cmds
 
-from kaiju_suite.tools.renamer import logic
+from kaiju_suite.tools.outliner_tool import logic
 
 
 def test_rename_sequential(new_scene):
@@ -34,11 +34,11 @@ def test_search_replace(new_scene):
     assert logic.search_replace([node], "left", "right") == ["|right_arm"]
 
 
-def test_registry_finds_renamer():
+def test_registry_finds_outliner_tool():
     from kaiju_suite import registry
 
     names = [tool["name"] for tool in registry.discover()]
-    assert "Renamer" in names
+    assert "Outliner Tool" in names
 
 
 # -- one-field rename --------------------------------------------------------

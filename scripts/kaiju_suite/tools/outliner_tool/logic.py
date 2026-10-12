@@ -1,4 +1,4 @@
-"""Renamer logic. No Qt here, so it can be scripted and tested headless."""
+"""Outliner Tool logic. No Qt here, so it can be scripted and tested headless."""
 
 import re
 
@@ -44,7 +44,7 @@ def add_prefix_suffix(nodes, prefix="", suffix=""):
 
 
 # -- one-field rename --------------------------------------------------------
-# What you type in the Renamer's single field decides the action; see SHORTCUTS.
+# What you type in the Outliner Tool's single field decides the action; see SHORTCUTS.
 
 SHORTCUTS = [
     ("L_arm_##_jnt", "rename and number (## = 01, ### = 001)"),
@@ -105,7 +105,7 @@ def plan(nodes, text):
 
 @undoable
 def rename(nodes, text):
-    """Rename ``nodes`` from the Renamer's one-field ``text`` (see SHORTCUTS).
+    """Rename ``nodes`` from the Outliner Tool's one-field ``text`` (see SHORTCUTS).
 
     Returns the new long names in the same order as ``nodes``.
     """
