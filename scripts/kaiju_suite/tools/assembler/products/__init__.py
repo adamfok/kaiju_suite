@@ -31,13 +31,17 @@ class Action:
     If ``confirm`` is set, the widget asks it as a yes/no question first.
     With ``describe``, it asks for a short description of the change and
     runs ``fn()`` inside ``versions.describing``, so the versions it saves
-    keep it.
+    keep it. ``tooltip`` is shown on hover. ``problems``, if set, is called
+    first and returns messages; if there are any, the widget shows them
+    instead of running ``fn()``.
     """
 
     label: str
     fn: object
     confirm: str = None
     describe: bool = False
+    tooltip: str = ""
+    problems: object = None
 
 
 @dataclass
@@ -150,6 +154,23 @@ class Product:
         """Pre-publish warnings: things that look wrong but don't stop Publish,
         as messages. The user is asked whether to publish anyway."""
         return []
+
+    # -- Republish (see ..republish) ------------------------------------------
+
+    can_republish = False  # items can be published again without a selection
+
+    def republishable(self, path):
+        """Whether ``path`` can be published again from the scene objects
+        named in it, so a folder's Republish includes it."""
+        return False
+
+    def republish_problems(self, path):
+        """Why ``path`` can't be republished now, as messages."""
+        return []
+
+    def republish(self, path):
+        """Publish ``path`` again from the scene objects named in it. Returns a message."""
+        raise NotImplementedError(f"{self.name} can't be republished")
 
     def compare_files(self, old_path, new_path):
         """The rows of the side-by-side compare window for files ``old_path``

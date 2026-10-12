@@ -231,7 +231,7 @@ def tags(monkeypatch):
     return product
 
 
-def test_update_from_scene_asks_for_a_description_and_keeps_it(new_scene, tags, tmp_path):
+def test_republish_asks_for_a_description_and_keeps_it(new_scene, tags, tmp_path):
     cmds.polyCube(name="box")
     path = tags.create(str(tmp_path), "item")
     cmds.select("box")
@@ -240,10 +240,10 @@ def test_update_from_scene_asks_for_a_description_and_keeps_it(new_scene, tags, 
     cmds.select(clear=True)
     cmds.setAttr("box.tx", 2)
 
-    (update,) = tags.actions(path)
-    assert update.describe
+    (republish,) = [a for a in tags.actions(path) if a.label == "Republish"]
+    assert republish.describe
     with versions.describing("Moved the box"):
-        update.fn()
+        republish.fn()
     assert _descriptions(path) == {2: "Moved the box", 1: "First"}
 
 

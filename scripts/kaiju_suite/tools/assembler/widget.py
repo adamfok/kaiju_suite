@@ -5,7 +5,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.assembler import compare, logic, plan, products, report, runlog, versions
+from kaiju_suite.tools.assembler import compare, logic, plan, products, report, republish, runlog, versions
 from kaiju_suite.tools.assembler.report_widget import ReportDialog
 from kaiju_suite.tools.assembler.versions_widget import VersionsDialog, ask_description
 from kaiju_suite.ui.base_window import ToolWindow
@@ -264,6 +264,32 @@ class _PanelDialog(QtWidgets.QDialog):
         self._window._do(lambda: toggle.fn(on))
         self._window.populate()
         self._build()  # also puts the box back if the change failed
+
+
+def _show_problems(parent, title, text, lines, proceed=None):
+    """Show ``text`` and a scrollable list of ``lines`` (e.g. missing objects).
+
+    With ``proceed`` (a button label), ask: returns whether the user pressed
+    it rather than Cancel. Without, there is only a Close button.
+    """
+    dialog = QtWidgets.QDialog(parent)
+    dialog.setWindowTitle(title)
+    dialog.resize(520, 320)
+    layout = QtWidgets.QVBoxLayout(dialog)
+    label = QtWidgets.QLabel(text)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    listing = QtWidgets.QPlainTextEdit("\n".join(lines))
+    listing.setReadOnly(True)
+    layout.addWidget(listing, 1)
+    Button = QtWidgets.QDialogButtonBox.StandardButton
+    buttons = QtWidgets.QDialogButtonBox(Button.Cancel if proceed else Button.Close)
+    if proceed:
+        buttons.addButton(proceed, QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+    buttons.accepted.connect(dialog.accept)
+    buttons.rejected.connect(dialog.reject)
+    layout.addWidget(buttons)
+    return dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
 
 
 class _DiffView(QtWidgets.QWidget):
@@ -702,10 +728,18 @@ class AssemblerWindow(ToolWindow):
                 toggles.append(selected)
 
         menu = QtWidgets.QMenu(self)
+        menu.setToolTipsVisible(True)
         product = products.product_for(path) if path else None
         if product:
             for action in product.actions(path):
-                menu.addAction(action.label, lambda a=action: self._do_and_refresh(a, path))
+                entry = menu.addAction(action.label, lambda a=action: self._do_and_refresh(a, path))
+                entry.setToolTip(action.tooltip)
+        if path and not is_file and republish.can_republish(path):
+            entry = menu.addAction("Republish", lambda: self._republish_folder(path))
+            entry.setToolTip(
+                "Publishes every published item in this folder again from the objects in its file, "
+                "ignoring the selection, then publishes the folder."
+            )
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
@@ -782,7 +816,13 @@ class AssemblerWindow(ToolWindow):
     def _do_action(self, action, path):
         """Run a product :class:`Action` on ``path``. One that ``describe``s
         asks for a description first (cancel does nothing), and the versions
-        it saves keep it."""
+        it saves keep it. Its ``problems``, if any, are shown instead of running it."""
+        if action.problems:
+            problems = action.problems()
+            if problems:
+                name = os.path.basename(path)
+                _show_problems(self, f"Can't {action.label} {name}", f"Can't {action.label.lower()} {name}:", problems)
+                return
         fn = action.fn
         if action.describe:
 
@@ -826,6 +866,37 @@ class AssemblerWindow(ToolWindow):
             if answer != Button.Yes:
                 return
         self._do_and_refresh(versions.publish_action(path), path)
+
+    def _republish_folder(self, folder):
+        """Republish every published item under ``folder``, then the folder.
+        Lists the objects missing from the scene first; with some, asks
+        whether to republish the rest or cancel."""
+        name = os.path.basename(folder)
+        grouped = republish.problems(folder)
+        if grouped:
+            lines = republish.problem_lines(grouped)
+            count = len(republish.targets(folder))
+            if len(grouped) == count:
+                _show_problems(self, f"Can't Republish {name}", "Every item has objects missing from the scene:", lines)
+                return
+            text = (
+                f"{len(grouped)} of {count} items have objects missing from the scene, or matching several "
+                "nodes. Republish the others and skip these, or cancel?"
+            )
+            if not _show_problems(self, f"Republish {name}", text, lines, proceed="Republish the Rest"):
+                return
+        text = ask_description(self, f"Republish {name}", versions.suggested_description(folder))
+        if text is None:
+            return
+
+        def fn():
+            with versions.describing(text):
+                return republish.republish_folder(folder)
+
+        self._do(fn)
+        for path in [folder, *republish.targets(folder)]:
+            self._reload_versions(path)
+        self.populate()
 
     def _refresh(self):
         self._status.clear()
