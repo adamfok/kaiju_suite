@@ -260,8 +260,8 @@ def _warnings(path, *selection):
 
 
 def _rows(warnings):
-    """``(text, nodes)`` of each warning, for comparing."""
-    return [(w.text, tuple(w.nodes)) for w in warnings]
+    """``(group, text, nodes)`` of each warning, for comparing."""
+    return [(w.group, w.text, tuple(w.nodes)) for w in warnings]
 
 
 def test_first_publish_has_no_warnings(new_scene, tmp_path):
@@ -287,7 +287,7 @@ def test_each_removed_joint_is_a_row_with_nothing_to_select(new_scene, tmp_path)
     path, _ = _publish(tmp_path, root)
     cmds.delete(end)
 
-    assert _rows(_warnings(path, root)) == [("Removed since v001: end", ()), ("Removed since v001: tip", ())]
+    assert _rows(_warnings(path, root)) == [("Removed since v001", "end", ()), ("Removed since v001", "tip", ())]
 
 
 def test_renamed_joints_warn_and_select_the_new_name(new_scene, tmp_path):
@@ -296,7 +296,7 @@ def test_renamed_joints_warn_and_select_the_new_name(new_scene, tmp_path):
     elbow = cmds.ls(cmds.rename(mid, "elbow"), long=True)[0]
 
     # end keeps its parent, only under the parent's new name: not moved.
-    assert _rows(_warnings(path, root)) == [("Renamed since v001: mid → elbow", (elbow,))]
+    assert _rows(_warnings(path, root)) == [("Renamed since v001", "mid → elbow", (elbow,))]
 
 
 def test_a_renamed_joint_under_a_renamed_parent_warns_as_renamed(new_scene, tmp_path):
@@ -305,8 +305,10 @@ def test_a_renamed_joint_under_a_renamed_parent_warns_as_renamed(new_scene, tmp_
     cmds.rename(end, "wrist")
     cmds.rename(mid, "elbow")
 
-    texts = [w.text for w in _warnings(path, root)]
-    assert texts == ["Renamed since v001: mid → elbow", "Renamed since v001: end → wrist"]
+    assert [(w.group, w.text) for w in _warnings(path, root)] == [
+        ("Renamed since v001", "mid → elbow"),
+        ("Renamed since v001", "end → wrist"),
+    ]
 
 
 def test_reparented_joints_warn_and_select_the_joint(new_scene, tmp_path):
@@ -314,7 +316,7 @@ def test_reparented_joints_warn_and_select_the_joint(new_scene, tmp_path):
     path, _ = _publish(tmp_path, root)
     end = cmds.ls(cmds.parent(end, root), long=True)[0]
 
-    assert _rows(_warnings(path, root)) == [("Moved since v001: end, was under mid, now under root", (end,))]
+    assert _rows(_warnings(path, root)) == [("Reparented since v001", "end: was under mid, now under root", (end,))]
 
 
 def test_a_joint_moved_out_of_the_selection_warns_as_removed(new_scene, tmp_path):
@@ -322,7 +324,7 @@ def test_a_joint_moved_out_of_the_selection_warns_as_removed(new_scene, tmp_path
     path, _ = _publish(tmp_path, root)
     cmds.parent(end, world=True)
 
-    assert [w.text for w in _warnings(path, root)] == ["Removed since v001: end"]
+    assert [(w.group, w.text) for w in _warnings(path, root)] == [("Removed since v001", "end")]
 
 
 def test_selected_joints_are_found_by_path_when_names_repeat(new_scene, tmp_path):
@@ -331,7 +333,7 @@ def test_selected_joints_are_found_by_path_when_names_repeat(new_scene, tmp_path
     _joint("elbow")  # same name, outside the selection
     elbow = cmds.ls(cmds.rename(mid, "elbow"), long=True)[0]
 
-    assert _rows(_warnings(path, root)) == [("Renamed since v001: mid → elbow", (elbow,))]
+    assert _rows(_warnings(path, root)) == [("Renamed since v001", "mid → elbow", (elbow,))]
 
 
 def test_compares_with_the_latest_publish_not_unpublished_changes(new_scene, tmp_path):
@@ -340,7 +342,7 @@ def test_compares_with_the_latest_publish_not_unpublished_changes(new_scene, tmp
     cmds.delete(end)
     data.write(path, "joints", joints.PRODUCT.gather([root]))  # unpublished: no end
 
-    assert [w.text for w in _warnings(path, root)] == ["Removed since v001: end"]
+    assert [(w.group, w.text) for w in _warnings(path, root)] == [("Removed since v001", "end")]
 
 
 def test_compares_with_the_newest_version(new_scene, tmp_path):
@@ -377,3 +379,16 @@ def test_nothing_selected_gives_no_contract_warnings(new_scene, tmp_path):
     path, _ = _publish(tmp_path, root)
     cmds.select(clear=True)
     assert versions.publish_warnings(path) == []
+
+
+def test_rows_come_in_three_groups_in_order(new_scene, tmp_path):
+    root, mid, end = _chain()
+    other = _joint("other", root, translate=(1, 0, 0))
+    gone = _joint("gone", root)
+    path, _ = _publish(tmp_path, root)
+    cmds.parent(end, root)
+    cmds.rename(other, "renamed")
+    cmds.delete(gone)
+
+    groups = [w.group for w in _warnings(path, root)]
+    assert groups == ["Removed since v001", "Renamed since v001", "Reparented since v001"]

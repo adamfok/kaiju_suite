@@ -48,10 +48,12 @@ class Action:
 class Line:
     """One row of a list of messages, e.g. a publish warning. ``nodes`` are
     the scene objects (long names) that picking the row selects; none for a
-    row about something that isn't in the scene. Reads as its ``text``."""
+    row about something that isn't in the scene. Rows with a ``group`` are
+    shown in a list of their own under it as a heading. Reads as its ``text``."""
 
     text: str
     nodes: tuple = ()
+    group: str = ""
 
     def __str__(self):
         return self.text

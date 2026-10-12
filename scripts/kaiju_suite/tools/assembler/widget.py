@@ -268,8 +268,11 @@ class _PanelDialog(QtWidgets.QDialog):
 
 def _show_problems(parent, title, text, lines, proceed=None):
     """Show ``text`` and a list of ``lines`` (e.g. missing objects), one row
-    each. Picking rows that are :class:`products.Line` with ``nodes`` selects
-    those nodes in Maya.
+    each. :class:`products.Line` rows with a ``group`` go in a list of their
+    own under it as a heading, groups in the order they first appear; the
+    rest in one list above them. Picking rows with ``nodes`` selects those
+    nodes in Maya; a plain click in one list clears the others, Ctrl or Shift
+    adds to them.
 
     With ``proceed`` (a button label), ask: returns whether the user pressed
     it rather than Cancel. Proceeding puts back the Maya selection from
@@ -279,27 +282,48 @@ def _show_problems(parent, title, text, lines, proceed=None):
     before = cmds.ls(selection=True, long=True) or []
     dialog = QtWidgets.QDialog(parent)
     dialog.setWindowTitle(title)
-    dialog.resize(520, 320)
+    dialog.resize(520, 420)
     layout = QtWidgets.QVBoxLayout(dialog)
     selectable = any(getattr(line, "nodes", ()) for line in lines)
     label = QtWidgets.QLabel(text + ("\nClick a row to select it in Maya." if selectable else ""))
     label.setWordWrap(True)
     layout.addWidget(label)
-    listing = QtWidgets.QListWidget()
-    listing.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+    groups = {}
     for line in lines:
-        item = QtWidgets.QListWidgetItem(str(line))
-        item.setData(QtCore.Qt.ItemDataRole.UserRole, tuple(getattr(line, "nodes", ())))
-        listing.addItem(item)
+        groups.setdefault(getattr(line, "group", ""), []).append(line)
+    listings = []
 
     def select_nodes():
-        nodes = [n for item in listing.selectedItems() for n in item.data(QtCore.Qt.ItemDataRole.UserRole)]
+        role = QtCore.Qt.ItemDataRole.UserRole
+        nodes = [n for listing in listings for item in listing.selectedItems() for n in item.data(role)]
         nodes = cmds.ls(nodes, long=True) or []  # only those still in the scene
         if nodes:
             cmds.select(nodes, replace=True)
 
-    listing.itemSelectionChanged.connect(select_nodes)
-    layout.addWidget(listing, 1)
+    def pressed(listing):
+        modifiers = QtWidgets.QApplication.keyboardModifiers()
+        if not modifiers & (QtCore.Qt.KeyboardModifier.ControlModifier | QtCore.Qt.KeyboardModifier.ShiftModifier):
+            for other in listings:
+                if other is not listing:
+                    other.blockSignals(True)
+                    other.clearSelection()
+                    other.blockSignals(False)
+        select_nodes()
+
+    for group in sorted(groups, key=lambda g: g != ""):  # ungrouped first
+        if group:
+            heading = QtWidgets.QLabel(f"<b>{group}</b> ({len(groups[group])})")
+            layout.addWidget(heading)
+        listing = QtWidgets.QListWidget()
+        listing.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        for line in groups[group]:
+            item = QtWidgets.QListWidgetItem(str(line))
+            item.setData(QtCore.Qt.ItemDataRole.UserRole, tuple(getattr(line, "nodes", ())))
+            listing.addItem(item)
+        listing.itemSelectionChanged.connect(select_nodes)
+        listing.itemPressed.connect(lambda _item, listing=listing: pressed(listing))
+        layout.addWidget(listing, 1)
+        listings.append(listing)
     Button = QtWidgets.QDialogButtonBox.StandardButton
     buttons = QtWidgets.QDialogButtonBox(Button.Cancel if proceed else Button.Close)
     if proceed:

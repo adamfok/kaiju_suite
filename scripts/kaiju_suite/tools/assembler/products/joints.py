@@ -95,15 +95,16 @@ def _contract_changes(old, new):
 
 
 def _contract_warnings(version, old, new, paths):
-    """One :class:`Line` per change of ``_contract_changes(old, new)``, each
-    selecting the joint it's about (``paths`` maps a name to the selected
-    joints' long names); a removed joint selects nothing."""
+    """One :class:`Line` per change of ``_contract_changes(old, new)``, in
+    three groups (removed, renamed, reparented), each selecting the joint
+    it's about (``paths`` maps a name to the selected joints' long names); a
+    removed joint selects nothing."""
     removed, renamed, moved = _contract_changes(old, new)
     since = f"since {version.tag}"
-    lines = [Line(f"Removed {since}: {name}") for name in removed]
-    lines += [Line(f"Renamed {since}: {was} → {now}", paths[now]) for was, now in renamed]
+    lines = [Line(name, group=f"Removed {since}") for name in removed]
+    lines += [Line(f"{was} → {now}", paths[now], f"Renamed {since}") for was, now in renamed]
     lines += [
-        Line(f"Moved {since}: {name}, was under {was or 'the world'}, now under {now or 'the world'}", paths[name])
+        Line(f"{name}: was under {was or 'the world'}, now under {now or 'the world'}", paths[name], f"Reparented {since}")
         for name, was, now in moved
     ]
     return lines

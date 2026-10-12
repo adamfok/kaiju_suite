@@ -538,4 +538,5 @@ def test_a_line_reads_as_its_text_and_selects_nothing_by_default():
     line = products.Line("Removed: end")
     assert str(line) == "Removed: end"
     assert line.nodes == ()
+    assert line.group == ""
     assert products.Line("Moved: end", ("|root|end",)).nodes == ("|root|end",)
