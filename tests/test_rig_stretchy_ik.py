@@ -2,7 +2,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite import rig_module
+from kaiju_suite import rigging
 
 
 def _joint(name, parent=None, translate=(0, 0, 0)):
@@ -21,7 +21,7 @@ def arm(new_scene):
 
 
 def _params(**overrides):
-    params = rig_module.get("stretchy_ik").defaults()
+    params = rigging.get("stretchy_ik").defaults()
     params.update(name="L_arm", start_joint="shoulder", end_joint="wrist")
     params.update(overrides)
     return params
@@ -59,7 +59,7 @@ def _same(a, b, tolerance=1e-3):
 
 
 def test_stretchy_ik_parameters_and_defaults():
-    module = rig_module.get("stretchy_ik")
+    module = rigging.get("stretchy_ik")
 
     assert [p.key for p in module.params] == [
         "name",
@@ -83,7 +83,7 @@ def test_stretchy_ik_parameters_and_defaults():
 
 
 def test_valid_params_have_no_problems(arm):
-    assert rig_module.get("stretchy_ik").problems(_params()) == []
+    assert rigging.get("stretchy_ik").problems(_params()) == []
 
 
 @pytest.mark.parametrize(
@@ -108,7 +108,7 @@ def test_valid_params_have_no_problems(arm):
 def test_problems(arm, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rig_module.get("stretchy_ik").problems(_params(**overrides))
+    problems = rigging.get("stretchy_ik").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
@@ -118,7 +118,7 @@ def test_straight_chain_has_no_pole_vector_direction(new_scene):
     _joint("b", "a", translate=(5, 0, 0))
     _joint("c", "b", translate=(5, 0, 0))
 
-    problems = rig_module.get("stretchy_ik").problems(_params(start_joint="a", end_joint="c"))
+    problems = rigging.get("stretchy_ik").problems(_params(start_joint="a", end_joint="c"))
 
     assert any("straight" in p for p in problems), problems
 
@@ -127,15 +127,15 @@ def test_ambiguous_joint_name_is_a_problem(arm):
     cmds.group(empty=True, name="other")
     _joint("wrist", "other")
 
-    problems = rig_module.get("stretchy_ik").problems(_params())
+    problems = rigging.get("stretchy_ik").problems(_params())
 
     assert any("wrist" in p and "Several" in p for p in problems), problems
 
 
 def test_existing_module_with_the_same_name_is_a_problem(arm):
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
-    problems = rig_module.get("stretchy_ik").problems(_params())
+    problems = rigging.get("stretchy_ik").problems(_params())
 
     assert any("L_arm_stretchIk_grp" in p for p in problems), problems
 
@@ -148,7 +148,7 @@ def test_locked_or_driven_joint_translation_is_a_problem(arm, lock):
         driver = cmds.createNode("transform", name="driver")
         cmds.connectAttr(f"{driver}.translate", "elbow.translate")
 
-    problems = rig_module.get("stretchy_ik").problems(_params())
+    problems = rigging.get("stretchy_ik").problems(_params())
 
     assert any("elbow" in p and "translate" in p for p in problems), problems
 
@@ -159,7 +159,7 @@ def test_locked_or_driven_joint_translation_is_a_problem(arm, lock):
 def test_build_creates_handle_controls_and_stretch(arm):
     before = _positions(arm)
 
-    created = rig_module.get("stretchy_ik").build(_params())
+    created = rigging.get("stretchy_ik").build(_params())
 
     assert created == {
         "group": "L_arm_stretchIk_grp",
@@ -192,7 +192,7 @@ def test_build_creates_handle_controls_and_stretch(arm):
 
 
 def test_stretch_attribute_is_keyable_from_0_to_1_and_on(arm):
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
     assert cmds.getAttr("L_arm_ik_ctrl.stretch") == 1
     assert cmds.getAttr("L_arm_ik_ctrl.stretch", keyable=True)
@@ -201,13 +201,13 @@ def test_stretch_attribute_is_keyable_from_0_to_1_and_on(arm):
 
 
 def test_ik_control_sits_on_the_end_joint(arm):
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
     assert _close([_world("L_arm_ik_ctrl")], [_world("wrist")])
 
 
 def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
-    rig_module.get("stretchy_ik").build(_params(pole_distance=4.0))
+    rigging.get("stretchy_ik").build(_params(pole_distance=4.0))
 
     start, mid, end = _positions(arm)
     pole = _world("L_arm_pv_ctrl")
@@ -220,7 +220,7 @@ def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
 
 def test_within_reach_the_bones_keep_their_length(arm):
     rest = _lengths(arm)
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
 
@@ -230,7 +230,7 @@ def test_within_reach_the_bones_keep_their_length(arm):
 
 def test_beyond_reach_the_chain_stretches_to_the_control(arm):
     rest = _lengths(arm)
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
     cmds.move(6, 3, 0, "L_arm_ik_ctrl", relative=True)
 
@@ -243,7 +243,7 @@ def test_beyond_reach_the_chain_stretches_to_the_control(arm):
 
 def test_stretch_0_turns_stretching_off(arm):
     rest = _lengths(arm)
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
     cmds.setAttr("L_arm_ik_ctrl.stretch", 0)
     cmds.move(6, 3, 0, "L_arm_ik_ctrl", relative=True)
@@ -258,7 +258,7 @@ def test_stretch_works_whatever_the_joints_aim_axis(new_scene):
     _joint("knee", "hip", translate=(0, -5, 1))
     _joint("ankle", "knee", translate=(0, -5, -1))
     rest = _lengths(("hip", "knee", "ankle"))
-    rig_module.get("stretchy_ik").build(_params(name="L_leg", start_joint="hip", end_joint="ankle"))
+    rigging.get("stretchy_ik").build(_params(name="L_leg", start_joint="hip", end_joint="ankle"))
 
     cmds.move(0, -6, 0, "L_leg_ik_ctrl", relative=True)
 
@@ -270,7 +270,7 @@ def test_moving_the_start_joints_parent_and_the_control_together_doesnt_stretch(
     cmds.group(empty=True, name="clavicle")
     cmds.parent("shoulder", "clavicle")
     rest = _lengths(arm)
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
     cmds.move(0, 0, 3, "clavicle", relative=True)
     cmds.move(0, 0, 3, "L_arm_ik_ctrl", relative=True)
@@ -283,7 +283,7 @@ def test_scaling_the_rig_and_skeleton_together_doesnt_stretch(arm):
     cmds.group(empty=True, name="rig_grp")
     cmds.group(empty=True, name="skeleton_grp")
     cmds.parent("shoulder", "skeleton_grp")
-    rig_module.get("stretchy_ik").build(_params(parent="rig_grp"))
+    rigging.get("stretchy_ik").build(_params(parent="rig_grp"))
 
     for node in ("rig_grp", "skeleton_grp"):
         cmds.setAttr(f"{node}.scale", 2, 2, 2)
@@ -300,14 +300,14 @@ def _color(control):
 
 
 def test_color_goes_on_both_controls(arm):
-    rig_module.get("stretchy_ik").build(_params(color=13))
+    rigging.get("stretchy_ik").build(_params(color=13))
 
     assert _color("L_arm_ik_ctrl") == {(True, 13)}
     assert _color("L_arm_pv_ctrl") == {(True, 13)}
 
 
 def test_color_0_leaves_the_controls_maya_default_color(arm):
-    rig_module.get("stretchy_ik").build(_params(color=0))
+    rigging.get("stretchy_ik").build(_params(color=0))
 
     assert _color("L_arm_ik_ctrl") == {(False, 0)}
     assert _color("L_arm_pv_ctrl") == {(False, 0)}
@@ -316,18 +316,18 @@ def test_color_0_leaves_the_controls_maya_default_color(arm):
 def test_build_goes_under_the_parent(arm):
     cmds.group(empty=True, name="rig_grp")
 
-    rig_module.get("stretchy_ik").build(_params(parent="rig_grp"))
+    rigging.get("stretchy_ik").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("L_arm_stretchIk_grp", parent=True) == ["rig_grp"]
 
 
 def test_control_size_scales_the_control(arm):
     cmds.undoInfo(state=True)
-    rig_module.get("stretchy_ik").build(_params(name="small", control_size=1.0))
+    rigging.get("stretchy_ik").build(_params(name="small", control_size=1.0))
     small = cmds.exactWorldBoundingBox("small_ik_ctrl")
     # Undo, not delete the group: the stretch nodes outside it still drive the joints.
     cmds.undo()
-    rig_module.get("stretchy_ik").build(_params(name="big", control_size=2.0))
+    rigging.get("stretchy_ik").build(_params(name="big", control_size=2.0))
     big = cmds.exactWorldBoundingBox("big_ik_ctrl")
 
     assert abs((big[4] - big[1]) - 2 * (small[4] - small[1])) < 1e-3
@@ -336,7 +336,7 @@ def test_control_size_scales_the_control(arm):
 def test_build_keeps_the_selection(arm):
     cmds.select("elbow")
 
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
 
     assert cmds.ls(selection=True) == ["elbow"]
 
@@ -346,7 +346,7 @@ def test_build_is_one_undo_step(arm):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rig_module.get("stretchy_ik").build(_params())
+    rigging.get("stretchy_ik").build(_params())
     cmds.move(6, 3, 0, "L_arm_ik_ctrl", relative=True)
     cmds.undo()
     cmds.undo()
@@ -360,6 +360,6 @@ def test_build_with_problems_creates_nothing(arm):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rig_module.get("stretchy_ik").build(_params(end_joint="nothing"))
+        rigging.get("stretchy_ik").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before

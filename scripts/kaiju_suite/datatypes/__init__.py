@@ -19,7 +19,7 @@ file header's ``kaiju`` value), ``EXTENSION`` and these functions:
 format is :mod:`kaiju_suite.core.datafile`'s.
 
 Imports go ``tools`` → ``datatypes`` → ``core``: nothing here imports the
-Assembler, ``ui``, ``rig_module`` or Qt. Warnings go through
+Assembler, ``ui``, ``rigging`` or Qt. Warnings go through
 ``cmds.warning``; the Assembler's run log picks them up.
 """
 

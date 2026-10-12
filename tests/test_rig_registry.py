@@ -3,10 +3,10 @@ import os
 
 import pytest
 
-from kaiju_suite import rig_module
+from kaiju_suite import rigging
 from kaiju_suite.core import datafile
-from kaiju_suite.rig_module import spec
-from kaiju_suite.rig_module.module import Param, RigModule
+from kaiju_suite.rigging import spec
+from kaiju_suite.rigging.module import Param, RigModule
 
 
 class _Box(RigModule):
@@ -25,26 +25,28 @@ class _Box(RigModule):
 
 
 def test_simple_ik_is_discovered():
-    assert rig_module.get("simple_ik").name == "Simple IK"
-    assert "simple_ik" in [module.key for module in rig_module.all_modules()]
+    assert rigging.get("simple_ik").name == "Simple IK"
+    assert "simple_ik" in [module.key for module in rigging.all_modules()]
 
 
 def test_get_rejects_an_unknown_module():
     with pytest.raises(LookupError) as info:
-        rig_module.get("nope")
+        rigging.get("nope")
     assert "nope" in str(info.value)
 
 
-def test_the_package_is_rig_module_so_rig_is_free_for_asset_rigs():
+def test_the_package_is_rigging_so_rig_is_free_for_asset_rigs():
     import kaiju_suite
 
-    assert rig_module.__name__ == "kaiju_suite.rig_module"
-    old = os.path.join(os.path.dirname(kaiju_suite.__file__), "rig", "__init__.py")
-    assert not os.path.exists(old), "the rig package should be renamed to rig_module"
+    assert rigging.__name__ == "kaiju_suite.rigging"
+    root = os.path.dirname(kaiju_suite.__file__)
+    for old in ("rig", "rig_module"):
+        path = os.path.join(root, old, "__init__.py")
+        assert not os.path.exists(path), f"the {old} package should be renamed to rigging"
 
 
 def test_rig_package_imports_no_qt_tools_or_ui():
-    root = os.path.dirname(rig_module.__file__)
+    root = os.path.dirname(rigging.__file__)
     for folder, _dirs, files in os.walk(root):
         for file_name in files:
             if not file_name.endswith(".py"):
@@ -119,7 +121,7 @@ def test_load_completes_the_params_with_defaults(tmp_path):
 
     module, params = spec.load(path)
 
-    assert module is rig_module.get("simple_ik")
+    assert module is rigging.get("simple_ik")
     assert params["name"] == "L_arm"
     assert params["pole_distance"] == 5.0
 

@@ -12,10 +12,10 @@ Tests need `mayapy` (they start `maya.standalone`), not system Python. The inter
 Run the suite after every change. It takes about 5s.
 
 ## Architecture rules (keep these)
-- Imports only go one way: `tools` → `ui` → `core`, `tools` → `rig_module` → `core`, and `tools` → `datatypes` → `core`. `core` never imports `ui`, `rig_module`, `datatypes` or `tools`; `rig_module` and `datatypes` never import `ui`, `tools` or each other. Tools never import each other.
-- Rig module algorithms live in `rig_module/modules/`; Assembler Rig Module items only hold their parameters.
+- Imports only go one way: `tools` → `ui` → `core`, `tools` → `rigging` → `core`, and `tools` → `datatypes` → `core`. `core` never imports `ui`, `rigging`, `datatypes` or `tools`; `rigging` and `datatypes` never import `ui`, `tools` or each other. Tools never import each other.
+- Rig module algorithms live in `rigging/modules/`; Assembler Rig Module items only hold their parameters.
 - Saving and loading rig data (gather a payload from the scene, apply it back, describe it) lives in `datatypes/<kind>.py`, so the Assembler and the tools share one file format. Assembler data products only hold the step part (New, Publish, versions, Run). `datatypes` warns with `cmds.warning`, never the Assembler's `runlog`.
-- No Qt in `core/`, `rig_module/`, `datatypes/` or in any tool's `logic.py`. Qt goes only in `ui/` and `tools/<tool>/widget.py`.
+- No Qt in `core/`, `rigging/`, `datatypes/` or in any tool's `logic.py`. Qt goes only in `ui/` and `tools/<tool>/widget.py`.
 - A tool's `__init__.py` must not import Qt or its widget at module level. `show()` imports the widget lazily, because the registry imports every tool package when it builds the menu.
 - Wrap scene-changing logic functions with `@undoable` from `core.undo`, so one user action is one undo step.
 - When renaming or reparenting several nodes, track them by UUID, not by long path: paths go stale once a parent changes (see `renamer/logic.py`).
