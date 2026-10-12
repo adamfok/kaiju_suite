@@ -7,6 +7,7 @@ from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.tools.assembler import compare, logic, plan, products, report, runlog, versions
 from kaiju_suite.tools.assembler.report_widget import ReportDialog
+from kaiju_suite.tools.assembler.versions_widget import VersionsDialog, ask_description
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -255,7 +256,7 @@ class _PanelDialog(QtWidgets.QDialog):
         self._build()  # Show Log is enabled once there is a log
 
     def _press(self, action):
-        self._window._do(action.fn, action.confirm)
+        self._window._do_action(action, self._path)
         self._window.populate()  # the version column may have changed
         self._build()
 
@@ -628,7 +629,18 @@ class AssemblerWindow(ToolWindow):
 
     def _show_versions(self, path):
         title = f"Versions of {os.path.basename(path)}"
-        self._show_panel(("versions", path), title, lambda: versions.panel(path))
+        self._show_panel(
+            ("versions", path),
+            title,
+            None,
+            lambda: VersionsDialog(
+                self,
+                title,
+                lambda: versions.changelog(path),
+                lambda action: self._do_and_refresh(action, path),
+                lambda number: self._show_compare(path, number),
+            ),
+        )
 
     def _show_log(self, path):
         self._show_panel(("log", path), None, None, lambda: _LogDialog(self, path))
@@ -693,7 +705,7 @@ class AssemblerWindow(ToolWindow):
         product = products.product_for(path) if path else None
         if product:
             for action in product.actions(path):
-                menu.addAction(action.label, lambda a=action: self._do_and_refresh(a))
+                menu.addAction(action.label, lambda a=action: self._do_and_refresh(a, path))
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))
@@ -723,7 +735,7 @@ class AssemblerWindow(ToolWindow):
         if product and product.versioned:
             menu.addSeparator()
             menu.addAction("Publish", lambda: self._publish(path))
-            self._add_versions_menu(menu.addMenu("Versions"), path)
+            menu.addAction("Versions...", lambda: self._show_versions(path))
         menu.addSeparator()
 
         for owner, creator in products.top_menu():
@@ -759,32 +771,6 @@ class AssemblerWindow(ToolWindow):
 
         menu.exec(self.tree.mapToGlobal(pos))
 
-    def _add_versions_menu(self, submenu, path):
-        """The newest versions, the current one checked; picking one restores it."""
-        status = versions.menu_status(path)
-        if status:
-            submenu.addAction(status).setEnabled(False)
-        items, more = versions.menu(path)
-        for entry in items:
-            action = submenu.addAction(entry.label)
-            if entry.current:
-                action.setCheckable(True)
-                action.setChecked(True)
-                action.setToolTip("Current version")
-            else:
-                action.triggered.connect(lambda _=False, a=entry.action: self._do_and_refresh(a))
-        if more:
-            submenu.addSeparator()
-            submenu.addAction("Show More...", lambda: self._show_versions(path))
-        if versions.can_compare(path):
-            entries = versions.compare_menu(path)
-            submenu.addSeparator()
-            compare_menu = submenu.addMenu("Compare With")
-            compare_menu.setEnabled(bool(entries))
-            for label, number in entries:
-                compare_menu.addAction(label, lambda n=number: self._show_compare(path, n))
-        submenu.setToolTipsVisible(True)
-
     def _show_compare(self, path, number):
         title = f"Compare {os.path.basename(path)}"
         self._show_panel(("compare", path, number), title, lambda: versions.compare_panel(path, number))
@@ -793,8 +779,33 @@ class AssemblerWindow(ToolWindow):
         title = f"Compare {os.path.basename(old)} with {os.path.basename(new)}"
         self._show_panel(("compare", old, new), title, lambda: versions.compare_items_panel(old, new))
 
-    def _do_and_refresh(self, action):
-        self._do(action.fn, action.confirm)
+    def _do_action(self, action, path):
+        """Run a product :class:`Action` on ``path``. One that ``describe``s
+        asks for a description first (cancel does nothing), and the versions
+        it saves keep it."""
+        fn = action.fn
+        if action.describe:
+
+            def fn():
+                text = ask_description(
+                    self, f"{action.label} {os.path.basename(path)}", versions.suggested_description(path)
+                )
+                if text is None:
+                    return None
+                with versions.describing(text):
+                    return action.fn()
+
+        self._do(fn, action.confirm)
+        self._reload_versions(path)
+
+    def _reload_versions(self, path):
+        """Refresh ``path``'s open Versions window, if any."""
+        dialog = self._panels.get(("versions", path))
+        if dialog is not None:
+            dialog.reload()
+
+    def _do_and_refresh(self, action, path):
+        self._do_action(action, path)
         self.populate()
 
     def _publish(self, path):
@@ -814,7 +825,7 @@ class AssemblerWindow(ToolWindow):
             )
             if answer != Button.Yes:
                 return
-        self._do_and_refresh(versions.publish_action(path))
+        self._do_and_refresh(versions.publish_action(path), path)
 
     def _refresh(self):
         self._status.clear()

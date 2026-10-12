@@ -90,6 +90,27 @@ def _files(items, directory, prefix):
             yield rel, path, item
 
 
+def changes(folder):
+    """What changed in ``folder`` since its base version, by path: items at
+    another version (``sub/b.py v002``), then removed ones (``removed a.py``).
+    Every item, before its first version."""
+    base = versions.base_version(folder)
+    before = _item_versions(plan_of(base) if base is not None else None)
+    now = _item_versions(snapshot(folder))
+    changed = [
+        f"{rel} v{number:03d}"
+        for rel, number in sorted(now.items(), key=lambda kv: kv[0].lower())
+        if isinstance(number, int) and before.get(rel) != number
+    ]
+    removed = [f"removed {rel}" for rel in sorted(before, key=str.lower) if rel not in now]
+    return changed + removed
+
+
+def _item_versions(recorded):
+    """``{relative path: version}`` of the file items in a plan."""
+    return {rel: item.get("version") for rel, _path, item in _files((recorded or {}).get("items", []), "", "")}
+
+
 def _has_version(path, number):
     return any(v.number == number for v in versions.list_versions(path))
 

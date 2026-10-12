@@ -166,7 +166,7 @@ class DataProduct(Product):
     def actions(self, path):
         if not self.can_update or is_empty(path):
             return []
-        return [Action("Update from Scene", lambda: self.update_from_scene(path))]
+        return [Action("Update from Scene", lambda: self.update_from_scene(path), describe=True)]
 
     # -- Product -------------------------------------------------------------
 

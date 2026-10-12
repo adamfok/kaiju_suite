@@ -121,28 +121,32 @@ def test_restore_unknown_version_raises(tmp_path):
         versions.restore_version(path, 3)
 
 
-# -- panel ------------------------------------------------------------------
+# -- the Versions window ----------------------------------------------------
 
 
-def test_versions_panel_lists_a_restore_per_other_version(tmp_path):
+def _restores(path):
+    return [r.restore for r in versions.changelog(path).rows if r.restore]
+
+
+def test_versions_window_has_a_restore_per_other_version(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
-    assert "No versions" in " ".join(versions.panel(path).info)
-    assert versions.panel(path).actions == []
+    assert "No versions" in versions.changelog(path).summary
+    assert _restores(path) == []
 
     for n in (1, 2, 3):
         _write(path, f"a = {n}\n")
         versions.save_version(path)
-    assert "Current: v003" in " ".join(versions.panel(path).info)
+    assert "Current: v003" in versions.changelog(path).summary
 
     # The current version has no Restore: it's already in the file.
-    actions = versions.panel(path).actions
+    actions = _restores(path)
     assert [a.label.split()[1] for a in actions] == ["v002", "v001"]
     assert all(a.confirm is None for a in actions)  # nothing is lost by switching
 
     actions[1].fn()
     assert _read(path) == "a = 1\n"
-    assert "Current: v001" in " ".join(versions.panel(path).info)
-    assert [a.label.split()[1] for a in versions.panel(path).actions] == ["v003", "v002"]
+    assert "Current: v001" in versions.changelog(path).summary
+    assert [a.label.split()[1] for a in _restores(path)] == ["v003", "v002"]
 
 
 def test_restore_warns_when_unsaved_changes_would_be_lost(tmp_path):
@@ -150,10 +154,10 @@ def test_restore_warns_when_unsaved_changes_would_be_lost(tmp_path):
     versions.save_version(path)
     _write(path, "a = 2\n")
 
-    panel = versions.panel(path)
-    assert "not published" in " ".join(panel.info)
-    (action,) = panel.actions
-    assert "lost" in action.confirm
+    log = versions.changelog(path)
+    assert "not published" in log.summary
+    (row,) = log.rows
+    assert "lost" in row.restore.confirm
 
 
 def test_scripts_and_scenes_are_versioned():
@@ -297,7 +301,7 @@ def test_products_publish_the_file_as_it_is_by_default(tmp_path):
     assert script.PRODUCT.publish(str(tmp_path / "a.py")) is None
 
 
-# -- right-click submenu ----------------------------------------------------
+# -- the Versions window rows -------------------------------------------------
 
 
 def _save_n(path, n):
@@ -306,68 +310,42 @@ def _save_n(path, n):
         versions.save_version(path)
 
 
-def _tags(items):
-    return [item.label.split()[0] for item in items]
-
-
-def test_menu_lists_newest_first_marking_the_current(tmp_path):
+def test_changelog_lists_newest_first_marking_the_current(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
     _save_n(path, 3)
     versions.restore_version(path, 2)
 
-    items, more = versions.menu(path)
-    assert _tags(items) == ["v003", "v002", "v001"]
-    assert [i.current for i in items] == [False, True, False]
-    assert items[1].action is None  # nothing to restore
-    assert not more
+    rows = versions.changelog(path).rows
+    assert [r.tag for r in rows] == ["v003", "v002", "v001"]
+    assert [r.current for r in rows] == [False, True, False]
+    assert rows[1].restore is None  # nothing to restore
 
 
-def test_menu_shows_the_newest_five_and_flags_more(tmp_path):
-    path = _write(tmp_path / "build.py", "a = 1\n")
-    _save_n(path, 7)
-    versions.restore_version(path, 1)
-
-    items, more = versions.menu(path)
-    assert _tags(items) == ["v007", "v006", "v005", "v004", "v003"]
-    assert more
-
-    _, more = versions.menu(str(_write(tmp_path / "other.py", "b\n")))
-    assert not more
-
-
-def test_menu_entries_show_date_and_size(tmp_path):
-    path = _write(tmp_path / "build.py", "a = 1\n")
-    _save_n(path, 1)
-    (item,) = versions.menu(path)[0]
-    assert "KB" in item.label and "-" in item.label
-
-
-def test_menu_restore_entries_restore_without_asking(tmp_path):
+def test_changelog_restore_restores_without_asking(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
     _save_n(path, 2)
-    _, old = versions.menu(path)[0]
-    assert old.action.confirm is None
-    old.action.fn()
+    old = versions.changelog(path).rows[1]
+    assert old.restore.confirm is None
+    old.restore.fn()
     assert _read(path) == "a = 1\n"
 
 
-def test_menu_with_unsaved_changes_has_no_current_and_warns(tmp_path):
+def test_changelog_with_unsaved_changes_has_no_current_and_warns(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
     _save_n(path, 2)
     _write(path, "edited\n")
 
-    items, _ = versions.menu(path)
-    assert _tags(items) == ["v002", "v001"]
-    assert not any(i.current for i in items)
-    assert all("lost" in i.action.confirm for i in items)
-    assert "not published" in versions.menu_status(path)
+    log = versions.changelog(path)
+    assert [r.tag for r in log.rows] == ["v002", "v001"]
+    assert not any(r.current for r in log.rows)
+    assert all("lost" in r.restore.confirm for r in log.rows)
+    assert "not published" in log.summary
 
 
-def test_menu_is_empty_without_versions(tmp_path):
+def test_changelog_summary_once_published(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
-    assert versions.menu(path) == ([], False)
-    assert "No versions" in versions.menu_status(path)
-    assert versions.menu_status(_save_and_get(path)) is None
+    assert "No versions" in versions.changelog(path).summary
+    assert versions.changelog(_save_and_get(path)).summary == "Current: v001 (1 version)"
 
 
 def _save_and_get(path):
