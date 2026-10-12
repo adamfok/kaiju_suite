@@ -121,28 +121,32 @@ def test_restore_unknown_version_raises(tmp_path):
         versions.restore_version(path, 3)
 
 
-# -- panel ------------------------------------------------------------------
+# -- the Versions window ----------------------------------------------------
 
 
-def test_versions_panel_lists_a_restore_per_other_version(tmp_path):
+def _restores(path):
+    return [r.restore for r in versions.changelog(path).rows if r.restore]
+
+
+def test_versions_window_has_a_restore_per_other_version(tmp_path):
     path = _write(tmp_path / "build.py", "a = 1\n")
-    assert "No versions" in " ".join(versions.panel(path).info)
-    assert versions.panel(path).actions == []
+    assert "No versions" in versions.changelog(path).summary
+    assert _restores(path) == []
 
     for n in (1, 2, 3):
         _write(path, f"a = {n}\n")
         versions.save_version(path)
-    assert "Current: v003" in " ".join(versions.panel(path).info)
+    assert "Current: v003" in versions.changelog(path).summary
 
     # The current version has no Restore: it's already in the file.
-    actions = versions.panel(path).actions
+    actions = _restores(path)
     assert [a.label.split()[1] for a in actions] == ["v002", "v001"]
     assert all(a.confirm is None for a in actions)  # nothing is lost by switching
 
     actions[1].fn()
     assert _read(path) == "a = 1\n"
-    assert "Current: v001" in " ".join(versions.panel(path).info)
-    assert [a.label.split()[1] for a in versions.panel(path).actions] == ["v003", "v002"]
+    assert "Current: v001" in versions.changelog(path).summary
+    assert [a.label.split()[1] for a in _restores(path)] == ["v003", "v002"]
 
 
 def test_restore_warns_when_unsaved_changes_would_be_lost(tmp_path):
@@ -150,10 +154,10 @@ def test_restore_warns_when_unsaved_changes_would_be_lost(tmp_path):
     versions.save_version(path)
     _write(path, "a = 2\n")
 
-    panel = versions.panel(path)
-    assert "not published" in " ".join(panel.info)
-    (action,) = panel.actions
-    assert "lost" in action.confirm
+    log = versions.changelog(path)
+    assert "not published" in log.summary
+    (row,) = log.rows
+    assert "lost" in row.restore.confirm
 
 
 def test_scripts_and_scenes_are_versioned():

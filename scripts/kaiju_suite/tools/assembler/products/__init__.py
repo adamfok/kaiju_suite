@@ -29,11 +29,15 @@ class Action:
     """A right-click entry. ``fn()`` may return a message to show the user.
 
     If ``confirm`` is set, the widget asks it as a yes/no question first.
+    With ``describe``, it asks for a short description of the change and
+    runs ``fn()`` inside ``versions.describing``, so the versions it saves
+    keep it.
     """
 
     label: str
     fn: object
     confirm: str = None
+    describe: bool = False
 
 
 @dataclass

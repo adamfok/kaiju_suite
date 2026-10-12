@@ -112,9 +112,10 @@ def target(path):
     return None if current is None else paths.resolve(current["path"], build_root(path))
 
 
-def set_output(path, out_path, delete_unused=False, hide_joints=False):
+def set_output(path, out_path, delete_unused=False, hide_joints=False, description=None):
     """Make the entry at ``path`` save to ``out_path`` with these clean-ups,
-    as its next version. ``out_path`` is stored portably: relative to the
+    as its next version, described as ``description`` (see
+    ``versions.save_version``). ``out_path`` is stored portably: relative to the
     entry's folder when under it, else ``$ASSET/...`` when under that, else
     absolute; relative text is taken as relative to the entry's folder.
     Returns a message, e.g. ``Published Output rig.out v002``."""
@@ -124,19 +125,20 @@ def set_output(path, out_path, delete_unused=False, hide_joints=False):
         raise ValueError("; ".join(found))
     root = build_root(path)
     data["path"] = paths.to_portable(paths.resolve(out_path, root), root)
-    return versions.export_into(path, lambda target: _write(target, data))
+    return versions.export_into(path, lambda target: _write(target, data), description)
 
 
 def set_option(path, key, value):
     """Turn clean-up ``key`` (see :data:`OPTIONS`) on or off, as the entry's
-    next version. Returns a message."""
+    next version, described as e.g. "Output: hide joints on". Returns a message."""
     if key not in OPTIONS:
         raise ValueError(f"Not an output option: {key}")
     current = settings(path)
     if current is None:
         raise ValueError(f"{os.path.basename(path)} has no output file yet: publish it first")
     current[key] = bool(value)
-    return set_output(path, current["path"], current["delete_unused"], current["hide_joints"])
+    description = f"Output: {OPTIONS[key].lower()} {_on_off(value)}"
+    return set_output(path, current["path"], current["delete_unused"], current["hide_joints"], description)
 
 
 # -- the file browser -----------------------------------------------------------

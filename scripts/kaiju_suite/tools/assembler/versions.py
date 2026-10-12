@@ -9,15 +9,23 @@ A folder's versions, ``v001.json``, ..., are build plans of it with the
 version each item inside was at when it was published. The folder is at a
 version while it matches that exactly; restoring one rebuilds it (see
 ..folder_versions).
+
+Every version can have a short description of what changed, kept in
+``descriptions.json`` next to the ``base`` file, so it moves, copies and is
+deleted with the history. The user types it on Publish (see
+:func:`describing`); versions saved without them publishing describe
+themselves, e.g. "Republished v002".
 """
 
 import filecmp
+import json
 import os
 import re
 import shutil
 import tempfile
 import time
-from dataclasses import dataclass
+from contextlib import contextmanager
+from dataclasses import dataclass, replace
 
 from kaiju_suite.tools.assembler import compare
 from kaiju_suite.tools.assembler.products import Action, Panel, Product, product_for
@@ -25,8 +33,17 @@ from kaiju_suite.tools.assembler.products import Action, Panel, Product, product
 HISTORY_DIR = ".versions"
 # In an item's history folder: the number of the version its content builds on.
 BASE_FILE = "base"
+# In a history folder: each version's description, as ``{"3": "Fixed the knee"}``.
+DESCRIPTIONS_FILE = "descriptions.json"
 
-# Versions listed in the right-click submenu; the rest are under "Show More...".
+# Shown for a version saved without a description (e.g. before they existed).
+NO_DESCRIPTION = "(no description)"
+# The description of old content that publishing new content saves first.
+KEPT_UNPUBLISHED = "Unpublished changes, kept automatically"
+# Descriptions longer than this are shortened in menu labels.
+LABEL_DESCRIPTION_LIMIT = 40
+
+# Versions listed in the right-click submenu; all of them are in "Versions...".
 MENU_LIMIT = 5
 
 _VERSION_RE = re.compile(r"^v(\d+)$")
@@ -43,6 +60,7 @@ class Version:
     path: str
     mtime: float
     size: int
+    description: str = ""
 
     @property
     def tag(self):
@@ -59,6 +77,30 @@ class MenuItem:
     label: str
     action: Action = None
     current: bool = False
+    tooltip: str = ""
+
+
+@dataclass
+class ChangelogRow:
+    """One version in the Versions window. ``restore`` is ``None`` for the current one."""
+
+    number: int
+    tag: str
+    when: str
+    description: str
+    current: bool
+    restore: Action = None
+
+
+@dataclass
+class Changelog:
+    """What the Versions window shows: a ``summary`` line, then every version
+    as a :class:`ChangelogRow`, newest first. ``can_compare`` says whether
+    rows can be compared with the file as it is now."""
+
+    summary: str
+    rows: list
+    can_compare: bool
 
 
 def history_dir(path):
@@ -76,6 +118,7 @@ def list_versions(path):
     except OSError:
         return []
     found = []
+    descriptions = _read_descriptions(folder)
     for name in names:
         stem, name_ext = os.path.splitext(name)
         match = _VERSION_RE.match(stem)
@@ -83,7 +126,8 @@ def list_versions(path):
             continue
         version_path = os.path.join(folder, name)
         stat = os.stat(version_path)
-        found.append(Version(int(match.group(1)), version_path, stat.st_mtime, stat.st_size))
+        number = int(match.group(1))
+        found.append(Version(number, version_path, stat.st_mtime, stat.st_size, descriptions.get(str(number), "")))
     found.sort(key=lambda v: v.number, reverse=True)
     return found
 
@@ -100,28 +144,113 @@ def current_version(path):
     return next((v for v in list_versions(path) if filecmp.cmp(path, v.path, shallow=False)), None)
 
 
-def save_version(path, latest=False):
+def save_version(path, latest=False, description=None):
     """Copy ``path`` into its history as the next version and return it.
 
     Returns ``None`` without saving if the file is empty or already matches
     a saved version, so repeated saves don't pile up copies. With
     ``latest``, content matching an older version is saved again as the
-    newest, so publishing an older version makes it the latest.
+    newest, so publishing an older version makes it the latest; its
+    description then says which one, e.g. "Republished v002".
+
+    ``description`` says what changed; ``None`` takes the one given to
+    :func:`describing`, if any.
 
     A folder saves its build plan with its items' versions instead (see
     ..folder_versions); it raises if an item has unpublished changes.
     """
     if os.path.isdir(path):
-        return _save_folder_version(path, latest)
+        return _save_folder_version(path, latest, description)
     if not os.path.isfile(path):
         raise FileNotFoundError(path)
     if os.path.getsize(path) == 0 or _is_saved(path, latest):
         return None
 
+    text = _new_description(path, description)
     number, target = _next_target(path)
     shutil.copy2(path, target)
-    set_base(path, number)
+    _finish(path, number, text)
     return list_versions(path)[0]
+
+
+def _finish(path, number, text):
+    set_base(path, number)
+    _write_description(path, number, text)
+
+
+# -- descriptions ---------------------------------------------------------------
+
+_described = []  # what :func:`describing` blocks were given, innermost last
+
+
+@contextmanager
+def describing(text):
+    """Describe every version saved inside the ``with`` block as ``text``,
+    unless it's saved with a description of its own. This lets one prompt
+    describe whatever a Publish action saves, however it saves it."""
+    _described.append(text)
+    try:
+        yield
+    finally:
+        _described.pop()
+
+
+def _given(description):
+    if description is None and _described:
+        description = _described[-1]
+    return (description or "").strip()
+
+
+def _new_description(path, description):
+    """The description for a version about to be saved from ``path``: the
+    given one, saying which version it republishes if it matches an older one."""
+    text = _given(description)
+    current = current_version(path)
+    if current is None:
+        return text
+    return f"{text} (republished {current.tag})" if text else f"Republished {current.tag}"
+
+
+def _read_descriptions(folder):
+    try:
+        with open(os.path.join(folder, DESCRIPTIONS_FILE), encoding="utf-8") as f:
+            found = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(found, dict):
+        return {}
+    return {k: v for k, v in found.items() if isinstance(v, str)}
+
+
+def _write_description(path, number, text):
+    folder = history_dir(path)
+    stored = os.path.join(folder, DESCRIPTIONS_FILE)
+    found = _read_descriptions(folder)
+    found.pop(str(number), None)  # a stale one, e.g. of a version deleted by hand
+    if text:
+        found[str(number)] = text
+    if not found and not os.path.exists(stored):
+        return
+    with open(stored, "w", encoding="utf-8") as f:
+        json.dump(found, f, indent=2, sort_keys=True)
+
+
+def description_text(version):
+    """``version``'s description, or :data:`NO_DESCRIPTION`."""
+    return version.description or NO_DESCRIPTION
+
+
+def _short(text, limit=LABEL_DESCRIPTION_LIMIT):
+    return text if len(text) <= limit else text[: limit - 3].rstrip() + "..."
+
+
+def suggested_description(path):
+    """What the Publish prompt starts with: for a folder, the item versions
+    that changed since its last version (e.g. ``a.py v002, removed b.py``);
+    nothing for a file."""
+    if not os.path.isdir(path):
+        return ""
+    return ", ".join(_folder_versions().changes(path))
 
 
 def _folder_versions():
@@ -196,15 +325,16 @@ def folder_publish_problems(folder):
     return [f"Publish these first, they have changes not published yet: {', '.join(unpublished)}"]
 
 
-def _save_folder_version(folder, latest=False):
+def _save_folder_version(folder, latest=False, description=None):
     problems = folder_publish_problems(folder)
     if problems:
         raise ValueError(f"Can't publish {os.path.basename(folder)}. {problems[0]}")
     if not any(True for _ in _walk(folder)) or _is_saved(folder, latest):
         return None
+    text = _new_description(folder, description)
     number, target = _next_target(folder)
     _folder_versions().save(folder, target)
-    set_base(folder, number)
+    _finish(folder, number, text)
     return list_versions(folder)[0]
 
 
@@ -219,14 +349,16 @@ def published_message(path, version):
     return f"Published {kind}{os.path.basename(path)} {version.tag}"
 
 
-def export_into(path, write_fn):
+def export_into(path, write_fn, description=None):
     """Replace ``path`` with what ``write_fn`` writes and save it as its next
-    version. Returns a message, e.g. ``Published Joints spine.jnt v002``.
+    version, described as ``description`` (see :func:`save_version`).
+    Returns a message, e.g. ``Published Joints spine.jnt v002``.
 
     ``write_fn(target)`` writes the new content to ``target``, a temporary
     file with the same name as ``path``. Only if it succeeds is ``path``
     replaced, so a failure changes nothing and saves no version. Old content
-    not yet in the history is saved as a version first, so nothing is lost.
+    not yet in the history is saved as a version first, so nothing is lost
+    (described as :data:`KEPT_UNPUBLISHED`).
     Content that matches the latest version adds none; content that matches
     an older one is saved again as the latest.
     """
@@ -238,20 +370,20 @@ def export_into(path, write_fn):
         write_fn(target)
         if not os.path.isfile(target) or os.path.getsize(target) == 0:
             raise RuntimeError(f"Nothing was written for {os.path.basename(path)}")
-        save_version(path)
+        save_version(path, description=KEPT_UNPUBLISHED)
         shutil.copyfile(target, path)
     finally:
         shutil.rmtree(folder, ignore_errors=True)
-    version = save_version(path, latest=True) or current_version(path)
+    version = save_version(path, latest=True, description=description) or current_version(path)
     return published_message(path, version)
 
 
-def publish(path):
+def publish(path, description=None):
     """Save ``path`` as it is as its next version. Returns a message.
 
     Publishing an older version saves it again as the latest."""
     name = os.path.basename(path)
-    version = save_version(path, latest=True)
+    version = save_version(path, latest=True, description=description)
     if version:
         return published_message(path, version)
     current = current_version(path)
@@ -260,10 +392,11 @@ def publish(path):
 
 def publish_action(path):
     """The :class:`Action` for right-click Publish: the product's own, or
-    :func:`publish` if it has none."""
+    :func:`publish` if it has none. It asks for a description (``describe``):
+    run it inside :func:`describing`."""
     product = product_for(path)
     action = product.publish(path) if product is not None else None
-    return action or Action("Publish", lambda: publish(path))
+    return replace(action or Action("Publish", lambda: publish(path)), describe=True)
 
 
 def publish_problems(path):
@@ -384,10 +517,13 @@ def summary(path):
 
 
 def _describe(path, version):
+    """A version's menu label: tag, date, size or item count, and its description, shortened."""
     if os.path.isdir(path):
         count = _folder_versions().item_count(version)
-        return f"{version.tag}  {_when(version.mtime)}, {count} item{'s' if count != 1 else ''}"
-    return f"{version.tag}  {_when(version.mtime)}, {version.size / 1024:.1f} KB"
+        details = f"{count} item{'s' if count != 1 else ''}"
+    else:
+        details = f"{version.size / 1024:.1f} KB"
+    return f"{version.tag}  {_when(version.mtime)}, {details}  -  {_short(description_text(version))}"
 
 
 def _restore_action(path, version, unsaved):
@@ -420,9 +556,9 @@ def menu(path, limit=MENU_LIMIT):
     current = current_version(path)
     unsaved = _unsaved(path, current)
     items = [
-        MenuItem(_describe(path, v), None, True)
+        MenuItem(_describe(path, v), None, True, description_text(v))
         if current is not None and v.number == current.number
-        else MenuItem(_describe(path, v), _restore_action(path, v, unsaved))
+        else MenuItem(_describe(path, v), _restore_action(path, v, unsaved), tooltip=description_text(v))
         for v in found[:limit]
     ]
     return items, len(found) > limit
@@ -457,17 +593,18 @@ def menu_status(path):
     return None
 
 
-def panel(path):
-    """A :class:`Panel` with one Restore button per version other than the
-    current one. Restoring asks first only if unsaved content would be lost."""
+def changelog(path):
+    """The Versions window's :class:`Changelog`: every version with its date
+    and description, and a Restore for each but the current one. Restoring
+    asks first only if unsaved content would be lost."""
     current = current_version(path)
     unsaved = _unsaved(path, current)
-    actions = [
-        _restore_action(path, v, unsaved)
-        for v in list_versions(path)
-        if current is None or v.number != current.number
-    ]
-    return Panel([summary(path)], actions)
+    rows = []
+    for v in list_versions(path):
+        is_current = current is not None and v.number == current.number
+        restore = None if is_current else _restore_action(path, v, unsaved)
+        rows.append(ChangelogRow(v.number, v.tag, _when(v.mtime), description_text(v), is_current, restore))
+    return Changelog(summary(path), rows, can_compare(path))
 
 
 # -- comparing ----------------------------------------------------------------

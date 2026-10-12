@@ -380,7 +380,7 @@ def test_restore_unknown_folder_version_raises(rig):
 def test_switching_asks_when_a_removed_child_has_unpublished_edits(two_versions):
     rig = two_versions
     _write(os.path.join(rig, "later.py"), "x = 1\n")
-    for action in versions.panel(rig).actions:
+    for action in (r.restore for r in versions.changelog(rig).rows if r.restore):
         assert "later.py" in action.confirm and "lost" in action.confirm
 
 
@@ -390,7 +390,7 @@ def test_switching_asks_only_when_child_edits_would_be_lost(two_versions):
     assert item.action.confirm is None
 
     _write(os.path.join(rig, "a.py"), "a = 3\n")
-    actions = versions.panel(rig).actions  # no version is current now, so both are listed
+    actions = [r.restore for r in versions.changelog(rig).rows]  # none is current now: both restore
     assert len(actions) == 2
     for action in actions:
         assert "a.py" in action.confirm and "lost" in action.confirm
