@@ -6,6 +6,10 @@ skinCluster is bound to the source's influences; a skinned target gets any
 it's missing, at zero weight. The matching modes and vertex matching live in
 :mod:`kaiju_suite.core.matching`, shared with the Assembler. Every edit goes through undoable Maya
 commands, so each function is one undo step.
+
+Export/Import Weights save and bind ``.skin`` files through
+:mod:`kaiju_suite.datatypes.skin`: the same files as the Assembler's
+SkinCluster items.
 """
 
 from collections import defaultdict
@@ -14,40 +18,15 @@ from maya import cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
+from kaiju_suite import datatypes
 from kaiju_suite.core import matching
 from kaiju_suite.core.matching import MODE_LABELS, MODES  # noqa: F401 (re-exported for the widget)
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.datatypes import meshes, skin  # noqa: F401 (meshes re-exported for the widget)
+from kaiju_suite.datatypes.skin import skin_cluster
 
 # Decimals compared when grouping vertices with the same weights.
 _DECIMALS = 6
-
-
-def _short(node):
-    return cmds.ls(node)[0]
-
-
-def _shape(transform):
-    shapes = cmds.listRelatives(transform, shapes=True, noIntermediate=True, type="mesh", fullPath=True)
-    return shapes[0] if shapes else None
-
-
-def meshes(selection):
-    """The mesh transforms in ``selection`` (a shape or component stands for
-    its transform), in order, each once."""
-    found = []
-    for node in cmds.ls(selection, objectsOnly=True, long=True) or []:
-        if cmds.nodeType(node) == "mesh":
-            node = cmds.listRelatives(node, parent=True, fullPath=True)[0]
-        if cmds.objectType(node, isAType="transform") and _shape(node):
-            found.append(node)
-    return list(dict.fromkeys(found))
-
-
-def skin_cluster(mesh):
-    """The skinCluster deforming ``mesh``, or ``None``."""
-    shape = _shape(mesh)
-    found = cmds.ls(cmds.listHistory(shape) or [], type="skinCluster") if shape else []
-    return found[0] if found else None
 
 
 def _influences(cluster):
@@ -57,7 +36,7 @@ def _influences(cluster):
 def _require_skin(mesh):
     cluster = skin_cluster(mesh)
     if not cluster:
-        raise ValueError(f"{_short(mesh)} has no skinCluster.")
+        raise ValueError(f"{datatypes.short(mesh)} has no skinCluster.")
     return cluster
 
 
@@ -88,9 +67,9 @@ def _prepare_target(target, source_cluster):
 
 def _weights(mesh, cluster):
     """``(influence names, rows)``: every vertex's weights, in influence order."""
-    path = om.MSelectionList().add(_shape(mesh)).getDagPath(0)
+    path = om.MSelectionList().add(datatypes.mesh_shape(mesh)).getDagPath(0)
     fn = oma.MFnSkinCluster(om.MSelectionList().add(cluster).getDependNode(0))
-    names = [_short(p.fullPathName()) for p in fn.influenceObjects()]
+    names = [datatypes.short(p.fullPathName()) for p in fn.influenceObjects()]
     weights, per_vertex = fn.getWeights(path, om.MObject())
     rows = [weights[v * per_vertex : (v + 1) * per_vertex] for v in range(len(weights) // per_vertex)]
     return names, rows
@@ -137,7 +116,7 @@ def copy_skin(source, targets, mode="closest_point"):
         wrong = matching.count_mismatches(source, targets)
         if wrong:
             raise ValueError(
-                f"Copying by topology needs the same vertex count as {_short(source)} "
+                f"Copying by topology needs the same vertex count as {datatypes.short(source)} "
                 f"({matching.vertex_count(source)}): {', '.join(wrong)}."
             )
 
@@ -286,7 +265,7 @@ def hammer(components):
     for mesh, vertices in _require_vertices(components).items():
         cluster = skin_cluster(mesh)
         names, all_rows = _weights(mesh, cluster)
-        it = om.MItMeshVertex(om.MSelectionList().add(_shape(mesh)).getDagPath(0))
+        it = om.MItMeshVertex(om.MSelectionList().add(datatypes.mesh_shape(mesh)).getDagPath(0))
         rows = {}
         for v in vertices:
             it.setIndex(v)
@@ -316,10 +295,10 @@ def paste_vertex_weights(weights, components):
         raise ValueError("No weights copied. Copy a vertex's weights first.")
     found = _require_vertices(components)
     for mesh in found:
-        have = {_short(i) for i in _influences(skin_cluster(mesh))}
+        have = {datatypes.short(i) for i in _influences(skin_cluster(mesh))}
         missing = [name for name in weights if name not in have]
         if missing:
-            raise ValueError(f"{_short(mesh)}'s skinCluster has no {', '.join(missing)}. Add the influences first.")
+            raise ValueError(f"{datatypes.short(mesh)}'s skinCluster has no {', '.join(missing)}. Add the influences first.")
     row = _normalized(list(weights.items()))
     for mesh, vertices in found.items():
         _set_rows(mesh, skin_cluster(mesh), {v: row for v in vertices})
@@ -338,7 +317,7 @@ def add_influences(mesh, joints):
     for joint in joints:
         if joint not in have:
             cmds.skinCluster(cluster, edit=True, addInfluence=joint, weight=0, lockWeights=False)
-            added.append(_short(joint))
+            added.append(datatypes.short(joint))
     return added
 
 
@@ -362,10 +341,10 @@ def remove_influences(mesh, joints):
     have = _influences(cluster)
     removing = [j for j in dict.fromkeys(cmds.ls(joints, long=True) or []) if j in have]
     if not removing:
-        raise ValueError(f"None of the selected joints are influences of {_short(mesh)}.")
+        raise ValueError(f"None of the selected joints are influences of {datatypes.short(mesh)}.")
     if len(removing) == len(have):
         raise ValueError("Can't remove every influence: a skinCluster needs at least one.")
-    gone = {_short(j) for j in removing}
+    gone = {datatypes.short(j) for j in removing}
     names, all_rows = _weights(mesh, cluster)
     kept = [name for name in names if name not in gone]
     rows = {}
@@ -377,4 +356,30 @@ def remove_influences(mesh, joints):
     _set_rows(mesh, cluster, rows)
     for joint in removing:
         cmds.skinCluster(cluster, edit=True, removeInfluence=joint)
-    return [_short(j) for j in removing]
+    return [datatypes.short(j) for j in removing]
+
+
+# -- export / import --------------------------------------------------------
+
+
+def export_weights(path, meshes):
+    """Save ``meshes``' skin weights to the ``.skin`` file ``path``; returns
+    the path. Raises ``ValueError`` if a mesh has no skinCluster."""
+    if not meshes:
+        raise ValueError("No meshes selected. Select the skinned meshes to export.")
+    try:
+        return datatypes.save(skin, path, meshes)
+    except RuntimeError as e:
+        raise ValueError(str(e)) from e
+
+
+@undoable
+def import_weights(path):
+    """Bind the meshes saved in the ``.skin`` file ``path`` with their saved
+    weights, by name; returns a message. Missing meshes are skipped with a
+    warning. Raises ``ValueError`` if it isn't a skin file, or can't be
+    applied, before changing anything."""
+    try:
+        return datatypes.load(skin, path)
+    except (OSError, RuntimeError) as e:
+        raise ValueError(str(e)) from e

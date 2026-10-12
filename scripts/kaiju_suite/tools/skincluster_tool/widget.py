@@ -1,3 +1,5 @@
+import os
+
 from maya import cmds
 from PySide6 import QtWidgets
 
@@ -8,6 +10,7 @@ from kaiju_suite.ui.base_window import ToolWindow
 
 SETTINGS_KEY = "skincluster_tool"
 _FAILED = object()
+_SKIN_FILTER = "Skin weights (*.skin)"
 
 
 def _warn(message):
@@ -125,10 +128,27 @@ class SkinClusterToolWindow(ToolWindow):
         influences_layout.addWidget(add)
         influences_layout.addWidget(remove)
 
+        # Files
+        files_box = QtWidgets.QGroupBox("Files")
+        files = QtWidgets.QHBoxLayout(files_box)
+        export = QtWidgets.QPushButton("Export Weights...")
+        export.setToolTip(
+            "Save the selected meshes' skinClusters to a .skin file, the same file as an Assembler SkinCluster item."
+        )
+        export.clicked.connect(self._export)
+        import_button = QtWidgets.QPushButton("Import Weights...")
+        import_button.setToolTip(
+            "Bind the meshes saved in a .skin file with their saved weights, by name. "
+            "A mesh's existing skinCluster is replaced."
+        )
+        import_button.clicked.connect(self._import)
+        files.addWidget(export)
+        files.addWidget(import_button)
+
         self.status = QtWidgets.QLabel()
         self.status.setWordWrap(True)
 
-        for box in (copy_box, mirror_box, clean_box, weights_box, influences_box):
+        for box in (copy_box, mirror_box, clean_box, weights_box, influences_box, files_box):
             self.layout.addWidget(box)
         self.layout.addWidget(self.status)
         self.layout.addStretch()
@@ -240,3 +260,29 @@ class SkinClusterToolWindow(ToolWindow):
             removed = self._run(logic.remove_influences, *picked)
             if removed is not _FAILED:
                 self.status.setText(f"Removed: {', '.join(removed)}.")
+
+    def _file_dir(self):
+        return settings.get(SETTINGS_KEY, "file_dir", "") or cmds.workspace(query=True, rootDirectory=True)
+
+    def _export(self):
+        meshes = self._meshes()
+        if not meshes:
+            return
+        name = cmds.ls(meshes[0])[0].replace("|", "_")
+        target, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Export Weights", os.path.join(self._file_dir(), f"{name}.skin"), _SKIN_FILTER
+        )
+        if not target:
+            return
+        settings.set(SETTINGS_KEY, "file_dir", os.path.dirname(target))
+        if self._run(logic.export_weights, target, meshes) is not _FAILED:
+            self.status.setText(f"Exported {len(meshes)} mesh(es) to {os.path.basename(target)}.")
+
+    def _import(self):
+        source, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import Weights", self._file_dir(), _SKIN_FILTER)
+        if not source:
+            return
+        settings.set(SETTINGS_KEY, "file_dir", os.path.dirname(source))
+        message = self._run(logic.import_weights, source)
+        if message is not _FAILED:
+            self.status.setText(f"{message}.")
