@@ -296,3 +296,61 @@ def test_flip_is_one_undo_step(new_scene):
     assert _values(left, "translateX") == pytest.approx([1])
     assert _times(right, "translateX") == [3]
     assert _values(right, "translateX") == pytest.approx([-5])
+
+
+# -- IK/FK switch ----------------------------------------------------------------
+
+
+@pytest.fixture
+def ik_fk_arm(new_scene):
+    from kaiju_suite import rigging
+
+    for name, parent, translate in (("shoulder", None, (0, 10, 0)), ("elbow", "shoulder", (5, 0, -1)), ("wrist", "elbow", (5, 0, 1))):
+        node = cmds.createNode("joint", name=name, parent=parent, skipSelect=True)
+        cmds.setAttr(f"{node}.translate", *translate)
+    params = rigging.get("ik_fk").defaults()
+    params.update(name="L_arm", start_joint="shoulder", end_joint="wrist")
+    rigging.get("ik_fk").build(params)
+    cmds.setAttr("L_arm_01_fk_ctrl.rotate", 10, 25, -40)
+    cmds.setAttr("L_arm_02_fk_ctrl.rotate", 0, -35, 0)  # a bend in the chain's plane
+
+
+def _bind():
+    return [cmds.xform(j, query=True, worldSpace=True, translation=True) for j in ("shoulder", "elbow", "wrist")]
+
+
+def test_switch_ik_fk_goes_to_the_other_side_without_a_pop(ik_fk_arm):
+    before = _bind()
+
+    result = logic.switch_ik_fk(["L_arm_switch_ctrl"])
+
+    assert cmds.getAttr("L_arm_switch_ctrl.ikFk") == 1
+    assert result.changed == ["L_arm_switch_ctrl"]
+    for a, b in zip(_bind(), before):
+        assert a == pytest.approx(b, abs=1e-3)
+
+    logic.switch_ik_fk(["L_arm_switch_ctrl"])
+
+    assert cmds.getAttr("L_arm_switch_ctrl.ikFk") == 0
+    for a, b in zip(_bind(), before):
+        assert a == pytest.approx(b, abs=1e-3)
+
+
+def test_switch_ik_fk_works_from_any_control_of_the_limb_once(ik_fk_arm):
+    result = logic.switch_ik_fk(["L_arm_ik_ctrl", "L_arm_02_fk_ctrl", "shoulder"])
+
+    assert cmds.getAttr("L_arm_switch_ctrl.ikFk") == 1
+    assert result.changed == ["L_arm_switch_ctrl"]
+    assert result.skipped == ["shoulder (not part of an IK/FK limb)"]
+
+
+def test_switch_ik_fk_is_one_undo_step(ik_fk_arm):
+    cmds.undoInfo(state=True)
+    before = cmds.getAttr("L_arm_ik_ctrl.translate")[0]
+
+    logic.switch_ik_fk(["L_arm_switch_ctrl"], key=True)
+    cmds.undo()
+
+    assert cmds.getAttr("L_arm_switch_ctrl.ikFk") == 0
+    assert cmds.getAttr("L_arm_ik_ctrl.translate")[0] == pytest.approx(before)
+    assert not cmds.keyframe("L_arm_switch_ctrl.ikFk", query=True)
