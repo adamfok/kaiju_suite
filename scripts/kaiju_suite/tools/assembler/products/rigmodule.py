@@ -61,6 +61,14 @@ class RigModuleProduct(Product):
         created = module.build(params)
         return f"Built {module.name} {params['name']}: {', '.join(created.values())}"
 
+    def outputs(self, path):
+        module, params = spec.load(path)
+        return module.outputs(params)
+
+    def node_refs(self, path):
+        module, params = spec.load(path)
+        return module.node_refs(params)
+
     def to_plan(self, path):
         key, params = spec.read(path)
         return {"module": key, "params": params}

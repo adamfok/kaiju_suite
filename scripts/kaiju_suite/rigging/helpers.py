@@ -56,6 +56,15 @@ def chain(start, end):
     return nodes[::-1]
 
 
+def chain_names(start, end, minimum):
+    """Short names from ``start`` down to ``end``, or ``None`` if they don't
+    make a chain of at least ``minimum`` joints in the scene."""
+    start, end = start.strip(), end.strip()
+    if chain_problems(start, end, minimum):
+        return None
+    return [short(node) for node in chain(start, end)]
+
+
 def chain_problems(start, end, minimum):
     """Problems with a joint chain from ``start`` down to ``end`` holding at
     least ``minimum`` joints, all of them joints."""

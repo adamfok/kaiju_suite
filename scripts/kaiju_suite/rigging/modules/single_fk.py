@@ -14,7 +14,7 @@ joint. The control gets ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -38,6 +38,10 @@ class SingleFkModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        return [f"{name}_fk_grp", f"{name}_fk_ctrl_grp", f"{name}_fk_ctrl", f"{name}_fk_parentConstraint"]
+
     def create(self, params):
         name = params["name"].strip()
         joint = cmds.ls(params["joint"].strip(), long=True)[0]
@@ -51,6 +55,8 @@ class SingleFkModule(RigModule):
             cmds.parentConstraint(control, joint, maintainOffset=True, name=f"{name}_fk_parentConstraint")
 
             helpers.set_color(control, params["color"])
+            members = controls.module_set_name(group)
+            controls.add(control, module_set=members)
 
         return {
             "group": helpers.short(group),

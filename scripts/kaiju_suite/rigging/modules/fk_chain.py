@@ -19,7 +19,7 @@ child. The chain needs at least 2 joints. Every control gets ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -45,6 +45,17 @@ class FkChainModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        names = [f"{name}_fkChain_grp"]
+        chain = helpers.chain_names(params["start_joint"], params["end_joint"], 2)
+        if chain:
+            joints = chain if params["end_control"] else chain[:-1]
+            for number in range(1, len(joints) + 1):
+                control = f"{name}_{number:02d}_fk_ctrl"
+                names += [f"{control}_grp", control, f"{control}_parentConstraint"]
+        return names
+
     def create(self, params):
         name = params["name"].strip()
         chain = helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())
@@ -52,10 +63,11 @@ class FkChainModule(RigModule):
         joints = chain if params["end_control"] else chain[:-1]
         size = float(params["control_size"])
 
-        controls = []
+        made = []
         with helpers.kept_selection():
             group = helpers.group(f"{name}_fkChain_grp", params["parent"].strip())
             above = group
+            members = controls.module_set_name(group)
             for number, joint in enumerate(joints, start=1):
                 control_name = f"{name}_{number:02d}_fk_ctrl"
                 control_group = helpers.group(f"{control_name}_grp", above)
@@ -64,13 +76,14 @@ class FkChainModule(RigModule):
                 # Keeps the offset, so a tiny mismatch can't snap the joint.
                 cmds.parentConstraint(control, joint, maintainOffset=True, name=f"{control_name}_parentConstraint")
                 helpers.set_color(control, params["color"])
-                controls.append(control)
+                controls.add(control, parent=made[-1] if made else None, module_set=members)
+                made.append(control)
                 above = control
 
         # Text only: the Assembler prints the values joined.
         return {
             "group": helpers.short(group),
-            "controls": ", ".join(helpers.short(control) for control in controls),
+            "controls": ", ".join(helpers.short(control) for control in made),
         }
 
 

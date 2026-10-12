@@ -29,7 +29,7 @@ joint have their translation driven, so it can't be locked or connected.
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -96,6 +96,24 @@ class StretchyIkModule(RigModule):
             found.append("Pole distance must be above 0.")
         found.extend(helpers.parent_problems(params["parent"]))
         return found
+
+    def names(self, params):
+        name = params["name"].strip()
+        return [
+            f"{name}_stretchIk_grp",
+            f"{name}_ik_ctrl_grp",
+            f"{name}_ik_ctrl",
+            f"{name}_ikHandle",
+            f"{name}_effector",
+            f"{name}_end_orientConstraint",
+            f"{name}_pv_ctrl_grp",
+            f"{name}_pv_ctrl",
+            f"{name}_poleVectorConstraint",
+            f"{name}_stretchStart_loc",
+            f"{name}_stretchStart_pointConstraint",
+            f"{name}_stretchEnd_loc",
+            f"{name}_stretchEnd_pointConstraint",
+        ]
 
     def create(self, params):
         name = params["name"].strip()
@@ -164,6 +182,9 @@ class StretchyIkModule(RigModule):
 
             for node in (control, pole_control):
                 helpers.set_color(node, params["color"])
+            members = controls.module_set_name(group)
+            controls.add(control, module_set=members)
+            controls.add(pole_control, parent=control, module_set=members)
 
         return {
             "group": helpers.short(group),

@@ -34,7 +34,7 @@ gets ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -92,6 +92,29 @@ class IkFkModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        chain = helpers.chain_names(params["start_joint"], params["end_joint"], 3) or []
+        numbers = [f"{i:02d}" for i in range(1, len(chain) + 1)]
+        names = [f"{name}_ikfk_grp", f"{name}_jnt_grp"]
+        names += [f"{name}_{n}_{side}_jnt" for side in ("ik", "fk") for n in numbers]
+        names += [
+            f"{name}_ik_ctrls_grp",
+            f"{name}_ik_ctrl_grp",
+            f"{name}_ik_ctrl",
+            f"{name}_ikHandle",
+            f"{name}_effector",
+            f"{name}_ik_end_orientConstraint",
+            f"{name}_pv_ctrl_grp",
+            f"{name}_pv_ctrl",
+            f"{name}_poleVectorConstraint",
+            f"{name}_fk_ctrls_grp",
+        ]
+        for n in numbers:
+            names += [f"{name}_{n}_fk_ctrl_grp", f"{name}_{n}_fk_ctrl", f"{name}_{n}_fk_parentConstraint"]
+        names += [f"{name}_switch_ctrl_grp", f"{name}_switch_ctrl", f"{name}_switch_parentConstraint"]
+        return names + [f"{name}_{n}_ikfk_parentConstraint" for n in numbers]
+
     def create(self, params):
         name = params["name"].strip()
         chain = [helpers.short(j) for j in helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())]
@@ -99,7 +122,7 @@ class IkFkModule(RigModule):
         # Before anything is built, while the chain is as the user posed it.
         pole = helpers.pole_position(chain, float(params["pole_distance"]))
         away = (helpers.world(chain[len(chain) // 2]) - pole).normal()
-        controls = []
+        made = []
 
         with helpers.kept_selection():
             group = helpers.group(f"{name}_ikfk_grp", params["parent"].strip())
@@ -127,7 +150,7 @@ class IkFkModule(RigModule):
             cmds.xform(pole_group, worldSpace=True, translation=list(pole))
             pole_control = helpers.diamond(f"{name}_pv_ctrl", size, pole_group)
             cmds.poleVectorConstraint(pole_control, handle, name=f"{name}_poleVectorConstraint")
-            controls += [ik_control, pole_control]
+            made += [ik_control, pole_control]
 
             # FK side: one control per joint, each under the one before.
             fk_group = helpers.group(f"{name}_fk_ctrls_grp", group)
@@ -138,7 +161,7 @@ class IkFkModule(RigModule):
                 fk_control = helpers.circle(f"{name}_{i:02d}_fk_ctrl", size, fk_control_group)
                 cmds.parentConstraint(fk_control, joint, maintainOffset=True, name=f"{name}_{i:02d}_fk_parentConstraint")
                 fk_controls.append(fk_control)
-            controls += fk_controls
+            made += fk_controls
 
             # The switch, beside the end joint and following it.
             switch_group = helpers.group(f"{name}_switch_ctrl_grp", group)
@@ -149,7 +172,7 @@ class IkFkModule(RigModule):
                     cmds.setAttr(f"{switch}.{attr}{axis}", lock=True, keyable=False, channelBox=False)
             cmds.addAttr(switch, longName="ikFk", niceName="IK FK", attributeType="double", min=0, max=1, defaultValue=0, keyable=True)
             cmds.parentConstraint(chain[-1], switch_group, maintainOffset=True, name=f"{name}_switch_parentConstraint")
-            controls.append(switch)
+            made.append(switch)
 
             # Each bind joint follows its IK joint by ikFk and its FK joint by 1 - ikFk.
             reverse = cmds.createNode("reverse", name=f"{name}_ikFk_reverse", skipSelect=True)
@@ -165,8 +188,15 @@ class IkFkModule(RigModule):
             _visibility(switch, ik_group, 2, 0, f"{name}_ik_vis_condition")
             _visibility(switch, fk_group, 4, 1, f"{name}_fk_vis_condition")
 
-            for node in controls:
+            for node in made:
                 helpers.set_color(node, params["color"])
+            # Pickwalk: the switch, then the IK controls and the FK chain below it.
+            members = controls.module_set_name(group)
+            controls.add(switch, module_set=members)
+            controls.add(ik_control, parent=switch, module_set=members)
+            controls.add(pole_control, parent=ik_control, module_set=members)
+            for i, fk_control in enumerate(fk_controls):
+                controls.add(fk_control, parent=fk_controls[i - 1] if i else switch, module_set=members)
 
         return {
             "group": helpers.short(group),

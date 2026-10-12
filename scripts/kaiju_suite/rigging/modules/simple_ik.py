@@ -18,7 +18,7 @@ the chain needs at least 3 joints. Both controls get ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -52,6 +52,20 @@ class SimpleIkModule(RigModule):
         found.extend(helpers.parent_problems(params["parent"]))
         return found
 
+    def names(self, params):
+        name = params["name"].strip()
+        return [
+            f"{name}_ik_grp",
+            f"{name}_ik_ctrl_grp",
+            f"{name}_ik_ctrl",
+            f"{name}_ikHandle",
+            f"{name}_effector",
+            f"{name}_end_orientConstraint",
+            f"{name}_pv_ctrl_grp",
+            f"{name}_pv_ctrl",
+            f"{name}_poleVectorConstraint",
+        ]
+
     def create(self, params):
         name = params["name"].strip()
         chain = helpers.chain(params["start_joint"].strip(), params["end_joint"].strip())
@@ -81,6 +95,9 @@ class SimpleIkModule(RigModule):
 
             for node in (control, pole_control):
                 helpers.set_color(node, params["color"])
+            members = controls.module_set_name(group)
+            controls.add(control, module_set=members)
+            controls.add(pole_control, parent=control, module_set=members)
 
         return {
             "group": helpers.short(group),

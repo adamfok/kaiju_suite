@@ -77,7 +77,9 @@ need it; try option 1 to see if the results are worth it; then go to option 3 (o
 3. **Modules declare what they create.** Module B's `parent` often has to be a node that module A
    builds later (e.g. the Root module's control). Today that is only known after `create()` runs.
    Add a static `outputs(params)` (names like `{name}_ik_ctrl`) so a plan can be validated before
-   anything is built, and the AI can see which parents are valid.
+   anything is built, and the AI can see which parents are valid. **Done:** `RigModule.outputs(params)`
+   and `node_refs(params)`, and `tools/assembler/dryrun.py` (right-click ▸ Build ▸ Check Nodes)
+   reports node parameters nothing provides; item 5 can build on it.
 4. **Scene summary.** A `core` function that returns the joint hierarchy (names, parents, world
    positions, side by name), mesh names and existing controls, compactly. The AI can't see Maya.
 5. **Plan validation (dry run).** Run every item's `problems()` against the current scene plus the
