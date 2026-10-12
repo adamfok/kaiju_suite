@@ -129,7 +129,8 @@ def test_rename_bad_text_changes_nothing(new_scene):
     [
         (["|joint1", "|joint2", "|joint3"], "L_arm_##_jnt", ("L_arm_01_jnt … L_arm_03_jnt  (3)", False)),
         (["|joint1"], "L_*", ("L_joint1  (1)", False)),
-        (["|joint1", "|joint2"], "", ("", False)),
+        (["|joint1", "|joint2"], "", ("Rename", False)),
+        (["|joint1"], "   ", ("Rename", False)),
         ([], "L_*", ("Rename", False)),
         ([], "", ("Rename", False)),
         ([], "*_*", ("Rename", False)),

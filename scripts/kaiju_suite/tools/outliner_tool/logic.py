@@ -117,12 +117,10 @@ def preview(nodes, text):
     """``(line, problem)``: a one-line preview of ``rename(nodes, text)``.
 
     ``problem`` is True when the line reports something wrong. With nothing
-    selected the line is the field's title, "Rename".
+    selected or nothing typed, the line is the field's title, "Rename".
     """
-    if not nodes:
+    if not nodes or not text.strip():
         return "Rename", False
-    if not text.strip():
-        return "", False
     try:
         names = plan(nodes, text)
     except ValueError as e:
