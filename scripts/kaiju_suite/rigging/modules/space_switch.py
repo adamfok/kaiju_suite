@@ -2,7 +2,7 @@
 head, ...), picked by a ``space`` enum on the control.
 
 Given a control, a group above it and a list of spaces (``label=node``, see
-:mod:`kaiju_suite.rig_module.space_switch`), builds::
+:mod:`kaiju_suite.rigging.space_switch`), builds::
 
     hand_ctrl_grp             ``driven``, or a new hand_ctrl_space_grp
       hand_ctrl_space_parentConstraint   one target per space
@@ -17,14 +17,14 @@ translate and rotate must be free to constrain. Leave it blank to insert a
 new ``<control>_space_grp`` between the control and its parent, at the
 parent's position (the world origin if the control has no parent).
 ``default_space`` is the label the enum starts at and resets to; blank is
-the first space. Switching without a pop is :func:`kaiju_suite.rig_module.space_switch.switch`.
+the first space. Switching without a pop is :func:`kaiju_suite.rigging.space_switch.switch`.
 """
 
 from maya import cmds
 
-from kaiju_suite.rig_module import helpers
-from kaiju_suite.rig_module import space_switch
-from kaiju_suite.rig_module.module import Param, RigModule
+from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import space_switch
+from kaiju_suite.rigging.module import Param, RigModule
 
 
 def _long(name):

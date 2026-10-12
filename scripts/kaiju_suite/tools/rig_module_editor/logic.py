@@ -3,8 +3,8 @@
 from maya import cmds
 
 from kaiju_suite.core.colors import color_rgb  # noqa: F401  (re-exported for the editor)
-from kaiju_suite.rig_module import spec
-from kaiju_suite.rig_module.module import COLORS  # noqa: F401  (the editor's color list)
+from kaiju_suite.rigging import spec
+from kaiju_suite.rigging.module import COLORS  # noqa: F401  (the editor's color list)
 
 
 def load(path):

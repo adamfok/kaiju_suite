@@ -6,7 +6,7 @@ import os
 import pytest
 
 from kaiju_suite.core.datafile import DataFormatError
-from kaiju_suite.rig_module import spec
+from kaiju_suite.rigging import spec
 from kaiju_suite.tools.assembler import logic, plan, versions
 from kaiju_suite.tools.assembler.products import is_empty
 

@@ -3,9 +3,9 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite import rig_module
+from kaiju_suite import rigging
 from kaiju_suite.core.datafile import DataFormatError
-from kaiju_suite.rig_module import spec
+from kaiju_suite.rigging import spec
 from kaiju_suite.tools.assembler import logic, products, runlog, versions
 from kaiju_suite.tools.assembler.products import rigmodule
 
@@ -88,7 +88,7 @@ def test_rig_module_is_runnable_versioned_and_opens_the_editor():
 def test_new_menu_lists_each_rig_module(tmp_path):
     labels = [c.label for p, c in filter(None, products.new_menu()) if p is rigmodule.PRODUCT]
 
-    assert labels == [m.name for m in rig_module.all_modules()]
+    assert labels == [m.name for m in rigging.all_modules()]
     assert "Simple IK" in labels
 
 
@@ -96,7 +96,7 @@ def test_new_item_holds_the_module_defaults(tmp_path):
     path = _creator("Simple IK").fn(str(tmp_path), "L_arm", None)
 
     assert os.path.basename(path) == "L_arm.rig"
-    assert spec.read(path) == ("simple_ik", rig_module.get("simple_ik").defaults())
+    assert spec.read(path) == ("simple_ik", rigging.get("simple_ik").defaults())
 
 
 def test_new_item_refuses_a_taken_name(tmp_path):

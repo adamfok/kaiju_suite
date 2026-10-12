@@ -1,7 +1,7 @@
 """Rig modules: the algorithms that build parts of a rig from parameters.
 
-A rig module is any module in :mod:`kaiju_suite.rig_module.modules` that defines
-``MODULE``, an instance of a :class:`~kaiju_suite.rig_module.module.RigModule`
+A rig module is any module in :mod:`kaiju_suite.rigging.modules` that defines
+``MODULE``, an instance of a :class:`~kaiju_suite.rigging.module.RigModule`
 subclass. Adding one means adding a file there; the Assembler's Rig Module
 items and the Rig Module Editor find it by its ``key``.
 
@@ -19,8 +19,8 @@ log = get_logger(__name__)
 
 def discover():
     """Import every rig module and return their modules, by name."""
-    from kaiju_suite.rig_module import modules
-    from kaiju_suite.rig_module.module import RigModule
+    from kaiju_suite.rigging import modules
+    from kaiju_suite.rigging.module import RigModule
 
     found = []
     for info in pkgutil.iter_modules(modules.__path__):

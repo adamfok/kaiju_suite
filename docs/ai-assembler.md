@@ -13,10 +13,10 @@ paint weights or design control shapes; those stay with the rigger.
 ## 1. Why Kaiju already fits this well
 - **A build is plain files.** Each Rig Module item is a small JSON file
   (`{"kaiju": "rigModule", "format": 1, "data": {"module": "simple_ik", "params": {...}}}`, read and
-  written by `rig_module/spec.py`). The order and the disabled items are in `.assembler.json` per folder
+  written by `rigging/spec.py`). The order and the disabled items are in `.assembler.json` per folder
   (`tools/assembler/logic.py`). An AI only has to write text files, not drive Maya.
 - **Modules describe themselves.** Every module lists its parameters as `Param(key, label, kind, default,
-  choices, required, tooltip)` (`rig_module/module.py`). That is almost a ready-made instruction sheet for an AI.
+  choices, required, tooltip)` (`rigging/module.py`). That is almost a ready-made instruction sheet for an AI.
 - **Errors are written for people.** `RigModule.problems(params)` returns plain messages ("The chain is
   straight, so the pole vector has no side to go on"). An AI can read those and fix its own mistakes.
 - **No Qt in the logic.** `logic.run_steps`, `logic.run_folder` and `runlog` work headless, so an AI can
@@ -64,7 +64,7 @@ need it; try option 1 to see if the results are worth it; then go to option 3 (o
 ## 4. What needs to be built
 
 ### Structure changes (needed by every option)
-1. **Module schema export.** `rig_module.describe_modules()` → JSON of every module's key, name, docstring
+1. **Module schema export.** `rigging.describe_modules()` → JSON of every module's key, name, docstring
    summary and params (kind, default, choices, required, tooltip). Add two missing facts as data:
    minimum chain length (today hidden in `check()`, e.g. Simple IK needs 3 joints) and what node type a
    `"node"` param expects (joint vs any transform).
