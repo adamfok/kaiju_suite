@@ -2,7 +2,7 @@ from html import escape
 
 from maya import cmds
 from maya.api import OpenMaya as om
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
@@ -32,7 +32,11 @@ class RenamerWindow(ToolWindow):
         self.field.returnPressed.connect(self._rename)
         help_btn = QtWidgets.QToolButton(text="?")
         help_btn.setToolTip("Show the shortcuts")
-        help_btn.clicked.connect(lambda: self._show_help(help_btn))
+        # A menu, not a Qt.Popup window: Maya closes menus on any click, but a
+        # popup only closed on clicks outside Maya.
+        help_btn.setMenu(self._help_menu())
+        help_btn.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+        help_btn.setStyleSheet("QToolButton::menu-indicator { image: none; }")
         row.addWidget(self.field)
         row.addWidget(help_btn)
 
@@ -75,18 +79,17 @@ class RenamerWindow(ToolWindow):
         settings.set(SETTINGS_KEY, "text", text)
         cmds.select(new)
 
-    def _show_help(self, button):
+    def _help_menu(self):
         rows = "".join(
             f"<tr><td><code>{escape(example)}</code>&nbsp;&nbsp;</td><td>{escape(action)}</td></tr>"
             for example, action in logic.SHORTCUTS
         )
-        popup = QtWidgets.QLabel(
-            f"<b>Renamer shortcuts</b><table>{rows}</table><br>Enter applies to the selection.",
-            self,
-            QtCore.Qt.WindowType.Popup,
+        label = QtWidgets.QLabel(
+            f"<b>Renamer shortcuts</b><table>{rows}</table><br>Enter applies to the selection."
         )
-        popup.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
-        popup.setContentsMargins(10, 8, 10, 8)
-        popup.adjustSize()
-        popup.move(button.mapToGlobal(QtCore.QPoint(button.width() - popup.width(), button.height())))
-        popup.show()
+        label.setContentsMargins(10, 8, 10, 8)
+        menu = QtWidgets.QMenu(self)
+        action = QtWidgets.QWidgetAction(menu)
+        action.setDefaultWidget(label)
+        menu.addAction(action)
+        return menu
