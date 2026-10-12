@@ -33,6 +33,9 @@ out["ok_when_blank"] = ok.isEnabled()
 edit.setText("  Fixed the knee  ")
 out["ok_with_text"] = ok.isEnabled()
 out["description"] = prompt.description()
+edit.setText("")
+out["empty_description"] = prompt.description()
+out["placeholder"] = edit.placeholderText()
 out["prompt_title"] = prompt.windowTitle()
 filled = versions_widget.DescriptionDialog(None, "Publish rig", "a.py v002, removed b.py")
 out["prefilled"] = filled.findChild(QtWidgets.QLineEdit).text()
@@ -94,10 +97,15 @@ def probe():
 # -- the prompt -------------------------------------------------------------------
 
 
-def test_prompt_needs_a_description(probe):
-    assert probe["ok_when_empty"] is False
-    assert probe["ok_when_blank"] is False
+def test_prompt_description_is_optional(probe):
+    assert probe["ok_when_empty"] is True
+    assert probe["ok_when_blank"] is True
     assert probe["ok_with_text"] is True
+    assert probe["empty_description"] == ""
+
+
+def test_prompt_hints_what_an_empty_description_shows(probe):
+    assert probe["placeholder"] == "(no description)"
 
 
 def test_prompt_trims_the_description(probe):

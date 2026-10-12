@@ -5,21 +5,24 @@ with its date and description, to restore or compare). The data comes from
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from kaiju_suite.tools.assembler import versions
+
 _HEADERS = ("Version", "Date", "Description")
 
 
 class DescriptionDialog(QtWidgets.QDialog):
-    """Asks for a description of a change; OK stays off until there is one.
-    ``text`` is what the box starts with, e.g. a folder's changed items."""
+    """Asks for a description of a change. It's optional: left empty, the
+    version reads "(no description)". ``text`` is what the box starts with,
+    e.g. a folder's changed items."""
 
     def __init__(self, parent, title, text=""):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setMinimumWidth(420)
         layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(QtWidgets.QLabel("Describe what changed:"))
+        layout.addWidget(QtWidgets.QLabel("Describe what changed (optional):"))
         self._edit = QtWidgets.QLineEdit(text)
-        self._edit.setPlaceholderText("e.g. Fixed the knee weights")
+        self._edit.setPlaceholderText(versions.NO_DESCRIPTION)
         layout.addWidget(self._edit)
         Button = QtWidgets.QDialogButtonBox.StandardButton
         buttons = QtWidgets.QDialogButtonBox(Button.Ok | Button.Cancel)
@@ -27,11 +30,6 @@ class DescriptionDialog(QtWidgets.QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.ok_button = buttons.button(Button.Ok)
-        self._edit.textChanged.connect(self._update_ok)
-        self._update_ok()
-
-    def _update_ok(self):
-        self.ok_button.setEnabled(bool(self.description()))
 
     def description(self):
         return self._edit.text().strip()
