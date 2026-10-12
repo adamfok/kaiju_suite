@@ -169,8 +169,39 @@ def test_add_rig_uses_existing_folders(tmp_path):
     (tmp_path / "hero" / "build" / "hero").mkdir()
     (tmp_path / "hero" / "build" / "hero" / "a.py").write_text("")
     logic.add_rig(asset.path, "hero")
-    assert (tmp_path / "hero" / "build" / "hero" / "a.py").is_file()
+    # A build folder that already has items is left as it is.
+    assert os.listdir(tmp_path / "hero" / "build" / "hero") == ["a.py"]
     assert logic.rigs(asset.path) == ["hero"]
+
+
+def test_add_rig_starts_the_build_with_a_build_folder_and_an_output_to_publish(tmp_path, clean_settings):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.set_current(asset.path)
+    logic.add_rig(asset.path, "proxy")
+    build = tmp_path / "hero" / "build" / "proxy"
+    assert (build / "build").is_dir()
+    out = datafile.read(str(build / "output.out"), "output")
+    # Stored with the variable, so it follows the asset if it moves.
+    assert out["path"] == "$ASSET/publish/proxy/hero_proxy.ma"
+
+
+def test_add_rig_output_is_absolute_when_another_asset_is_current(tmp_path, clean_settings):
+    other = logic.create_asset(str(tmp_path), "other")
+    logic.set_current(other.path)
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
+    out = datafile.read(os.path.join(logic.build_folder(asset.path, "proxy"), "output.out"), "output")
+    assert _norm(out["path"]) == _norm(os.path.join(logic.publish_folder(asset.path, "proxy"), "hero_proxy.ma"))
+
+
+def test_add_rig_without_the_assembler_still_adds_the_rig(tmp_path, monkeypatch):
+    from kaiju_suite import registry
+
+    monkeypatch.setattr(registry, "find", lambda name: None)
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
+    assert logic.rigs(asset.path) == ["proxy"]
+    assert os.listdir(logic.build_folder(asset.path, "proxy")) == []
 
 
 def test_an_old_flat_asset_has_no_rigs(tmp_path):
@@ -202,14 +233,6 @@ def test_latest_publish_is_the_newest_maya_or_fbx_file_of_the_rig(tmp_path):
     os.utime(publish / "hero_v002.mb", (time.time() + 10, time.time() + 10))
     assert _norm(logic.latest_publish(asset.path, "proxy")) == _norm(str(publish / "hero_v002.mb"))
     assert logic.latest_publish(asset.path, "puppet") is None
-
-
-def test_build_folder_is_known_only_when_it_has_items(tmp_path):
-    asset = logic.create_asset(str(tmp_path), "hero")
-    logic.add_rig(asset.path, "proxy")
-    assert not logic.has_build(asset.path, "proxy")
-    (tmp_path / "hero" / "build" / "proxy" / "model.scene").write_text("{}")
-    assert logic.has_build(asset.path, "proxy")
 
 
 # -- libraries ------------------------------------------------------------------

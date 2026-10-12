@@ -146,7 +146,9 @@ def rigs(folder):
 def add_rig(folder, name):
     """Add rig ``name`` to the asset in ``folder``: make its ``build/<rig>/``
     and ``publish/<rig>/`` folders (keeping any already there) and list it
-    in ``asset.json``. Returns the name."""
+    in ``asset.json``. An empty build folder is started by the Assembler: a
+    ``build`` folder, then an Output saving to ``publish/<rig>/<asset>_<rig>.ma``
+    (stored as ``$ASSET/...`` when this asset is current). Returns the name."""
     if not is_asset(folder):
         raise ValueError(f"{folder} isn't an asset (it has no {ASSET_FILE}).")
     _check_name("Rig", name)
@@ -158,7 +160,19 @@ def add_rig(folder, name):
     fields = _fields(folder)
     fields[RIGS] = existing + [name]
     datafile.write(os.path.join(folder, ASSET_FILE), KIND, fields)
+    _start_build(folder, name)
     return name
+
+
+def _start_build(folder, rig):
+    build = build_folder(folder, rig)
+    if os.listdir(build):
+        return
+    tool = registry.find("Assembler")
+    if tool is None or not callable(tool.get("start_build")):
+        log.warning("The Assembler isn't available, so %s was left empty.", build)
+        return
+    tool["start_build"](build, os.path.join(publish_folder(folder, rig), f"{_asset_name(folder)}_{rig}.ma"))
 
 
 def _asset_name(folder):
@@ -176,12 +190,6 @@ def build_folder(folder, rig):
 
 def publish_folder(folder, rig):
     return os.path.join(folder, "publish", rig)
-
-
-def has_build(folder, rig):
-    """Whether the rig's build folder exists and has something in it."""
-    build = build_folder(folder, rig)
-    return os.path.isdir(build) and bool(os.listdir(build))
 
 
 def latest_publish(folder, rig):

@@ -98,7 +98,8 @@ class AssetLibraryWindow(ToolWindow):
             menu.addSeparator()
             self._rig_menu(menu, "Open in Assembler", rigs, self._open_in_assembler)
             menu.addAction("New Rig...", self._new_rig).setToolTip(
-                "Add a rig (e.g. skeleton, puppet, proxy) with its own build/ and publish/ folders"
+                "Make this the Asset and add a rig (e.g. skeleton, puppet, proxy) with its own build/ and publish/ "
+                "folders, its build started with a build folder and an Output saving to publish/<rig>/"
             )
             menu.addAction("Show in Explorer", self._show_in_explorer)
             menu.addSeparator()
@@ -195,8 +196,7 @@ class AssetLibraryWindow(ToolWindow):
         rigs = self._rigs(asset)
         for rig in rigs:
             published = logic.latest_publish(asset.path, rig)
-            build = "" if logic.has_build(asset.path, rig) else ", no build yet"
-            lines.append(f"{rig}: {os.path.basename(published) if published else 'nothing published'}{build}")
+            lines.append(f"{rig}: {os.path.basename(published) if published else 'nothing published'}")
         if not rigs:
             lines.append("No rigs yet: right-click ▸ New Rig...")
         self.details.setText("<br>".join(lines))
@@ -255,10 +255,11 @@ class AssetLibraryWindow(ToolWindow):
         if not ok:
             return
         try:
+            # Current first, so the new Output stores a $ASSET/... path.
+            logic.set_current(asset.path)
             logic.add_rig(asset.path, name.strip())
         except (OSError, ValueError) as e:
             _warn(str(e))
-            return
         self._show_details()
 
     def _set_thumbnail(self, action, *args):
