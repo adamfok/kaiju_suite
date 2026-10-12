@@ -185,12 +185,14 @@ STARTER_OUTPUT = "output.out"
 
 def start_build(root, output_path):
     """Give the build folder ``root`` its usual start: a ``build`` folder
-    holding an Output saving to ``output_path``, published as its first
-    version. Returns ``[build folder]``. Used for new asset rigs."""
+    holding an Output saving numbered versions of ``output_path``, published
+    as its first version. Returns ``[build folder]``. Used for new asset rigs."""
     from kaiju_suite.tools.assembler.products import output  # lazily: it imports versions
 
     created = import_plan({"items": [{"name": STARTER_FOLDER, "items": [{"name": STARTER_OUTPUT}]}]}, root)
-    output.set_output(os.path.join(created[0], STARTER_OUTPUT), output_path, description="Set up with the new rig")
+    output.set_output(
+        os.path.join(created[0], STARTER_OUTPUT), output_path, description="Set up with the new rig", versioned=True
+    )
     return created
 
 

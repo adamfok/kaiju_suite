@@ -907,7 +907,7 @@ class AssemblerWindow(ToolWindow):
         self._refresh()
         recorder = report.Recorder(paths, forward=self._set_status)
         try:
-            logic.run_steps(paths, on_status=recorder)
+            logic.run_steps(paths, on_status=recorder, root=self._root or None)
         except logic.StepError as e:
             log.exception("Step %s failed", e.path)
             done = paths.index(e.path)

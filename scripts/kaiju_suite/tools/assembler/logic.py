@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.assembler import runlog, versions
+from kaiju_suite.tools.assembler import build_run, runlog, versions
 from kaiju_suite.tools.assembler.products import Product, ext_of, product_for
 
 log = get_logger(__name__)
@@ -455,7 +455,7 @@ def collect_steps(folder):
     return paths
 
 
-def run_steps(paths, on_status=None):
+def run_steps(paths, on_status=None, root=None):
     """Run items in order as one undo step, whether enabled or not.
 
     Each item is run by its product (scripts execute, scenes import). Stops
@@ -469,10 +469,14 @@ def run_steps(paths, on_status=None):
     before each step and, after it, :data:`ERROR` if it failed,
     :data:`WARNING` if it logged warnings or errors, else :data:`SUCCESS`.
     Steps after a failure get no call.
+
+    While they run, :func:`.build_run.current` says what's being built:
+    ``root`` (the build folder, if given) and the steps run so far, so an
+    Output can record them.
     """
     paths = list(paths)
     report = on_status or (lambda path, status: None)
-    with undo_chunk("Assembler"):
+    with undo_chunk("Assembler"), build_run.running(root) as building:
         for path in paths:
             report(path, RUNNING)
             product = product_for(path)
@@ -490,6 +494,7 @@ def run_steps(paths, on_status=None):
             if status == SUCCESS and run.has_problems:
                 status = WARNING
             _save_log(path, run, status, product, time.perf_counter() - start)
+            building.add_step(path, product.name if product else "Item", status, run.entries)
             report(path, status)
             if failure is not None:
                 raise StepError(path, failure) from failure
@@ -505,4 +510,4 @@ def _save_log(path, run, status, product, seconds):
 
 def run_folder(folder):
     """Run every enabled item under ``folder``; see :func:`run_steps`."""
-    return run_steps(collect_steps(folder))
+    return run_steps(collect_steps(folder), root=folder)

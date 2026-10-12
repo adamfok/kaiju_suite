@@ -388,6 +388,165 @@ def test_open_asset_opens_the_rigs_latest_publish(new_scene, tmp_path):
     assert _norm(cmds.file(query=True, sceneName=True)) == _norm(logic.latest_publish(asset.path, "proxy"))
 
 
+# -- numbered versions ----------------------------------------------------------
+
+
+def _publish_version(asset, rig="proxy", node="hero_rig", record=None):
+    """Publish the next numbered version of ``rig`` holding ``node``, as a
+    versioned Output would, leaving the open scene alone; returns the version."""
+    from maya import cmds
+
+    from kaiju_suite.core import publishes
+
+    def save(target):
+        made = cmds.createNode("transform", name=node)
+        cmds.select(made)
+        cmds.file(target, exportSelected=True, type="mayaAscii", force=True)
+        cmds.delete(made)
+
+    base = os.path.join(logic.publish_folder(asset.path, rig), f"{asset.name}_{rig}.ma")
+    return publishes.publish(base, save, record if record is not None else {"qc": None})
+
+
+def _versioned(tmp_path, count=2, rig="proxy"):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, rig)
+    for i in range(count):
+        _publish_version(asset, rig, node=f"rig_v{i + 1}")
+    return asset
+
+
+def test_latest_publish_follows_the_latest_pointer_not_the_newest_file(new_scene, tmp_path):
+    from kaiju_suite.core import publishes
+
+    asset = _versioned(tmp_path)
+    publishes.set_latest(publishes.find(logic.publish_folder(asset.path, "proxy"), 1))
+    newer = os.path.join(logic.publish_folder(asset.path, "proxy"), "scratch.ma")
+    with open(newer, "w") as f:
+        f.write("x")
+    os.utime(newer, (time.time() + 100, time.time() + 100))
+    assert os.path.basename(logic.latest_publish(asset.path, "proxy")) == "hero_proxy_v001.ma"
+
+
+def test_publish_versions_lists_the_rigs_versions_newest_first(new_scene, tmp_path):
+    asset = _versioned(tmp_path, count=3)
+    assert [v.number for v in logic.publish_versions(asset.path, "proxy")] == [3, 2, 1]
+    logic.add_rig(asset.path, "puppet")
+    assert logic.publish_versions(asset.path, "puppet") == []
+
+
+def test_reference_stores_the_real_version_file_not_the_pointer(new_scene, tmp_path):
+    from maya import cmds
+
+    asset = _versioned(tmp_path)
+    path = logic.reference_asset(asset.path, "proxy")
+    assert os.path.basename(cmds.referenceQuery(path, filename=True, withoutCopyNumber=True)) == "hero_proxy_v002.ma"
+    assert cmds.objExists("hero_proxy:rig_v2")
+
+
+@pytest.mark.parametrize("action", ["import_asset", "reference_asset", "open_asset"])
+def test_actions_can_use_an_older_version(new_scene, tmp_path, action):
+    from maya import cmds
+
+    asset = _versioned(tmp_path)
+    getattr(logic, action)(asset.path, "proxy", version=1)
+    assert cmds.ls("rig_v1", recursive=True) and not cmds.ls("rig_v2", recursive=True)
+
+
+@pytest.mark.parametrize("action", ["import_asset", "reference_asset", "open_asset"])
+def test_actions_on_a_version_that_isnt_there_say_so(new_scene, tmp_path, action):
+    asset = _versioned(tmp_path)
+    with pytest.raises(LookupError, match="no v009"):
+        getattr(logic, action)(asset.path, "proxy", version=9)
+
+
+def test_version_label_shows_the_date_and_qc(new_scene, tmp_path):
+    asset = logic.create_asset(str(tmp_path), "hero")
+    logic.add_rig(asset.path, "proxy")
+    not_run = _publish_version(asset, record={"qc": None})
+    clean = _publish_version(asset, record={"qc": [{"item": "check.qc", "problems": []}]})
+    found = _publish_version(
+        asset, record={"qc": [{"item": "a.qc", "problems": ["Naming: 2 found"]}, {"item": "b.qc", "problems": ["x"]}]}
+    )
+    date = not_run.record()["date"][:10]
+    assert logic.version_label(not_run).startswith(f"v001  {date}")
+    assert logic.version_label(not_run).endswith("QC not run")
+    assert logic.version_label(clean).endswith("QC passed")
+    assert logic.version_label(found).endswith("QC: 2 problems")
+
+
+def test_version_label_of_a_version_without_a_record_is_its_tag(tmp_path):
+    from kaiju_suite.core import publishes
+
+    (tmp_path / "hero_v004.ma").write_text("x")
+    assert logic.version_label(publishes.list_versions(str(tmp_path))[0]) == "v004"
+
+
+# -- updating referenced rigs ---------------------------------------------------
+
+
+def test_rig_references_lists_referenced_rig_versions_and_their_latest(new_scene, tmp_path):
+    from maya import cmds
+
+    asset = _versioned(tmp_path, count=1)
+    logic.reference_asset(asset.path, "proxy")
+    other = tmp_path / "plain.ma"
+    cmds.file(rename=str(other))
+    cmds.file(save=True, type="mayaAscii")
+    cmds.file(new=True, force=True)
+    logic.reference_asset(asset.path, "proxy")
+    cmds.file(str(other), reference=True, namespace="plain")  # not a rig: left out
+
+    (found,) = logic.rig_references()
+    assert (found.version, found.latest) == (1, 1) and not found.out_of_date
+    assert found.namespace == "hero_proxy"
+
+    _publish_version(asset, node="rig_v2")
+    (found,) = logic.rig_references()
+    assert (found.version, found.latest) == (1, 2) and found.out_of_date
+    assert found.label == "hero_proxy: v001 → v002"
+
+
+def test_update_to_latest_repoints_the_reference(new_scene, tmp_path):
+    from maya import cmds
+
+    asset = _versioned(tmp_path, count=1)
+    logic.reference_asset(asset.path, "proxy")
+    _publish_version(asset, node="rig_v2")
+    (ref,) = logic.rig_references()
+
+    new_path = logic.update_to_latest(ref.node)
+    assert os.path.basename(new_path) == "hero_proxy_v002.ma"
+    assert cmds.objExists("hero_proxy:rig_v2") and not cmds.objExists("hero_proxy:rig_v1")
+    assert len(cmds.file(query=True, reference=True)) == 1
+    assert logic.update_to_latest(ref.node) is None  # already the latest
+
+
+def test_update_all_to_latest_updates_only_out_of_date_rigs(new_scene, tmp_path):
+    asset = _versioned(tmp_path, count=1)
+    logic.add_rig(asset.path, "puppet")
+    _publish_version(asset, rig="puppet", node="puppet_v1")
+    logic.reference_asset(asset.path, "proxy")
+    logic.reference_asset(asset.path, "puppet")
+    _publish_version(asset, node="rig_v2")
+
+    updated = logic.update_all_to_latest()
+    assert [ref.namespace for ref in updated] == ["hero_proxy"]
+    assert not any(ref.out_of_date for ref in logic.rig_references())
+
+
+def test_update_to_latest_refuses_a_reference_that_isnt_a_rig_version(new_scene, tmp_path):
+    from maya import cmds
+
+    cmds.file(rename=str(tmp_path / "plain.ma"))
+    cmds.file(save=True, type="mayaAscii")
+    cmds.file(new=True, force=True)
+    cmds.file(str(tmp_path / "plain.ma"), reference=True, namespace="plain")
+    node = cmds.referenceQuery(cmds.file(query=True, reference=True)[0], referenceNode=True)
+    with pytest.raises(LookupError, match="isn't a published rig version"):
+        logic.update_to_latest(node)
+
+
 @pytest.mark.parametrize("action", ["import_asset", "reference_asset", "open_asset"])
 def test_actions_on_a_rig_with_nothing_published_say_so(new_scene, tmp_path, action):
     asset = logic.create_asset(str(tmp_path), "hero")

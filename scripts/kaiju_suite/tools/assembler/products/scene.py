@@ -20,7 +20,7 @@ from maya import cmds
 
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.tools.assembler import versions
+from kaiju_suite.tools.assembler import build_run, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, ext_of, is_empty, new_path
 
 EXTENSION = ".scene"
@@ -154,6 +154,7 @@ class SceneProduct(Product):
             shown = maya_file if text == maya_file else f"{text} ({maya_file})"
             raise FileNotFoundError(f"{os.path.basename(path)} points to a file that doesn't exist: {shown}")
         import_scene(maya_file)
+        build_run.used(maya_file)
 
     def publish(self, path):
         # No question first: the path it replaces is kept as a version.

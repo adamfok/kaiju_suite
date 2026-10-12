@@ -64,6 +64,14 @@ class AssetLibraryWindow(ToolWindow):
         self.details.setWordWrap(True)
         self.details.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
         self.layout.addWidget(self.details)
+
+        update = QtWidgets.QPushButton("Update References to Latest...")
+        update.setToolTip(
+            "Point rigs referenced in this scene at their latest published version. "
+            "References keep the version they were made with until you do."
+        )
+        update.clicked.connect(self._update_references)
+        self.layout.addWidget(update)
         self._library_changed()
 
     # -- layout ----------------------------------------------------------------
@@ -90,11 +98,11 @@ class AssetLibraryWindow(ToolWindow):
             rigs = self._rigs(asset)
             published = {rig for rig in rigs if logic.latest_publish(asset.path, rig)}
             for label, slot in (
-                ("Import", lambda rig: self._run(logic.import_asset, rig, "Imported")),
-                ("Reference", lambda rig: self._run(logic.reference_asset, rig, "Referenced")),
+                ("Import", lambda rig, version=None: self._run(logic.import_asset, rig, "Imported", version)),
+                ("Reference", lambda rig, version=None: self._run(logic.reference_asset, rig, "Referenced", version)),
                 ("Open", self._open),
             ):
-                self._rig_menu(menu, label, rigs, slot, published)
+                self._rig_menu(menu, label, rigs, slot, published, pick_version=asset)
             menu.addSeparator()
             self._rig_menu(menu, "Open in Assembler", rigs, self._open_in_assembler)
             menu.addAction("New Rig...", self._new_rig).setToolTip(
@@ -114,19 +122,34 @@ class AssetLibraryWindow(ToolWindow):
         menu.setToolTipsVisible(True)
         menu.exec(self.asset_list.viewport().mapToGlobal(pos))
 
-    def _rig_menu(self, menu, label, rigs, slot, enabled=None):
+    def _rig_menu(self, menu, label, rigs, slot, enabled=None, pick_version=None):
         """A submenu listing ``rigs``; picking one calls ``slot(rig)``. Rigs
-        not in ``enabled`` (when given) are greyed out."""
+        not in ``enabled`` (when given) are greyed out. With ``pick_version``
+        (the asset), a rig with numbered versions gets its own submenu:
+        Latest, then each version, calling ``slot(rig, number)``."""
         sub = menu.addMenu(label)
         if not rigs:
             sub.addAction("No rigs yet: use New Rig...").setEnabled(False)
         for rig in rigs:
+            found = logic.publish_versions(pick_version.path, rig) if pick_version is not None else []
+            if found:
+                self._version_menu(sub, rig, found, slot)
+                continue
             action = sub.addAction(rig, lambda rig=rig: slot(rig))
             if enabled is not None and rig not in enabled:
                 action.setEnabled(False)
                 action.setToolTip(f"Nothing published in publish/{rig}/ yet")
         sub.setToolTipsVisible(True)
         return sub
+
+    def _version_menu(self, menu, rig, found, slot):
+        sub = menu.addMenu(rig)
+        latest = logic.latest_publish(self.selected().path, rig)
+        pointed = next((v for v in found if latest and os.path.normcase(v.path) == os.path.normcase(latest)), None)
+        sub.addAction(f"Latest ({pointed.tag})" if pointed else "Latest", lambda: slot(rig))
+        sub.addSeparator()
+        for version in found:
+            sub.addAction(logic.version_label(version), lambda number=version.number: slot(rig, number))
 
     def _rigs(self, asset):
         try:
@@ -195,11 +218,20 @@ class AssetLibraryWindow(ToolWindow):
         lines = [f"<b>{asset.name}</b>"]
         rigs = self._rigs(asset)
         for rig in rigs:
-            published = logic.latest_publish(asset.path, rig)
-            lines.append(f"{rig}: {os.path.basename(published) if published else 'nothing published'}")
+            lines.append(f"{rig}: {self._published_text(asset, rig)}")
         if not rigs:
             lines.append("No rigs yet: right-click ▸ New Rig...")
         self.details.setText("<br>".join(lines))
+
+    def _published_text(self, asset, rig):
+        published = logic.latest_publish(asset.path, rig)
+        if not published:
+            return "nothing published"
+        version = next(
+            (v for v in logic.publish_versions(asset.path, rig) if os.path.normcase(v.path) == os.path.normcase(published)),
+            None,
+        )
+        return logic.version_label(version) if version else os.path.basename(published)
 
     # -- actions ---------------------------------------------------------------
 
@@ -213,25 +245,26 @@ class AssetLibraryWindow(ToolWindow):
             _warn(str(e))
         self._show_details()
 
-    def _run(self, action, rig, verb):
+    def _run(self, action, rig, verb, version=None):
         asset = self.selected()
         if asset is None:
             return
         try:
-            action(asset.path, rig)
+            action(asset.path, rig, version=version)
         except Exception as e:
             _warn(str(e))
             return
-        print(f"Kaiju Asset Library: {verb} {asset.name} {rig}.")
+        which = f" v{version:03d}" if version is not None else ""
+        print(f"Kaiju Asset Library: {verb} {asset.name} {rig}{which}.")
 
-    def _open(self, rig):
+    def _open(self, rig, version=None):
         if cmds.file(query=True, modified=True):
             answer = QtWidgets.QMessageBox.question(
                 self, "Open Asset", "The current scene has unsaved changes. Open anyway and lose them?"
             )
             if answer != QtWidgets.QMessageBox.Yes:
                 return
-        self._run(logic.open_asset, rig, "Opened")
+        self._run(logic.open_asset, rig, "Opened", version)
 
     def _new_asset(self):
         name, ok = QtWidgets.QInputDialog.getText(self, "New Asset", "Name (letters, digits, _ and -):")
@@ -292,6 +325,28 @@ class AssetLibraryWindow(ToolWindow):
         except Exception as e:
             _warn(str(e))
         self._show_details()
+
+    def _update_references(self):
+        try:
+            stale = [ref for ref in logic.rig_references() if ref.out_of_date]
+        except Exception as e:
+            _warn(str(e))
+            return
+        if not stale:
+            QtWidgets.QMessageBox.information(self, "Update References", "Every referenced rig is at its latest version.")
+            return
+        listed = "\n".join(ref.label for ref in stale)
+        answer = QtWidgets.QMessageBox.question(
+            self, "Update References", f"Update these references to their latest version?\n\n{listed}"
+        )
+        if answer != QtWidgets.QMessageBox.Yes:
+            return
+        try:
+            updated = logic.update_all_to_latest()
+        except Exception as e:
+            _warn(str(e))
+            return
+        print(f"Kaiju Asset Library: Updated {', '.join(ref.label for ref in updated)}.")
 
     def _show_in_explorer(self):
         asset = self.selected()

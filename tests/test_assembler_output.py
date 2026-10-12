@@ -96,7 +96,12 @@ def test_set_output_saves_settings_as_a_version_with_a_header(tmp_path):
     message = output.set_output(path, "D:/deliver/hero_rig.mb", delete_unused=True, hide_joints=False)
 
     assert message == "Published Output rig.out v001"
-    assert output.settings(path) == {"path": "D:/deliver/hero_rig.mb", "delete_unused": True, "hide_joints": False}
+    assert output.settings(path) == {
+        "path": "D:/deliver/hero_rig.mb",
+        "delete_unused": True,
+        "hide_joints": False,
+        "versioned": False,
+    }
     with open(path, encoding="utf-8") as f:
         content = json.load(f)
     assert content["kaiju"] == "output" and content["format"] == 1
@@ -188,7 +193,12 @@ def test_publish_picks_a_path_and_keeps_the_options(tmp_path, picked):
     message = output.PRODUCT.publish(path).fn()
 
     assert message == "Published Output rig.out v002"
-    assert output.settings(path) == {"path": "deliver/b.fbx", "delete_unused": False, "hide_joints": True}
+    assert output.settings(path) == {
+        "path": "deliver/b.fbx",
+        "delete_unused": False,
+        "hide_joints": True,
+        "versioned": False,
+    }
     assert picked.opened_in == [str(tmp_path)]
 
 
@@ -333,7 +343,7 @@ def test_panel_shows_settings_and_toggles_options(tmp_path):
     assert "Delete unused nodes: off" in text and "Hide joints: off" in text
 
     labels = [a.label for a in panel.actions]
-    assert labels == ["Turn On Delete Unused Nodes", "Turn On Hide Joints"]
+    assert labels == ["Turn On Delete Unused Nodes", "Turn On Hide Joints", "Turn On Numbered Versions"]
     panel.actions[1].fn()
     assert output.settings(path)["hide_joints"] is True
     assert [a.label for a in output.PRODUCT.panel(path).actions][1] == "Turn Off Hide Joints"
@@ -349,7 +359,7 @@ def test_build_plan_round_trip(tmp_path):
     output.set_output(path, "D:/deliver/hero.mb", hide_joints=True)
 
     item = output.PRODUCT.to_plan(path)
-    assert item == {"path": "D:/deliver/hero.mb", "delete_unused": False, "hide_joints": True}
+    assert item == {"path": "D:/deliver/hero.mb", "delete_unused": False, "hide_joints": True, "versioned": False}
     assert output.PRODUCT.plan_problems(item) == []
 
     dst = str(tmp_path / "dst.out")
@@ -378,3 +388,173 @@ def test_plan_export_includes_output_settings(tmp_path):
     output.set_output(path, "D:/deliver/hero.ma")
     exported = plan.export_plan(str(tmp_path))
     assert json.dumps(exported).count("D:/deliver/hero.ma") == 1
+
+
+# -- numbered versions --------------------------------------------------------
+
+
+def _upstream(folder, node="skeleton_root"):
+    """A published upstream rig: ``folder/hero_skeleton_v001.ma`` holding ``node``."""
+    from kaiju_suite.core import publishes
+
+    def save(target):
+        cmds.file(new=True, force=True)
+        cmds.createNode("transform", name=node)
+        cmds.file(rename=target)
+        cmds.file(save=True, type="mayaAscii")
+        cmds.file(new=True, force=True)
+
+    os.makedirs(folder, exist_ok=True)
+    return publishes.publish(os.path.join(folder, "hero_skeleton.ma"), save, {})
+
+
+def test_numbered_versions_are_off_unless_asked(tmp_path):
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, "D:/deliver/hero.ma")
+    assert output.settings(path)["versioned"] is False
+    output.set_output(path, "D:/deliver/hero.ma", versioned=True)
+    assert output.settings(path)["versioned"] is True
+
+
+def test_an_entry_written_before_numbered_versions_reads_as_off(tmp_path):
+    from kaiju_suite.core import datafile
+
+    path = str(tmp_path / "rig.out")
+    datafile.write(path, output.KIND, {"path": "hero.ma", "delete_unused": False, "hide_joints": False})
+    assert output.settings(path)["versioned"] is False
+
+
+def test_numbered_versions_toggle_is_a_new_version(tmp_path):
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, "D:/deliver/hero.ma")
+    output.set_option(path, "versioned", True)
+    assert output.settings(path)["versioned"] is True
+    assert versions.list_versions(path)[0].description == "Output: numbered versions on"
+
+
+def test_first_publish_turns_numbered_versions_on(tmp_path, picked):
+    path = output.create_output(str(tmp_path), "rig")
+    picked.answer = str(tmp_path / "hero.ma")
+    output.publish_from_browser(path)
+    assert output.settings(path)["versioned"] is True
+    # Later publishes keep what was chosen.
+    output.set_option(path, "versioned", False)
+    output.publish_from_browser(path)
+    assert output.settings(path)["versioned"] is False
+
+
+def test_a_new_rig_build_saves_numbered_versions(tmp_path):
+    plan.start_build(str(tmp_path), str(tmp_path / "publish" / "hero_puppet.ma"))
+    assert output.settings(str(tmp_path / "build" / "output.out"))["versioned"] is True
+
+
+def test_versioned_run_saves_the_next_version_and_points_latest_at_it(new_scene, tmp_path):
+    from kaiju_suite.core import publishes
+
+    publish = tmp_path / "publish"
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, str(publish / "hero_puppet.ma"), versioned=True)
+    _rig()
+    first = output.run_output(path)
+    second = output.run_output(path)
+
+    assert os.path.basename(first) == "hero_puppet_v001.ma"
+    assert os.path.basename(second) == "hero_puppet_v002.ma"
+    assert not (publish / "hero_puppet.ma").exists()  # never overwritten in place
+    assert publishes.latest(str(publish)).number == 2
+    _open_saved(second)
+    assert cmds.objExists("root_jnt")
+
+
+def test_versioned_run_logs_which_version_it_saved(new_scene, tmp_path):
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, str(tmp_path / "publish" / "hero.ma"), versioned=True)
+    with runlog.capture() as run:
+        output.run_output(path)
+    assert any("v001" in message for _, message in run.entries)
+
+
+def test_an_output_run_on_its_own_records_no_build(new_scene, tmp_path):
+    from kaiju_suite.core import publishes
+
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, str(tmp_path / "publish" / "hero.ma"), versioned=True)
+    output.run_output(path)
+    record = publishes.latest(str(tmp_path / "publish")).record()
+    assert record["build"] is None and record["qc"] is None and record["inputs"] == []
+    assert record["maya_version"] == cmds.about(version=True)
+    assert record["output_item"] == {"item": "rig.out", "version": "v001"}
+
+
+def test_the_build_record_holds_the_build_qc_and_upstream_versions(new_scene, tmp_path, monkeypatch):
+    from kaiju_suite.core import publishes
+    from kaiju_suite.tools.assembler.products import qc, scene
+
+    asset = tmp_path / "hero"
+    monkeypatch.setenv("ASSET", str(asset))
+    upstream = _upstream(str(asset / "publish" / "skeleton"))
+
+    root = asset / "build" / "puppet"
+    root.mkdir(parents=True)
+    scene_item = scene.create_scene(str(root), "skeleton")
+    scene.point_to(scene_item, upstream.path)
+    check = qc.create_qc(str(root), "check")
+    versions.publish(check)
+    out = output.create_output(str(root), "rig")
+    output.set_output(out, str(asset / "publish" / "puppet" / "hero_puppet.ma"), versioned=True)
+    versions.publish(str(root))
+
+    logic.run_steps([scene_item, check, out], root=str(root))
+
+    record = publishes.latest(str(asset / "publish" / "puppet")).record()
+    assert record["build"] == {"folder": "$ASSET/build/puppet", "version": "v001"}
+    assert [entry["item"] for entry in record["qc"]] == ["check.qc"]
+    assert record["qc"][0]["status"] in (logic.SUCCESS, logic.WARNING)
+    assert record["qc"][0]["summary"].startswith("Ran ")
+    assert isinstance(record["qc"][0]["problems"], list)
+    assert record["inputs"] == [{"file": "$ASSET/publish/skeleton/hero_skeleton_v001.ma", "version": 1}]
+    assert cmds.objExists("skeleton_root")
+
+
+def test_the_build_record_marks_a_build_with_unpublished_changes(new_scene, tmp_path):
+    from kaiju_suite.core import publishes
+
+    root = tmp_path / "build"
+    root.mkdir()
+    out = output.create_output(str(root), "rig")
+    output.set_output(out, str(tmp_path / "publish" / "hero.ma"), versioned=True)
+    versions.publish(str(root))
+    (root / "extra.py").write_text("")
+
+    logic.run_steps([out], root=str(root))
+    record = publishes.latest(str(tmp_path / "publish")).record()
+    assert record["build"]["version"] == "v001*"
+    assert record["qc"] == []  # the build ran, with no QC step
+
+
+def test_a_never_published_build_has_no_build_version(new_scene, tmp_path):
+    from kaiju_suite.core import publishes
+
+    out = output.create_output(str(tmp_path), "rig")
+    output.set_output(out, str(tmp_path / "publish" / "hero.ma"), versioned=True)
+    logic.run_steps([out], root=str(tmp_path))
+    record = publishes.latest(str(tmp_path / "publish")).record()
+    assert record["build"]["version"] is None
+
+
+def test_unversioned_run_still_overwrites_one_file(new_scene, tmp_path):
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, str(tmp_path / "publish" / "hero.ma"))
+    output.run_output(path)
+    output.run_output(path)
+    assert os.listdir(tmp_path / "publish") == ["hero.ma"]
+
+
+def test_panel_shows_numbered_versions_and_the_latest(new_scene, tmp_path):
+    path = output.create_output(str(tmp_path), "rig")
+    output.set_output(path, str(tmp_path / "publish" / "hero.ma"), versioned=True)
+    text = "\n".join(output.PRODUCT.panel(path).info)
+    assert "Numbered versions: on" in text and "Latest: none yet" in text
+    output.run_output(path)
+    text = "\n".join(output.PRODUCT.panel(path).info)
+    assert "Latest: v001" in text and "hero_v001.ma" in text

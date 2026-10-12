@@ -337,6 +337,52 @@ def test_run_steps_is_one_undo_step(new_scene, tmp_path):
     assert not cmds.objExists("n_a") and not cmds.objExists("n_b")
 
 
+_SEE_RUN = (
+    "from maya import cmds\n"
+    "from kaiju_suite.tools.assembler import build_run\n"
+    "run = build_run.current()\n"
+    "cmds.createNode('transform', name='steps_before_%d' % len(run.steps))\n"
+    "cmds.setAttr(cmds.createNode('transform', name='root_seen') + '.visibility', bool(run.root))\n"
+)
+
+
+def test_steps_see_the_build_run_root_and_earlier_steps(new_scene, tmp_path):
+    from kaiju_suite.tools.assembler import build_run
+
+    first = _make_script(tmp_path / "a.py", "n_a")
+    second = _touch(tmp_path / "b.py", _SEE_RUN)
+    logic.run_steps([first, second], root=str(tmp_path))
+    assert cmds.objExists("steps_before_1") and cmds.getAttr("root_seen.visibility")
+    assert build_run.current() is None  # only while running
+
+
+def test_the_build_run_records_each_steps_status_and_messages(new_scene, tmp_path):
+    from kaiju_suite.tools.assembler import build_run
+
+    seen = []
+    first = _touch(tmp_path / "a.py", "print('hello')\n")
+    second = _touch(tmp_path / "b.py", "")
+    original = build_run.BuildRun.add_step
+
+    def spy(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        seen.append(list(self.steps))
+
+    import unittest.mock
+
+    with unittest.mock.patch.object(build_run.BuildRun, "add_step", spy):
+        logic.run_steps([first, second])
+    step = seen[-1][0]
+    assert step.path == first and step.status == logic.SUCCESS and step.product == "Script"
+    assert any("hello" in message for _, message in step.entries)
+
+
+def test_run_folder_runs_with_the_folder_as_root(new_scene, tmp_path):
+    _touch(tmp_path / "b.py", _SEE_RUN)
+    logic.run_folder(str(tmp_path))
+    assert cmds.getAttr("root_seen.visibility")
+
+
 def test_run_steps_runs_disabled_ones_when_asked(new_scene, tmp_path):
     path = _make_script(tmp_path / "a.py", "n_a")
     logic.set_enabled(path, False)

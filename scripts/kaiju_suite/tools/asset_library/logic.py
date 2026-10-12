@@ -8,7 +8,8 @@ the folder as an asset; its name is the folder's name) in this layout::
       thumbnail.png   optional
       files/          source files (model, textures)
       build/<rig>/    one Assembler build folder per rig
-      publish/<rig>/  each rig's published files
+      publish/<rig>/  each rig's published files: numbered versions, each
+                      with a build record, and latest.json naming the latest
 
 An asset holds several rigs (e.g. skeleton, puppet, proxy, hero,
 simulation), so they share its source files and each other's outputs.
@@ -16,6 +17,12 @@ The rigs are the ones listed in ``asset.json``, in the order they were
 added; folders in ``build/`` aren't rigs by themselves, since Assembler
 folder items are folders too. Assets made before rigs (a flat ``build/``
 and ``publish/``) have no rigs.
+
+Import, Reference and Open use the version ``latest.json`` points to (see
+:mod:`kaiju_suite.core.publishes`), or an older one when asked; a rig whose
+Output doesn't save numbered versions falls back to its newest file. A
+reference stores the real ``vNNN`` file, so a scene only moves to a newer
+rig with :func:`update_to_latest`.
 
 The current asset is the one the ``ASSET`` environment variable points to,
 so Assembler Scene and Output items under it store ``$ASSET/...`` paths.
@@ -26,12 +33,13 @@ import os
 import re
 import tempfile
 from collections import namedtuple
+from dataclasses import dataclass
 
 from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite import registry
-from kaiju_suite.core import datafile, settings
+from kaiju_suite.core import datafile, publishes, settings
 from kaiju_suite.core.log import get_logger
 
 log = get_logger(__name__)
@@ -193,11 +201,15 @@ def publish_folder(folder, rig):
 
 
 def latest_publish(folder, rig):
-    """The newest ``.ma``, ``.mb`` or ``.fbx`` file in the rig's
-    ``publish/<rig>/`` folder, or ``None`` if there's none."""
+    """The rig's latest published file: the version ``publish/<rig>/latest.json``
+    points to, else the newest ``.ma``, ``.mb`` or ``.fbx`` file there, or
+    ``None`` if there's none."""
     publish = publish_folder(folder, rig)
     if not os.path.isdir(publish):
         return None
+    pointed = publishes.latest(publish)
+    if pointed is not None:
+        return pointed.path
     files = [
         os.path.join(publish, name)
         for name in os.listdir(publish)
@@ -206,8 +218,33 @@ def latest_publish(folder, rig):
     return max(files, key=os.path.getmtime, default=None)
 
 
-def _publish_or_raise(folder, rig):
+def publish_versions(folder, rig):
+    """The rig's numbered versions (see :mod:`kaiju_suite.core.publishes`), newest first."""
+    return publishes.list_versions(publish_folder(folder, rig))
+
+
+def version_label(version):
+    """A line about ``version`` for menus, e.g. ``v003  2026-10-12 14:03  QC: 2 problems``."""
+    record = version.record()
+    if record is None:
+        return version.tag
+    date = str(record.get("date", "")).replace("T", " ")[:16]
+    return "  ".join(part for part in (version.tag, date, _qc_text(record.get("qc"))) if part)
+
+
+def _qc_text(qc):
+    if not isinstance(qc, list) or not qc:
+        return "QC not run"
+    total = sum(len(entry.get("problems") or []) for entry in qc if isinstance(entry, dict))
+    if not total:
+        return "QC passed"
+    return f"QC: {total} problem{'s' if total != 1 else ''}"
+
+
+def _publish_or_raise(folder, rig, version=None):
     _check_rig(folder, rig)
+    if version is not None:
+        return publishes.find(publish_folder(folder, rig), version).path
     path = latest_publish(folder, rig)
     if path is None:
         raise LookupError(
@@ -216,24 +253,96 @@ def _publish_or_raise(folder, rig):
     return path
 
 
-def import_asset(folder, rig):
-    """Import the rig's latest published file; returns the new nodes."""
-    return cmds.file(_publish_or_raise(folder, rig), i=True, returnNewNodes=True)
+def import_asset(folder, rig, version=None):
+    """Import the rig's latest published file, or version number ``version``;
+    returns the new nodes."""
+    return cmds.file(_publish_or_raise(folder, rig, version), i=True, returnNewNodes=True)
 
 
-def reference_asset(folder, rig):
-    """Reference the rig's latest published file under the namespace
-    ``<asset>_<rig>`` (Maya numbers it if it's taken); returns the file."""
-    path = _publish_or_raise(folder, rig)
+def reference_asset(folder, rig, version=None):
+    """Reference the rig's latest published file (or version number
+    ``version``) under the namespace ``<asset>_<rig>`` (Maya numbers it if
+    it's taken); returns the file."""
+    path = _publish_or_raise(folder, rig, version)
     return cmds.file(path, reference=True, namespace=f"{_asset_name(folder)}_{rig}")
 
 
-def open_asset(folder, rig):
-    """Open the rig's latest published file, dropping unsaved changes:
-    ask the user first."""
-    path = _publish_or_raise(folder, rig)
+def open_asset(folder, rig, version=None):
+    """Open the rig's latest published file (or version number ``version``),
+    dropping unsaved changes: ask the user first."""
+    path = _publish_or_raise(folder, rig, version)
     cmds.file(path, open=True, force=True)
     return path
+
+
+# -- referenced rigs ------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RigReference:
+    """A reference in the scene to a numbered rig version."""
+
+    node: str  # the reference node
+    namespace: str
+    path: str  # the file it loads
+    version: int
+    latest: int
+    latest_path: str
+
+    @property
+    def out_of_date(self):
+        return self.latest != self.version
+
+    @property
+    def label(self):
+        newer = f" \u2192 v{self.latest:03d}" if self.out_of_date else " (latest)"
+        return f"{self.namespace}: v{self.version:03d}{newer}"
+
+
+def rig_references():
+    """The scene's top-level references to numbered rig versions, with the
+    latest version of each. Other references are left out."""
+    found = []
+    for path in cmds.file(query=True, reference=True) or []:
+        node = cmds.referenceQuery(path, referenceNode=True)
+        ref = _rig_reference(node)
+        if ref is not None:
+            found.append(ref)
+    return found
+
+
+def _rig_reference(node):
+    path = cmds.referenceQuery(node, filename=True, withoutCopyNumber=True)
+    version = publishes.version_of(path)
+    if version is None:
+        return None
+    latest = publishes.latest(version.folder) or version
+    namespace = cmds.referenceQuery(node, namespace=True).lstrip(":")
+    return RigReference(node, namespace, path, version.number, latest.number, latest.path)
+
+
+def update_to_latest(node):
+    """Point the reference node ``node`` at its rig's latest version.
+    Returns the new file, or ``None`` if it's already the latest. Raises
+    ``LookupError`` if it doesn't reference a numbered rig version."""
+    ref = _rig_reference(node)
+    if ref is None:
+        raise LookupError(f"{node} isn't a published rig version, so it can't be updated.")
+    if not ref.out_of_date:
+        return None
+    cmds.file(ref.latest_path, loadReference=node)
+    return ref.latest_path
+
+
+def update_all_to_latest():
+    """Update every out-of-date rig reference; returns the ones updated, as
+    they were before (see :class:`RigReference`)."""
+    updated = []
+    for ref in rig_references():
+        if ref.out_of_date:
+            update_to_latest(ref.node)
+            updated.append(ref)
+    return updated
 
 
 # -- thumbnails -----------------------------------------------------------------

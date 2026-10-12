@@ -19,6 +19,20 @@ def _script(folder, name, code):
     return path
 
 
+def test_build_runs_with_the_folder_as_the_build_run_root(new_scene, tmp_path):
+    code = (
+        "import os\n"
+        "from maya import cmds\n"
+        "from kaiju_suite.tools.assembler import build_run\n"
+        "cmds.createNode('transform', name='root_' + os.path.basename(build_run.current().root))\n"
+    )
+    folder = tmp_path / "puppet"
+    folder.mkdir()
+    _script(folder, "a.py", code)
+    assert headless.build(str(folder)).ok
+    assert cmds.objExists("root_puppet")
+
+
 def test_build_runs_every_enabled_step_and_reports_each(new_scene, tmp_path):
     _script(tmp_path, "a.py", "from maya import cmds\ncmds.polyCube(name='box')\nprint('made a box')\n")
     _script(tmp_path, "b.py", "from maya import cmds\ncmds.warning('looks odd')\n")

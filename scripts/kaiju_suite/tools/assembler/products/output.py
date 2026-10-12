@@ -8,6 +8,13 @@ joints (draw style None). Run exports the whole scene there; the open
 scene keeps its own name. Usually the last step, so Run All ends with a
 file to hand over.
 
+With numbered versions on (new rigs' Outputs have it), Run never overwrites:
+it saves the next version beside the path (``hero_puppet.ma`` ->
+``hero_puppet_v003.ma``) with a build record and points ``latest.json`` at it
+(see :mod:`kaiju_suite.core.publishes`). The record says which build folder
+version was run, what its QC steps found and which published versions its
+Scene steps imported.
+
 Right-click Publish opens a save-file browser and saves the picked path as
 the entry's next version, stored portably with :mod:`kaiju_suite.core.paths`
 (relative to the folder holding the entry, or ``$ASSET/...``); the Info window turns the clean-ups on and off,
@@ -18,9 +25,9 @@ import os
 
 from maya import cmds, mel
 
-from kaiju_suite.core import datafile, paths
+from kaiju_suite.core import datafile, paths, publishes
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.tools.assembler import runlog, versions
+from kaiju_suite.tools.assembler import build_run, runlog, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, ext_of, is_empty, new_path
 
 EXTENSION = ".out"
@@ -35,7 +42,7 @@ FORMATS = {
 FBX_PLUGIN = "fbxmaya"
 
 # Clean-up options, in the order the Info window shows them, with their labels.
-OPTIONS = {"delete_unused": "Delete Unused Nodes", "hide_joints": "Hide Joints"}
+OPTIONS = {"delete_unused": "Delete Unused Nodes", "hide_joints": "Hide Joints", "versioned": "Numbered Versions"}
 
 _FILE_FILTER = "Maya ASCII (*.ma);;Maya Binary (*.mb);;FBX (*.fbx)"
 
@@ -79,20 +86,25 @@ def problems(data):
     return found
 
 
-def _normalized(out_path, delete_unused, hide_joints):
-    return {"path": out_path, "delete_unused": delete_unused, "hide_joints": hide_joints}
+def _normalized(out_path, delete_unused, hide_joints, versioned=False):
+    return {"path": out_path, "delete_unused": delete_unused, "hide_joints": hide_joints, "versioned": versioned}
 
 
 def settings(path):
-    """The entry's settings, ``{"path", "delete_unused", "hide_joints"}``, or
-    ``None`` if it's empty. Raises ``ValueError`` if it isn't an output entry."""
+    """The entry's settings, ``{"path", "delete_unused", "hide_joints",
+    "versioned"}``, or ``None`` if it's empty. Raises ``ValueError`` if it
+    isn't an output entry. Entries from before numbered versions have them off."""
     if is_empty(path):
         return None
     data = datafile.read(path, KIND)
     found = problems(data)
     if found:
         raise datafile.DataFormatError(f"{os.path.basename(path)}: {'; '.join(found)}")
-    return _normalized(data["path"], data.get("delete_unused", False), data.get("hide_joints", False))
+    return _from(data)
+
+
+def _from(data):
+    return _normalized(data["path"], *(data.get(key, False) for key in OPTIONS))
 
 
 def _write(target, data):
@@ -112,14 +124,15 @@ def target(path):
     return None if current is None else paths.resolve(current["path"], build_root(path))
 
 
-def set_output(path, out_path, delete_unused=False, hide_joints=False, description=None):
-    """Make the entry at ``path`` save to ``out_path`` with these clean-ups,
+def set_output(path, out_path, delete_unused=False, hide_joints=False, description=None, versioned=False):
+    """Make the entry at ``path`` save to ``out_path`` with these clean-ups
+    (and numbered versions if ``versioned``),
     as its next version, described as ``description`` (see
     ``versions.save_version``). ``out_path`` is stored portably: relative to the
     entry's folder when under it, else ``$ASSET/...`` when under that, else
     absolute; relative text is taken as relative to the entry's folder.
     Returns a message, e.g. ``Published Output rig.out v002``."""
-    data = _normalized(out_path, delete_unused, hide_joints)
+    data = _normalized(out_path, delete_unused, hide_joints, versioned)
     found = problems(data)
     if found:
         raise ValueError("; ".join(found))
@@ -129,7 +142,7 @@ def set_output(path, out_path, delete_unused=False, hide_joints=False, descripti
 
 
 def set_option(path, key, value):
-    """Turn clean-up ``key`` (see :data:`OPTIONS`) on or off, as the entry's
+    """Turn option ``key`` (see :data:`OPTIONS`) on or off, as the entry's
     next version, described as e.g. "Output: hide joints on". Returns a message."""
     if key not in OPTIONS:
         raise ValueError(f"Not an output option: {key}")
@@ -138,7 +151,8 @@ def set_option(path, key, value):
         raise ValueError(f"{os.path.basename(path)} has no output file yet: publish it first")
     current[key] = bool(value)
     description = f"Output: {OPTIONS[key].lower()} {_on_off(value)}"
-    return set_output(path, current["path"], current["delete_unused"], current["hide_joints"], description)
+    options = {key: current[key] for key in OPTIONS}
+    return set_output(path, current["path"], description=description, **options)
 
 
 # -- the file browser -----------------------------------------------------------
@@ -168,8 +182,8 @@ def _start_dir(path):
 
 
 def publish_from_browser(path):
-    """Pick where to save, keeping the clean-up options. Returns ``None`` (no
-    message) if the browser is cancelled."""
+    """Pick where to save, keeping the options; an entry's first publish turns
+    numbered versions on. Returns ``None`` (no message) if the browser is cancelled."""
     picked = pick_output_file(_start_dir(path))
     if not picked:
         return None
@@ -177,7 +191,10 @@ def publish_from_browser(path):
         current = settings(path) or {}
     except ValueError:
         current = {}
-    return set_output(path, picked, current.get("delete_unused", False), current.get("hide_joints", False))
+    options = {key: current.get(key, False) for key in OPTIONS}
+    if not current:
+        options["versioned"] = True
+    return set_output(path, picked, **options)
 
 
 # -- running ----------------------------------------------------------------------
@@ -242,7 +259,8 @@ def save_scene(out_path):
 
 
 def run_output(path):
-    """Clean up the scene as the entry at ``path`` says, then save it."""
+    """Clean up the scene as the entry at ``path`` says, then save it (as
+    the next numbered version, if on). Returns the file saved."""
     current = settings(path)
     if current is None:
         runlog.warning(f"{os.path.basename(path)} has no output file set: nothing saved. Publish it to pick one.")
@@ -253,9 +271,58 @@ def run_output(path):
     if ext_of(out_path) == ".fbx":
         ensure_fbx_plugin()
     clean_up(current["delete_unused"], current["hide_joints"])
-    save_scene(out_path)
-    runlog.info(f"Saved {format_name(out_path)} to {out_path}")
-    return out_path
+    if not current["versioned"]:
+        save_scene(out_path)
+        runlog.info(f"Saved {format_name(out_path)} to {out_path}")
+        return out_path
+    version = publishes.publish(out_path, save_scene, build_record(path))
+    runlog.info(f"Saved {format_name(out_path)} {version.tag} to {version.path}")
+    return version.path
+
+
+# -- the build record ----------------------------------------------------------
+
+
+def build_record(path):
+    """What the entry at ``path`` records about the build being run, beside
+    the fields :func:`.publishes.publish` adds: the build folder and its
+    version, each QC step that ran before it, the files Scene steps imported
+    (with their published version, if they are one), the Output item's own
+    version and the Maya version. ``build`` and ``qc`` are ``None`` when the
+    Output runs on its own, outside a build."""
+    run = build_run.current()
+    root = run.root if run is not None else None
+
+    def portable(file):
+        return paths.to_portable(file, build_root(path))
+
+    return {
+        "build": None if root is None else {"folder": portable(root), "version": _version_tag(root)},
+        "qc": None if run is None else [_qc_entry(step, root) for step in run.steps if step.product == "QC"],
+        "inputs": [] if run is None else [_input(file, portable) for file in run.inputs],
+        "output_item": {"item": _relative(path, root), "version": _version_tag(path)},
+        "maya_version": cmds.about(version=True),
+    }
+
+
+def _relative(path, root):
+    return os.path.relpath(path, root).replace(os.sep, "/") if root else os.path.basename(path)
+
+
+def _version_tag(path):
+    """``path``'s version as the tree shows it (e.g. ``v002``, ``v002*``), or ``None``."""
+    return versions.tree_label(path)[0] or None
+
+
+def _qc_entry(step, root):
+    summary = next((message for level, message in reversed(step.entries) if level == runlog.INFO), "")
+    found = [message.splitlines()[0] for level, message in step.entries if level != runlog.INFO]
+    return {"item": _relative(step.path, root), "status": step.status, "summary": summary, "problems": found}
+
+
+def _input(file, portable):
+    version = publishes.version_of(file)
+    return {"file": portable(file), "version": version.number if version else None}
 
 
 # -- the product ------------------------------------------------------------------
@@ -263,6 +330,11 @@ def run_output(path):
 
 def _on_off(value):
     return "on" if value else "off"
+
+
+def _latest_line(out_path):
+    found = publishes.latest(os.path.dirname(out_path))
+    return f"Latest: {found.tag} ({os.path.basename(found.path)})" if found else "Latest: none yet"
 
 
 class OutputProduct(Product):
@@ -293,7 +365,7 @@ class OutputProduct(Product):
 
     def from_plan(self, path, item):
         if item.get("path"):
-            _write(path, _normalized(item["path"], item.get("delete_unused", False), item.get("hide_joints", False)))
+            _write(path, _from(item))
         else:
             super().from_plan(path, item)
 
@@ -311,6 +383,8 @@ class OutputProduct(Product):
             f"Format: {format_name(current['path'])}",
             f"Delete unused nodes: {_on_off(current['delete_unused'])}",
             f"Hide joints: {_on_off(current['hide_joints'])}",
+            f"Numbered versions: {_on_off(current['versioned'])}",
+            *([_latest_line(saves_to)] if current["versioned"] else []),
             versions.summary(path),
         ]
         actions = [

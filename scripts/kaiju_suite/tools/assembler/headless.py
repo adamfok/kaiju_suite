@@ -71,7 +71,7 @@ def build(folder, new_scene=True, save=None):
         by_path[path].status = status
 
     try:
-        logic.run_steps(paths, on_status=on_status)
+        logic.run_steps(paths, on_status=on_status, root=folder)
     except logic.StepError:
         pass
     for step in result.steps:
