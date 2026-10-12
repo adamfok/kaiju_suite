@@ -101,7 +101,7 @@ class Product:
     # instead of in the New menu (``menu_slot`` is then ignored).
     top_menu = False
     runnable = False  # joins Run All
-    versioned = False  # gets Publish and the Versions submenu (see ..versions)
+    versioned = False  # gets Publish and the Versions window (see ..versions)
     utility = None  # name of the Kaiju tool double-click opens, e.g. "Mesh Tool"
     columns_text = None  # fixed text for the Version and Type columns, e.g. a separator's "====="
     creators = ()
@@ -155,7 +155,7 @@ class Product:
         """The rows of the side-by-side compare window for files ``old_path``
         and ``new_path`` (see ``compare.tree``). Products that can't compare
         don't override it;
-        overriding it gives their items right-click Versions ▸ Compare With,
+        overriding it gives their items Compare in the Versions window,
         and Compare when two of them are selected (see ``versions.can_compare``
         and ``versions.can_compare_items``)."""
         return None

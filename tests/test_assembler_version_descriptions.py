@@ -267,36 +267,7 @@ def test_output_option_buttons_dont_ask(tmp_path):
     assert not any(a.describe for a in output.PRODUCT.panel(path).actions)
 
 
-# -- the submenu and the Versions window -------------------------------------------
-
-
-def test_menu_shows_descriptions(tmp_path):
-    path = _write(tmp_path / "build.py", "a = 1\n")
-    versions.save_version(path)
-    _write(path, "a = 2\n")
-    versions.save_version(path, description="Fixed the knee weights")
-    items, _ = versions.menu(path)
-    assert items[0].label.endswith("Fixed the knee weights")
-    assert items[0].tooltip == "Fixed the knee weights"
-    assert items[1].label.endswith(versions.NO_DESCRIPTION)
-
-
-def test_menu_shortens_long_descriptions_but_the_tooltip_has_it_all(tmp_path):
-    path = _write(tmp_path / "build.py", "a = 1\n")
-    text = "A long note " * 10
-    versions.save_version(path, description=text)
-    (item,) = versions.menu(path)[0]
-    assert len(item.label) < 80 and item.label.endswith("...")
-    assert item.tooltip == text.strip()
-
-
-def test_compare_menu_shows_descriptions(tmp_path):
-    path = _write(tmp_path / "build.py", "a = 1\n")
-    versions.save_version(path, description="Old one")
-    _write(path, "a = 2\n")
-    versions.save_version(path)
-    ((label, number),) = versions.compare_menu(path)
-    assert number == 1 and label.endswith("Old one")
+# -- the Versions window ----------------------------------------------------------
 
 
 def test_changelog_lists_every_version_newest_first(tmp_path):

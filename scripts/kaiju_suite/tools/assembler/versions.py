@@ -40,11 +40,8 @@ DESCRIPTIONS_FILE = "descriptions.json"
 NO_DESCRIPTION = "(no description)"
 # The description of old content that publishing new content saves first.
 KEPT_UNPUBLISHED = "Unpublished changes, kept automatically"
-# Descriptions longer than this are shortened in menu labels.
+# Descriptions longer than this are shortened in titles, e.g. of the compare window.
 LABEL_DESCRIPTION_LIMIT = 40
-
-# Versions listed in the right-click submenu; all of them are in "Versions...".
-MENU_LIMIT = 5
 
 _VERSION_RE = re.compile(r"^v(\d+)$")
 
@@ -65,19 +62,6 @@ class Version:
     @property
     def tag(self):
         return f"v{self.number:03d}"
-
-
-@dataclass
-class MenuItem:
-    """One entry of the right-click Versions submenu.
-
-    ``action`` restores the version; it's ``None`` for the current one.
-    """
-
-    label: str
-    action: Action = None
-    current: bool = False
-    tooltip: str = ""
 
 
 @dataclass
@@ -546,24 +530,6 @@ def _restore_action(path, version, unsaved):
     return Action(f"Restore {_describe(path, version)}", lambda n=version.number: restore_version(path, n), confirm)
 
 
-def menu(path, limit=MENU_LIMIT):
-    """Entries for the right-click Versions submenu and whether more exist.
-
-    Returns ``(items, more)``: the newest ``limit`` versions as
-    :class:`MenuItem`, with the current one marked.
-    """
-    found = list_versions(path)
-    current = current_version(path)
-    unsaved = _unsaved(path, current)
-    items = [
-        MenuItem(_describe(path, v), None, True, description_text(v))
-        if current is not None and v.number == current.number
-        else MenuItem(_describe(path, v), _restore_action(path, v, unsaved), tooltip=description_text(v))
-        for v in found[:limit]
-    ]
-    return items, len(found) > limit
-
-
 def tree_label(path):
     """Text for the tree's version column and whether it's the latest.
 
@@ -581,16 +547,6 @@ def tree_label(path):
         return current.tag, current.number == found[0].number
     base = base_version(path)
     return f"{base.tag}*", base.number == found[0].number
-
-
-def menu_status(path):
-    """A note to show above the submenu's versions, or ``None`` for none."""
-    current = current_version(path)
-    if not list_versions(path):
-        return "No versions published yet."
-    if _unsaved(path, current):
-        return "Has changes not published yet"
-    return None
 
 
 def changelog(path):
@@ -611,7 +567,7 @@ def changelog(path):
 
 
 def can_compare(path):
-    """Whether ``path`` gets Versions ▸ Compare With: a file of a product
+    """Whether ``path``'s Versions window has Compare: a file of a product
     that can compare two of its versions (see ``Product.compare_files``)."""
     product = product_for(path)
     return (
@@ -619,19 +575,6 @@ def can_compare(path):
         and os.path.isfile(path)
         and type(product).compare_files is not Product.compare_files
     )
-
-
-def compare_choices(path):
-    """The versions to compare ``path`` with, newest first: every one but the
-    version the file is at now."""
-    current = current_version(path)
-    return [v for v in list_versions(path) if current is None or v.number != current.number]
-
-
-def compare_menu(path, limit=MENU_LIMIT):
-    """Entries for the Compare With submenu: ``(label, version number)`` of
-    the newest ``limit`` :func:`compare_choices`."""
-    return [(_describe(path, v), v.number) for v in compare_choices(path)[:limit]]
 
 
 def compare_panel(path, number):

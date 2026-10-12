@@ -735,7 +735,7 @@ class AssemblerWindow(ToolWindow):
         if product and product.versioned:
             menu.addSeparator()
             menu.addAction("Publish", lambda: self._publish(path))
-            self._add_versions_menu(menu.addMenu("Versions"), path)
+            menu.addAction("Versions...", lambda: self._show_versions(path))
         menu.addSeparator()
 
         for owner, creator in products.top_menu():
@@ -770,32 +770,6 @@ class AssemblerWindow(ToolWindow):
             menu.addAction("Info", lambda: self._show_info(product, path))
 
         menu.exec(self.tree.mapToGlobal(pos))
-
-    def _add_versions_menu(self, submenu, path):
-        """The newest versions, the current one checked; picking one restores it."""
-        status = versions.menu_status(path)
-        if status:
-            submenu.addAction(status).setEnabled(False)
-        items, _more = versions.menu(path)  # every version is in Versions... anyway
-        for entry in items:
-            action = submenu.addAction(entry.label.replace("&", "&&"))
-            action.setToolTip(entry.tooltip)
-            if entry.current:
-                action.setCheckable(True)
-                action.setChecked(True)
-                action.setToolTip(f"Current version: {entry.tooltip}")
-            else:
-                action.triggered.connect(lambda _=False, a=entry.action: self._do_and_refresh(a, path))
-        submenu.addSeparator()
-        submenu.addAction("Versions...", lambda: self._show_versions(path))
-        if versions.can_compare(path):
-            entries = versions.compare_menu(path)
-            submenu.addSeparator()
-            compare_menu = submenu.addMenu("Compare With")
-            compare_menu.setEnabled(bool(entries))
-            for label, number in entries:
-                compare_menu.addAction(label.replace("&", "&&"), lambda n=number: self._show_compare(path, n))
-        submenu.setToolTipsVisible(True)
 
     def _show_compare(self, path, number):
         title = f"Compare {os.path.basename(path)}"

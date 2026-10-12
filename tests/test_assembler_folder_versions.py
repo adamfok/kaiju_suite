@@ -148,7 +148,7 @@ def test_unpublished_edits_in_a_child_star_the_folder(rig):
     versions.save_version(rig)
     _write(os.path.join(rig, "a.py"), "a = 2\n")
     assert versions.tree_label(rig) == ("v001*", True)
-    assert versions.menu_status(rig) == "Has changes not published yet"
+    assert versions.summary(rig).startswith("Has changes not published yet")
 
 
 def test_reordering_children_stars_the_folder(rig):
@@ -180,7 +180,7 @@ def test_a_folder_stays_on_its_version_instead_of_jumping_to_a_matching_one(rig)
     versions.restore_version(child, 1)
     # Everything under rig matches its v001 again, but it was on v002.
     assert versions.tree_label(rig) == ("v002*", True)
-    assert versions.menu_status(rig) == "Has changes not published yet"
+    assert versions.summary(rig).startswith("Has changes not published yet")
     versions.restore_version(child, 2)
     assert versions.tree_label(rig) == ("v002", True)
 
@@ -386,8 +386,8 @@ def test_switching_asks_when_a_removed_child_has_unpublished_edits(two_versions)
 
 def test_switching_asks_only_when_child_edits_would_be_lost(two_versions):
     rig = two_versions
-    (item,) = [i for i in versions.menu(rig)[0] if not i.current]
-    assert item.action.confirm is None
+    (row,) = [r for r in versions.changelog(rig).rows if not r.current]
+    assert row.restore.confirm is None
 
     _write(os.path.join(rig, "a.py"), "a = 3\n")
     actions = [r.restore for r in versions.changelog(rig).rows]  # none is current now: both restore
@@ -396,11 +396,10 @@ def test_switching_asks_only_when_child_edits_would_be_lost(two_versions):
         assert "a.py" in action.confirm and "lost" in action.confirm
 
 
-def test_menu_marks_the_current_folder_version(two_versions):
-    items, more = versions.menu(two_versions)
-    assert [i.current for i in items] == [True, False]
-    assert "2 items" in items[0].label
-    assert not more
+def test_changelog_marks_the_current_folder_version(two_versions):
+    rows = versions.changelog(two_versions).rows
+    assert [r.current for r in rows] == [True, False]
+    assert "item" in rows[1].restore.label
 
 
 def test_summary_of_a_folder(two_versions):

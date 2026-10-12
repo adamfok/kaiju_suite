@@ -45,8 +45,6 @@ def test_compare_a_version_with_the_current_file(tmp_path):
     versions.save_version(path)
 
     assert versions.can_compare(path)
-    assert [v.number for v in versions.compare_choices(path)] == [1]  # v002 is the current file
-    assert [number for _label, number in versions.compare_menu(path)] == [1]
     panel = versions.compare_panel(path, 1)
     # One tree per side, titled with what it shows.
     assert panel.diff.old_title.startswith("v001  ")
@@ -60,7 +58,8 @@ def test_compare_with_unpublished_changes_lists_every_version(tmp_path):
     path = _skin_file(tmp_path / "body.skin", 0.5)
     versions.save_version(path)
     _skin_file(path, 0.75)
-    assert [v.number for v in versions.compare_choices(path)] == [1]
+    # No version is current, so the Versions window can compare each of them.
+    assert [r.current for r in versions.changelog(path).rows] == [False]
     assert versions.compare_panel(path, 1).diff.new_title == "Current file (not published)"
 
 
