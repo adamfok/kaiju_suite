@@ -18,7 +18,7 @@ Run the suite after every change. It takes about 5s.
 - No Qt in `core/`, `rigging/`, `datatypes/` or in any tool's `logic.py`. Qt goes only in `ui/` and `tools/<tool>/widget.py`.
 - A tool's `__init__.py` must not import Qt or its widget at module level. `show()` imports the widget lazily, because the registry imports every tool package when it builds the menu.
 - Wrap scene-changing logic functions with `@undoable` from `core.undo`, so one user action is one undo step.
-- When renaming or reparenting several nodes, track them by UUID, not by long path: paths go stale once a parent changes (see `renamer/logic.py`).
+- When renaming or reparenting several nodes, track them by UUID, not by long path: paths go stale once a parent changes (see `outliner_tool/logic.py`).
 - Store per-user settings with `core.settings` (optionVars), keyed by the tool name.
 - Log through `core.log.get_logger(__name__)`. In UI code, show user-facing problems with `cmds.warning`.
 - Adding a tool means adding a folder under `tools/`. Never hard-code tools in the menu or registry.

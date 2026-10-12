@@ -40,11 +40,11 @@ def test_top_level_tools_sort_before_categories(fake_tools):
     assert names == ["Alpha", "Zed", "Aardvark"]
 
 
-def test_assembler_and_renamer_sit_at_the_top_of_the_menu():
+def test_assembler_and_outliner_tool_sit_at_the_top_of_the_menu():
     found = {tool["name"]: tool for tool in registry.discover()}
 
     assert "category" not in found["Assembler"]
-    assert "category" not in found["Renamer"]
+    assert "category" not in found["Outliner Tool"]
 
 
 def test_menu_tools_leave_out_tools_marked_menu_false(fake_tools):

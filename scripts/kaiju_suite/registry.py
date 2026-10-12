@@ -3,11 +3,11 @@
 A tool is any sub-package whose ``__init__.py`` defines a ``TOOL`` dict:
 
     TOOL = {
-        "name": "Renamer",          # menu label
+        "name": "Outliner Tool",    # menu label
         "category": "Rigging",      # optional sub-menu; leave out to sit
                                     # directly under the Kaiju menu
         "launch": show,             # callable run from the menu
-        "icon": "renamer.png",      # optional, looked up in icons/
+        "icon": "tool.png",         # optional, looked up in icons/
         "description": "...",       # optional, used as the menu tooltip
         "menu": False,              # optional; leaves it out of the menu,
                                     # e.g. a tool only opened from another

@@ -28,7 +28,7 @@ def _product(name):
 
 
 def test_find_returns_the_tool_with_that_name():
-    assert registry.find("Renamer")["name"] == "Renamer"
+    assert registry.find("Outliner Tool")["name"] == "Outliner Tool"
 
 
 def test_find_returns_none_for_an_unknown_name():
