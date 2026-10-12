@@ -8,5 +8,5 @@ def show():
 TOOL = {
     "name": "Outliner Tool",
     "launch": show,
-    "description": "Rename selected nodes from one field: number (##), add prefix/suffix (*), search and replace (>).",
+    "description": "Rename selected nodes from one field (## number, * prefix/suffix, > search and replace); Group, Chain and Offset them.",
 }

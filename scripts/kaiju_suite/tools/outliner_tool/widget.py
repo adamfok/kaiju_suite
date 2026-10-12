@@ -20,7 +20,7 @@ def _remove_callback(callback_id):
 
 
 class OutlinerToolWindow(ToolWindow):
-    """One text field; what you type decides the action (see ``logic.SHORTCUTS``)."""
+    """Preview line, one rename field (see ``logic.SHORTCUTS``), and Group / Chain / Offset."""
 
     TITLE = "Kaiju Outliner Tool"
 
@@ -41,9 +41,24 @@ class OutlinerToolWindow(ToolWindow):
         row.addWidget(help_btn)
 
         self.preview = QtWidgets.QLabel()
+        # Keep its line even when empty, so the field doesn't jump.
+        self.preview.setMinimumHeight(self.preview.fontMetrics().height())
 
-        self.layout.addLayout(row)
+        buttons = QtWidgets.QHBoxLayout()
+        for label, tip, action in (
+            ("Group", "Group the selection under a group named after their shared name (L_arm_grp),\n"
+                      "or after the first selected node", self._group),
+            ("Chain", "Parent each selected node under the one selected before it", self._chain),
+            ("Offset", "Put a lined-up <node>_offset group above each selected node", self._offset),
+        ):
+            button = QtWidgets.QPushButton(label)
+            button.setToolTip(tip)
+            button.clicked.connect(action)
+            buttons.addWidget(button)
+
         self.layout.addWidget(self.preview)
+        self.layout.addLayout(row)
+        self.layout.addLayout(buttons)
         self.layout.addStretch()
 
         # Keep the preview in step with the selection while the window is open.
@@ -78,6 +93,25 @@ class OutlinerToolWindow(ToolWindow):
             return
         settings.set(SETTINGS_KEY, "text", text)
         cmds.select(new)
+
+    def _run(self, func):
+        nodes = selected()
+        if not nodes:
+            cmds.warning("Kaiju Outliner Tool: nothing selected.")
+            return
+        try:
+            cmds.select(func(nodes))
+        except ValueError as e:
+            cmds.warning(f"Kaiju Outliner Tool: {e}")
+
+    def _group(self):
+        self._run(logic.group_selected)
+
+    def _chain(self):
+        self._run(logic.chain)
+
+    def _offset(self):
+        self._run(logic.offset)
 
     def _help_menu(self):
         rows = "".join(
