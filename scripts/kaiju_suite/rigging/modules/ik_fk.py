@@ -30,11 +30,14 @@ chain's plane, ``pole_distance`` out from the middle joint on the side the
 chain bends to, so the chain needs a bend and at least 3 joints. The switch
 sits beside the end joint, on the side away from the bend. Every control
 gets ``color``.
+
+The switch control is linked to the controls and chains, so animators can
+switch without a pop (see :mod:`kaiju_suite.rigging.ik_fk_match`).
 """
 
 from maya import cmds
 
-from kaiju_suite.rigging import controls, helpers
+from kaiju_suite.rigging import controls, helpers, ik_fk_match
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -184,6 +187,8 @@ class IkFkModule(RigModule):
                 ik_weight, fk_weight = cmds.parentConstraint(constraint, query=True, weightAliasList=True)
                 cmds.connectAttr(f"{switch}.ikFk", f"{constraint}.{ik_weight}")
                 cmds.connectAttr(f"{reverse}.outputX", f"{constraint}.{fk_weight}")
+
+            ik_fk_match.store(switch, fk_controls, fk_chain, ik_chain, ik_control, pole_control)
 
             _visibility(switch, ik_group, 2, 0, f"{name}_ik_vis_condition")
             _visibility(switch, fk_group, 4, 1, f"{name}_fk_vis_condition")

@@ -363,3 +363,137 @@ def test_build_with_problems_creates_nothing(arm):
         rigging.get("ik_fk").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before
+
+
+# -- matching (switch without a pop) -------------------------------------------------
+
+from kaiju_suite.rigging import ik_fk_match  # noqa: E402
+
+BIND = ("shoulder", "elbow", "wrist")
+
+
+def _bind_matrices():
+    return [om.MMatrix(cmds.xform(j, query=True, worldSpace=True, matrix=True)) for j in BIND]
+
+
+def _same_matrices(a, b, tolerance=1e-3):
+    return all(x.isEquivalent(y, tolerance) for x, y in zip(a, b))
+
+
+def _pose_ik():
+    cmds.xform("L_arm_ik_ctrl", worldSpace=True, translation=(7, 7, 2))
+    cmds.setAttr("L_arm_ik_ctrl.rotate", 20, -30, 15)
+    cmds.xform("L_arm_pv_ctrl", worldSpace=True, translation=(5, 14, -6))
+
+
+def _pose_fk():
+    """Any pose an IK chain can reach: the elbow only bends in the chain's
+    plane (about Y, as the joints aren't oriented), like a hinge."""
+    cmds.setAttr("L_arm_01_fk_ctrl.rotate", 10, 25, -40)
+    cmds.setAttr("L_arm_02_fk_ctrl.rotate", 0, -35, 0)
+    cmds.setAttr("L_arm_03_fk_ctrl.rotate", 30, 5, -20)
+
+
+def test_the_switch_stores_what_matching_needs(arm):
+    rigging.get("ik_fk").build(_params())
+
+    info = ik_fk_match.links(SWITCH)
+
+    assert info.fk_controls == list(FK_CONTROLS)
+    assert (info.ik_control, info.pole_control) == IK_CONTROLS
+    assert info.ik_joints == ["L_arm_01_ik_jnt", "L_arm_02_ik_jnt", "L_arm_03_ik_jnt"]
+    assert info.fk_joints == ["L_arm_01_fk_jnt", "L_arm_02_fk_jnt", "L_arm_03_fk_jnt"]
+    assert ik_fk_match.is_switch(SWITCH) and not ik_fk_match.is_switch("L_arm_ik_ctrl")
+
+
+def test_a_control_of_the_limb_finds_its_switch(arm):
+    rigging.get("ik_fk").build(_params())
+
+    for node in FK_CONTROLS + IK_CONTROLS + (SWITCH,):
+        assert ik_fk_match.find_switch(node) == SWITCH
+    assert ik_fk_match.find_switch("shoulder") is None
+
+
+def test_match_fk_to_ik_switches_to_fk_without_moving_the_bind_chain(arm):
+    rigging.get("ik_fk").build(_params())
+    cmds.setAttr(f"{SWITCH}.ikFk", 1)
+    _pose_ik()
+    before = _bind_matrices()
+
+    ik_fk_match.match_fk_to_ik(SWITCH)
+
+    assert cmds.getAttr(f"{SWITCH}.ikFk") == 0
+    assert _same_matrices(_bind_matrices(), before)
+
+
+def test_match_ik_to_fk_switches_to_ik_without_moving_the_bind_chain(arm):
+    rigging.get("ik_fk").build(_params())
+    _pose_fk()
+    before = _bind_matrices()
+
+    ik_fk_match.match_ik_to_fk(SWITCH)
+
+    assert cmds.getAttr(f"{SWITCH}.ikFk") == 1
+    assert _same_matrices(_bind_matrices(), before)
+
+
+def test_match_ik_to_fk_of_a_pose_ik_cant_reach_still_matches_the_joint_positions(arm):
+    """An elbow twisted out of its plane can't be copied by a hinge, but
+    every joint still lands where it was."""
+    rigging.get("ik_fk").build(_params())
+    _pose_fk()
+    cmds.setAttr("L_arm_02_fk_ctrl.rotateX", 25)
+    before = _positions(BIND)
+
+    ik_fk_match.match_ik_to_fk(SWITCH)
+
+    assert _close(_positions(BIND), before)
+
+
+def test_match_ik_to_fk_puts_the_pole_vector_on_the_chain_plane(arm):
+    rigging.get("ik_fk").build(_params())
+    _pose_fk()
+
+    ik_fk_match.match_ik_to_fk(SWITCH)
+
+    start, mid, end = _positions(BIND)
+    normal = (mid - start) ^ (end - start)
+    assert abs((_world("L_arm_pv_ctrl") - mid).normal() * normal.normal()) < 1e-3
+
+
+def test_match_with_key_keys_both_frames_and_steps_the_switch(arm):
+    rigging.get("ik_fk").build(_params())
+    cmds.setAttr(f"{SWITCH}.ikFk", 1)
+    _pose_ik()
+    cmds.currentTime(10)
+    before = _bind_matrices()
+
+    ik_fk_match.match_fk_to_ik(SWITCH, key=True)
+
+    assert cmds.keyframe(f"{SWITCH}.ikFk", query=True, timeChange=True) == [9.0, 10.0]
+    assert cmds.keyframe(f"{SWITCH}.ikFk", query=True, valueChange=True) == [1.0, 0.0]
+    assert cmds.keyTangent(f"{SWITCH}.ikFk", query=True, outTangentType=True)[0] == "step"
+    assert cmds.keyframe("L_arm_02_fk_ctrl.rotateY", query=True, timeChange=True) == [9.0, 10.0]
+    assert _same_matrices(_bind_matrices(), before)
+    cmds.currentTime(9)
+    assert cmds.getAttr(f"{SWITCH}.ikFk") == 1
+
+
+def test_matching_a_rig_built_without_the_links_says_to_rebuild(arm):
+    rigging.get("ik_fk").build(_params())
+    cmds.deleteAttr(f"{SWITCH}.{ik_fk_match.FK_CONTROLS}")
+
+    with pytest.raises(ValueError, match="rebuild"):
+        ik_fk_match.match_fk_to_ik(SWITCH)
+
+
+def test_match_fk_to_ik_on_an_oriented_chain(arm):
+    cmds.joint("shoulder", edit=True, orientJoint="xyz", secondaryAxisOrient="yup", children=True, zeroScaleOrient=True)
+    rigging.get("ik_fk").build(_params())
+    cmds.setAttr(f"{SWITCH}.ikFk", 1)
+    _pose_ik()
+    before = _bind_matrices()
+
+    ik_fk_match.match_fk_to_ik(SWITCH)
+
+    assert _same_matrices(_bind_matrices(), before)

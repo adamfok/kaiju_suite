@@ -1,4 +1,5 @@
-"""Animation Tool: mirror and flip animation across sides. No Qt here.
+"""Animation Tool: mirror and flip animation across sides, and switch IK/FK
+limbs without a pop. No Qt here.
 
 Sides and the mirroring math are shared with the Pose Tool, in
 :mod:`kaiju_suite.core.mirror`: opposites are found by name, a control with
@@ -21,6 +22,9 @@ each source key time and on every whole frame between the first and last.
 
 Destination attributes that are missing, locked or driven by a connection
 other than their own keys are skipped and reported.
+
+:func:`switch_ik_fk` matches an IK/FK limb to its other side and switches to
+it, with the matching in :mod:`kaiju_suite.rigging.ik_fk_match`.
 """
 
 import math
@@ -30,6 +34,7 @@ from maya import cmds
 
 from kaiju_suite.core import mirror as mirroring
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.rigging import ik_fk_match
 
 Result = namedtuple("Result", "changed skipped")
 
@@ -206,3 +211,26 @@ def flip(nodes, offset=0):
             jobs.append((_snapshot(target, time), source))
     skipped += _run(jobs, offset)
     return Result([target for _, target in jobs], skipped)
+
+
+@undoable
+def switch_ik_fk(nodes, key=False):
+    """Switch each IK/FK limb that ``nodes`` belong to (its switch control or
+    any of its controls) to the other side, matched so it doesn't pop: from
+    IK (``ikFk`` at 0.5 or more) to FK, otherwise from FK to IK. With
+    ``key``, key the switch on this frame (see
+    :func:`~kaiju_suite.rigging.ik_fk_match.match_fk_to_ik`). Returns a
+    :data:`Result` of the switch controls changed, and the nodes skipped."""
+    switches, skipped = [], []
+    for node in nodes:
+        switch = ik_fk_match.find_switch(node)
+        if switch is None:
+            skipped.append(f"{mirroring.short(node)} (not part of an IK/FK limb)")
+        elif switch not in switches:
+            switches.append(switch)
+    for switch in switches:
+        if cmds.getAttr(f"{switch}.{ik_fk_match.ATTR}") >= 0.5:
+            ik_fk_match.match_fk_to_ik(switch, key=key)
+        else:
+            ik_fk_match.match_ik_to_fk(switch, key=key)
+    return Result(switches, skipped)

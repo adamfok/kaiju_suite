@@ -50,10 +50,33 @@ class AnimationToolWindow(ToolWindow):
             row.addWidget(button)
         mirror.addLayout(row)
 
+        switch_box = QtWidgets.QGroupBox("IK/FK Switch")
+        switch = QtWidgets.QVBoxLayout(switch_box)
+        note = QtWidgets.QLabel(
+            "Select an IK/FK limb's switch control, or any of its controls. "
+            "Switches to the other side, matched to the current pose, so the limb doesn't pop."
+        )
+        note.setWordWrap(True)
+        switch.addWidget(note)
+        switch_row = QtWidgets.QHBoxLayout()
+        self.key_switch = QtWidgets.QCheckBox("Key")
+        self.key_switch.setToolTip(
+            "Key the switch and the matched controls on the frame before (as they were) and on this frame."
+        )
+        self.key_switch.setChecked(bool(settings.get(SETTINGS_KEY, "key_switch", False)))
+        self.key_switch.toggled.connect(lambda on: settings.set(SETTINGS_KEY, "key_switch", bool(on)))
+        switch_row.addWidget(self.key_switch)
+        button = QtWidgets.QPushButton("Switch IK/FK")
+        button.setToolTip("From IK to FK, or from FK to IK, matching the other side first.")
+        button.clicked.connect(self._switch_ik_fk)
+        switch_row.addWidget(button, 1)
+        switch.addLayout(switch_row)
+
         self.status = QtWidgets.QLabel()
         self.status.setWordWrap(True)
 
         self.layout.addWidget(mirror_box)
+        self.layout.addWidget(switch_box)
         self.layout.addWidget(self.status)
         self.layout.addStretch()
 
@@ -82,3 +105,17 @@ class AnimationToolWindow(ToolWindow):
         nodes = self._nodes()
         if nodes:
             self._report("Flipped animation of", logic.flip(nodes, offset=self.offset.value()))
+
+    def _switch_ik_fk(self):
+        nodes = self._nodes()
+        if not nodes:
+            return
+        try:
+            result = logic.switch_ik_fk(nodes, key=self.key_switch.isChecked())
+        except ValueError as e:
+            _warn(str(e))
+            return
+        if not result.changed:
+            _warn("Nothing selected is part of an IK/FK limb. Select its switch control.")
+            return
+        self._report("Switched IK/FK on", result)
