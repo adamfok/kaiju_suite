@@ -29,7 +29,7 @@ joint have their translation driven, so it can't be locked or connected.
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -164,6 +164,8 @@ class StretchyIkModule(RigModule):
 
             for node in (control, pole_control):
                 helpers.set_color(node, params["color"])
+            controls.add(control)
+            controls.add(pole_control, parent=control)
 
         return {
             "group": helpers.short(group),

@@ -16,7 +16,7 @@ Both controls get ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 UP = (0, 1, 0)
@@ -62,6 +62,8 @@ class RootModule(RigModule):
 
             for node in (control, offset):
                 helpers.set_color(node, params["color"])
+            controls.add(control)
+            controls.add(offset, parent=control)
 
         return {
             "group": helpers.short(group),

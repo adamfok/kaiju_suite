@@ -22,7 +22,7 @@ the first space. Switching without a pop is :func:`kaiju_suite.rigging.space_swi
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging import space_switch
 from kaiju_suite.rigging.module import Param, RigModule
 
@@ -126,6 +126,8 @@ class SpaceSwitchModule(RigModule):
             targets = [node for _, node in pairs]
             constraint = cmds.parentConstraint(*targets, driven, maintainOffset=True, name=f"{name}_space_parentConstraint")[0]
             space_switch.drive_weights(control, constraint, name)
+            # Adds the enum's default, keeping any defaults the control has.
+            controls.add(control)
 
         return {
             "control": helpers.short(control),

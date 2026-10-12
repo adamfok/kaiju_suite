@@ -19,7 +19,7 @@ child. The chain needs at least 2 joints. Every control gets ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 
@@ -52,7 +52,7 @@ class FkChainModule(RigModule):
         joints = chain if params["end_control"] else chain[:-1]
         size = float(params["control_size"])
 
-        controls = []
+        made = []
         with helpers.kept_selection():
             group = helpers.group(f"{name}_fkChain_grp", params["parent"].strip())
             above = group
@@ -64,13 +64,14 @@ class FkChainModule(RigModule):
                 # Keeps the offset, so a tiny mismatch can't snap the joint.
                 cmds.parentConstraint(control, joint, maintainOffset=True, name=f"{control_name}_parentConstraint")
                 helpers.set_color(control, params["color"])
-                controls.append(control)
+                controls.add(control, parent=made[-1] if made else None)
+                made.append(control)
                 above = control
 
         # Text only: the Assembler prints the values joined.
         return {
             "group": helpers.short(group),
-            "controls": ", ".join(helpers.short(control) for control in controls),
+            "controls": ", ".join(helpers.short(control) for control in made),
         }
 
 

@@ -23,7 +23,7 @@ one, and the joints between blend. Both controls get ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging.module import Param, RigModule
 
 # The handle's Forward Axis (dForwardAxis) for each local axis and sign, and
@@ -161,6 +161,8 @@ class SplineIkModule(RigModule):
 
             for node in (hip, chest):
                 helpers.set_color(node, params["color"])
+            controls.add(hip)
+            controls.add(chest, parent=hip)
 
         return {
             "group": helpers.short(group),
