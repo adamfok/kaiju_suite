@@ -8,5 +8,5 @@ def show():
 TOOL = {
     "name": "Renamer",
     "launch": show,
-    "description": "Rename, number, and search/replace selected nodes.",
+    "description": "Rename selected nodes from one field: number (##), add prefix/suffix (*), search and replace (>).",
 }
