@@ -29,8 +29,8 @@ joint have their translation driven, so it can't be locked or connected.
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.rig import helpers
-from kaiju_suite.rig.module import Param, RigModule
+from kaiju_suite.rig_module import helpers
+from kaiju_suite.rig_module.module import Param, RigModule
 
 
 def _translate_problems(joints):

@@ -2,7 +2,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite import rig
+from kaiju_suite import rig_module
 
 
 def _joint(name, parent=None, translate=(0, 0, 0)):
@@ -21,7 +21,7 @@ def arm(new_scene):
 
 
 def _params(**overrides):
-    params = rig.get("simple_ik").defaults()
+    params = rig_module.get("simple_ik").defaults()
     params.update(name="L_arm", start_joint="shoulder", end_joint="wrist")
     params.update(overrides)
     return params
@@ -49,7 +49,7 @@ def _close(a, b, tolerance=1e-3):
 
 
 def test_ik_parameters_and_defaults():
-    module = rig.get("simple_ik")
+    module = rig_module.get("simple_ik")
 
     assert [p.key for p in module.params] == [
         "name",
@@ -65,7 +65,7 @@ def test_ik_parameters_and_defaults():
 
 
 def test_valid_params_have_no_problems(arm):
-    assert rig.get("simple_ik").problems(_params()) == []
+    assert rig_module.get("simple_ik").problems(_params()) == []
 
 
 @pytest.mark.parametrize(
@@ -88,7 +88,7 @@ def test_valid_params_have_no_problems(arm):
 def test_problems(arm, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rig.get("simple_ik").problems(_params(**overrides))
+    problems = rig_module.get("simple_ik").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
@@ -98,7 +98,7 @@ def test_straight_chain_has_no_pole_vector_direction(new_scene):
     _joint("b", "a", translate=(5, 0, 0))
     _joint("c", "b", translate=(5, 0, 0))
 
-    problems = rig.get("simple_ik").problems(_params(start_joint="a", end_joint="c"))
+    problems = rig_module.get("simple_ik").problems(_params(start_joint="a", end_joint="c"))
 
     assert any("straight" in p for p in problems), problems
 
@@ -107,15 +107,15 @@ def test_ambiguous_joint_name_is_a_problem(arm):
     cmds.group(empty=True, name="other")
     _joint("wrist", "other")
 
-    problems = rig.get("simple_ik").problems(_params())
+    problems = rig_module.get("simple_ik").problems(_params())
 
     assert any("wrist" in p and "Several" in p for p in problems), problems
 
 
 def test_existing_module_with_the_same_name_is_a_problem(arm):
-    rig.get("simple_ik").build(_params())
+    rig_module.get("simple_ik").build(_params())
 
-    problems = rig.get("simple_ik").problems(_params())
+    problems = rig_module.get("simple_ik").problems(_params())
 
     assert any("L_arm_ik_grp" in p for p in problems), problems
 
@@ -126,7 +126,7 @@ def test_existing_module_with_the_same_name_is_a_problem(arm):
 def test_build_creates_handle_controls_and_constraints(arm):
     before = _positions(arm)
 
-    created = rig.get("simple_ik").build(_params())
+    created = rig_module.get("simple_ik").build(_params())
 
     assert created == {
         "group": "L_arm_ik_grp",
@@ -150,13 +150,13 @@ def test_build_creates_handle_controls_and_constraints(arm):
 
 
 def test_ik_control_sits_on_the_end_joint(arm):
-    rig.get("simple_ik").build(_params())
+    rig_module.get("simple_ik").build(_params())
 
     assert _close([_world("L_arm_ik_ctrl")], [_world("wrist")])
 
 
 def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
-    rig.get("simple_ik").build(_params(pole_distance=4.0))
+    rig_module.get("simple_ik").build(_params(pole_distance=4.0))
 
     start, mid, end = _positions(arm)
     pole = _world("L_arm_pv_ctrl")
@@ -168,7 +168,7 @@ def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
 
 
 def test_moving_the_control_drives_the_chain(arm):
-    rig.get("simple_ik").build(_params())
+    rig_module.get("simple_ik").build(_params())
 
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
 
@@ -182,14 +182,14 @@ def _color(control):
 
 
 def test_color_goes_on_both_controls(arm):
-    rig.get("simple_ik").build(_params(color=13))
+    rig_module.get("simple_ik").build(_params(color=13))
 
     assert _color("L_arm_ik_ctrl") == {(True, 13)}
     assert _color("L_arm_pv_ctrl") == {(True, 13)}
 
 
 def test_color_0_leaves_the_controls_maya_default_color(arm):
-    rig.get("simple_ik").build(_params(color=0))
+    rig_module.get("simple_ik").build(_params(color=0))
 
     assert _color("L_arm_ik_ctrl") == {(False, 0)}
     assert _color("L_arm_pv_ctrl") == {(False, 0)}
@@ -198,16 +198,16 @@ def test_color_0_leaves_the_controls_maya_default_color(arm):
 def test_build_goes_under_the_parent(arm):
     cmds.group(empty=True, name="rig_grp")
 
-    rig.get("simple_ik").build(_params(parent="rig_grp"))
+    rig_module.get("simple_ik").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("L_arm_ik_grp", parent=True) == ["rig_grp"]
 
 
 def test_control_size_scales_the_control(arm):
-    rig.get("simple_ik").build(_params(name="small", control_size=1.0))
+    rig_module.get("simple_ik").build(_params(name="small", control_size=1.0))
     small = cmds.exactWorldBoundingBox("small_ik_ctrl")
     cmds.delete("small_ik_grp")
-    rig.get("simple_ik").build(_params(name="big", control_size=2.0))
+    rig_module.get("simple_ik").build(_params(name="big", control_size=2.0))
     big = cmds.exactWorldBoundingBox("big_ik_ctrl")
 
     assert abs((big[4] - big[1]) - 2 * (small[4] - small[1])) < 1e-3
@@ -218,7 +218,7 @@ def test_build_is_one_undo_step(arm):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rig.get("simple_ik").build(_params())
+    rig_module.get("simple_ik").build(_params())
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
     cmds.undo()
     cmds.undo()
@@ -231,6 +231,6 @@ def test_build_with_problems_creates_nothing(arm):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rig.get("simple_ik").build(_params(end_joint="nothing"))
+        rig_module.get("simple_ik").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before

@@ -14,8 +14,8 @@ joint. The control gets ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rig import helpers
-from kaiju_suite.rig.module import Param, RigModule
+from kaiju_suite.rig_module import helpers
+from kaiju_suite.rig_module.module import Param, RigModule
 
 
 class SingleFkModule(RigModule):

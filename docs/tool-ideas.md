@@ -16,7 +16,7 @@ and an Assembler double-click entry point, so they're the cheapest place to add 
 The ideas below are what riggers reach for daily in comparable toolkits (mGear, AdvancedSkeleton,
 ngSkinTools, Red9, comet scripts).
 
-Reusable pieces in the repo: `rig/helpers.py` (`circle`, `box`, `diamond`, `set_color`, `chain`,
+Reusable pieces in the repo: `rig_module/helpers.py` (`circle`, `box`, `diamond`, `set_color`, `chain`,
 `pole_position`, `kept_selection`), `core/naming.py` (`expand_pattern`, `opposite_name`),
 `core/nodes.py` (`unique_name`), `core/curves.py`, `core/colors.py`, `core/selection.py`,
 `core/settings.py`, `core/datafile.py`, `core/undo.py` (`@undoable`).
@@ -70,7 +70,7 @@ Reusable pieces in the repo: `rig/helpers.py` (`circle`, `box`, `diamond`, `set_
   renames/reparents by UUID. `widget.py`: `ToolWindow` subclass. `__init__.py`: lazy `show()` + `TOOL` dict.
   For ideas that fill an existing empty tool (2, 9, and the open parts of 5) the folder and menu entry
   already exist.
-- Anything reusable across tools goes in `core/` or `rig/`, never imported tool→tool.
+- Anything reusable across tools goes in `core/` or `rig_module/`, never imported tool→tool.
 - TDD: write `tests/test_<tool>.py` first (logic + undo), watch it fail, implement, then run the mayapy
   suite (see CLAUDE.md).
 - CHANGELOG entry under Unreleased.

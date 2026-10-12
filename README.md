@@ -11,7 +11,7 @@ kaiju_suite.mod          module definition
 plug-ins/                thin plug-in: builds and removes the menu
 scripts/kaiju_suite/
   core/                  shared internal API (no Qt, never imports tools)
-  rig/                   rig module algorithms (IK, ...); imports only core, no Qt
+  rig_module/            rig module algorithms (IK, ...); imports only core, no Qt
   ui/                    menu builder and ToolWindow base class
   registry.py            discovers tools
   tools/<tool>/          one folder per tool
@@ -20,7 +20,7 @@ tests/
 install/
 dev/                     developer scripts, not loaded by Maya
 ```
-Imports only flow one way: `tools` → `ui` → `core`, and `tools` → `rig` → `core`. Tools never import each other.
+Imports only flow one way: `tools` → `ui` → `core`, and `tools` → `rig_module` → `core`. Tools never import each other.
 
 ## Adding a tool
 1. Create `scripts/kaiju_suite/tools/<my_tool>/`.
@@ -66,15 +66,15 @@ Products that save rig data from the scene and apply it back (Joints, Mesh, Curv
 See `products/joints.py` for a working example.
 
 ### Rig modules
-A rig module is an algorithm that builds part of a rig (an IK chain, ...) from parameters. The algorithm lives in `scripts/kaiju_suite/rig/modules/`, separate from the Assembler; the Assembler's **Rig Module** items (`.rig`) hold only the parameters, as `{"kaiju": "rigModule", "format": 1, "data": {"module": "simple_ik", "params": {...}}}` (`rig/spec.py` reads and writes them). Their Type column shows the module's name (e.g. `Simple IK`). **New** lists one entry per module and writes its defaults; **Run** builds the module as one undo step; **Publish** saves the parameters as the next version; double-click opens the **Rig Module Editor** on the file, with a form built from the module's parameters.
+A rig module is an algorithm that builds part of a rig (an IK chain, ...) from parameters. The algorithm lives in `scripts/kaiju_suite/rig_module/modules/`, separate from the Assembler; the Assembler's **Rig Module** items (`.rig`) hold only the parameters, as `{"kaiju": "rigModule", "format": 1, "data": {"module": "simple_ik", "params": {...}}}` (`rig_module/spec.py` reads and writes them). Their Type column shows the module's name (e.g. `Simple IK`). **New** lists one entry per module and writes its defaults; **Run** builds the module as one undo step; **Publish** saves the parameters as the next version; double-click opens the **Rig Module Editor** on the file, with a form built from the module's parameters.
 
 To add a module:
-1. Add `rig/modules/<my_module>.py`. Don't import Qt, `ui` or `tools` there.
-2. Subclass `RigModule` from `rig/module.py`. Set `key` (saved in the files; never change it), `name` (shown in **New** and the editor) and `params`, a tuple of `Param(key, label, kind, default, ...)`. `kind` is `"string"`, `"node"` (a scene node's name; the editor has a pick-from-selection button), `"float"`, `"bool"`, `"choice"` (with `choices`) or `"color"` (a Maya index color, 0 to 31, as in Drawing Overrides; 0 keeps Maya's default; the editor shows a drop-down of swatches). Set `required=True` for text that can't be blank and `tooltip` for the editor.
+1. Add `rig_module/modules/<my_module>.py`. Don't import Qt, `ui` or `tools` there.
+2. Subclass `RigModule` from `rig_module/module.py`. Set `key` (saved in the files; never change it), `name` (shown in **New** and the editor) and `params`, a tuple of `Param(key, label, kind, default, ...)`. `kind` is `"string"`, `"node"` (a scene node's name; the editor has a pick-from-selection button), `"float"`, `"bool"`, `"choice"` (with `choices`) or `"color"` (a Maya index color, 0 to 31, as in Drawing Overrides; 0 keeps Maya's default; the editor shows a drop-down of swatches). Set `required=True` for text that can't be blank and `tooltip` for the editor.
 3. Implement `check(params)`, which returns messages for what stops a build in the current scene (types and required values are already checked), and `create(params)`, which builds and returns what it made. `build(params)` runs the checks, raises listing every problem before changing anything, then calls `create` inside one undo chunk.
 4. End the module with `MODULE = MyModule()`.
 
-Nothing else needs registering. See `rig/modules/simple_ik.py` for a working example, and `rig/modules/root.py` for one that needs no joints. `rig/helpers.py` has the shared pieces: checking a module's name, a node, a parent or a joint chain (`name_problems`, `node_problems`, `parent_problems`, `chain_problems`), and building groups, control curves (`circle`, `diamond`, `box`), a pole vector's position (`pole_position`), their color (`set_color`) and keeping the selection (`kept_selection`). `rig/space_switch.py` holds space switching (the `space` enum, its weights, and `switch`, which changes space without moving the control), used by the Space Switch module.
+Nothing else needs registering. See `rig_module/modules/simple_ik.py` for a working example, and `rig_module/modules/root.py` for one that needs no joints. `rig_module/helpers.py` has the shared pieces: checking a module's name, a node, a parent or a joint chain (`name_problems`, `node_problems`, `parent_problems`, `chain_problems`), and building groups, control curves (`circle`, `diamond`, `box`), a pole vector's position (`pole_position`), their color (`set_color`) and keeping the selection (`kept_selection`). `rig_module/space_switch.py` holds space switching (the `space` enum, its weights, and `switch`, which changes space without moving the control), used by the Space Switch module.
 
 ## Headless Assembler build
 Build an Assembler folder from `mayapy` with no UI, e.g. for batch rebuilds or automatic rig checks:
