@@ -48,7 +48,7 @@ def picked(monkeypatch):
 
 
 def test_output_items_are_out_files(tmp_path):
-    assert output.PRODUCT.name == "Output"
+    assert output.PRODUCT.name == "Export Scene"
     assert output.PRODUCT.extensions == (".out",)
     assert products.product_for(_touch(tmp_path / "rig.out")) is output.PRODUCT
 
@@ -61,10 +61,10 @@ def test_output_is_a_plain_runnable_versioned_product():
     assert output.PRODUCT.utility is None
 
 
-def test_type_column_shows_output(tmp_path):
+def test_type_column_shows_export_scene(tmp_path):
     _touch(tmp_path / "rig.out")
     (entry,) = logic.scan(str(tmp_path))
-    assert entry.label == "rig" and entry.type_label == "Output"
+    assert entry.label == "rig" and entry.type_label == "Export Scene"
 
 
 def test_new_output_is_an_empty_entry(tmp_path):
@@ -76,9 +76,9 @@ def test_new_output_is_an_empty_entry(tmp_path):
         output.create_output(str(tmp_path), "rig")
 
 
-def test_output_is_last_in_the_new_menu_after_check():
+def test_export_scene_is_last_in_the_new_menu_after_check():
     labels = [None if e is None else e[1].label for e in products.new_menu()]
-    assert labels[-3:] == [None, "QC", "Output"]
+    assert labels[-3:] == [None, "QC", "Export Scene"]
     (creator,) = output.PRODUCT.creators
     assert creator.choices is None and not creator.open_after
 
@@ -91,12 +91,12 @@ def test_creator_makes_an_entry(tmp_path):
 # -- settings ---------------------------------------------------------------
 
 
-def test_set_output_saves_settings_as_a_version_with_a_header(tmp_path):
+def test_set_output_saves_the_path_as_a_version_with_a_header(tmp_path):
     path = output.create_output(str(tmp_path), "rig")
-    message = output.set_output(path, "D:/deliver/hero_rig.mb", delete_unused=True, hide_joints=False)
+    message = output.set_output(path, "D:/deliver/hero_rig.mb")
 
-    assert message == "Published Output rig.out v001"
-    assert output.settings(path) == {"path": "D:/deliver/hero_rig.mb", "delete_unused": True, "hide_joints": False}
+    assert message == "Published Export Scene rig.out v001"
+    assert output.settings(path) == {"path": "D:/deliver/hero_rig.mb"}
     with open(path, encoding="utf-8") as f:
         content = json.load(f)
     assert content["kaiju"] == "output" and content["format"] == 1
@@ -154,20 +154,32 @@ def test_format_comes_from_the_extension(ext, fmt):
     assert output.format_name("a/b" + ext) == fmt
 
 
-def test_toggling_an_option_publishes_a_new_version(tmp_path):
-    path = output.create_output(str(tmp_path), "rig")
-    output.set_output(path, "D:/x.ma")
-    output.set_option(path, "hide_joints", True)
-    assert output.settings(path)["hide_joints"] is True
-    assert sorted(v.number for v in versions.list_versions(path)) == [1, 2]
-    with pytest.raises(ValueError):
-        output.set_option(path, "bogus", True)
+def test_an_entry_with_old_clean_up_fields_still_reads(tmp_path):
+    path = tmp_path / "rig.out"
+    path.write_text(
+        '{"kaiju": "output", "format": 1, "data": {"path": "D:/x.ma", "delete_unused": true, "hide_joints": true}}'
+    )
+    assert output.settings(str(path)) == {"path": "D:/x.ma"}
 
 
-def test_set_option_needs_a_path_first(tmp_path):
-    path = output.create_output(str(tmp_path), "rig")
-    with pytest.raises(ValueError):
-        output.set_option(path, "hide_joints", True)
+def test_old_clean_up_fields_are_ignored_on_run(new_scene, tmp_path):
+    joint, shader = _rig()
+    path = tmp_path / "rig.out"
+    data = {"path": "hero.ma", "delete_unused": True, "hide_joints": True}
+    path.write_text(json.dumps({"kaiju": "output", "format": 1, "data": data}))
+
+    output.PRODUCT.run(str(path))
+
+    assert (tmp_path / "hero.ma").is_file()
+    assert cmds.objExists(shader)
+    assert cmds.getAttr(joint + ".drawStyle") == 0
+
+
+def test_set_output_has_no_clean_up_options():
+    import inspect
+
+    assert list(inspect.signature(output.set_output).parameters) == ["path", "out_path", "description"]
+    assert not hasattr(output, "set_option") and not hasattr(output, "OPTIONS")
 
 
 def test_a_file_of_another_kind_is_refused(tmp_path):
@@ -180,15 +192,15 @@ def test_a_file_of_another_kind_is_refused(tmp_path):
 # -- publish (file browser) ---------------------------------------------------
 
 
-def test_publish_picks_a_path_and_keeps_the_options(tmp_path, picked):
+def test_publish_picks_a_path(tmp_path, picked):
     path = output.create_output(str(tmp_path), "rig")
-    output.set_output(path, str(tmp_path / "a.ma"), hide_joints=True)
+    output.set_output(path, str(tmp_path / "a.ma"))
     picked.answer = str(tmp_path / "deliver" / "b.fbx")
 
     message = output.PRODUCT.publish(path).fn()
 
-    assert message == "Published Output rig.out v002"
-    assert output.settings(path) == {"path": "deliver/b.fbx", "delete_unused": False, "hide_joints": True}
+    assert message == "Published Export Scene rig.out v002"
+    assert output.settings(path) == {"path": "deliver/b.fbx"}
     assert picked.opened_in == [str(tmp_path)]
 
 
@@ -226,62 +238,11 @@ def test_run_saves_the_scene_in_the_chosen_format(new_scene, tmp_path, ext, file
     assert cmds.file(query=True, type=True) == [file_type]
 
 
-def test_run_without_cleanup_leaves_the_scene_alone(new_scene, tmp_path):
+def test_run_leaves_the_scene_alone(new_scene, tmp_path):
     joint, shader = _rig()
     path = output.create_output(str(tmp_path), "rig")
     output.set_output(path, str(tmp_path / "hero.ma"))
     output.PRODUCT.run(path)
-    assert cmds.objExists(shader)
-    assert cmds.getAttr(joint + ".drawStyle") == 0
-
-
-def test_hide_joints_sets_draw_style_none(new_scene, tmp_path):
-    joint, _ = _rig()
-    target = tmp_path / "hero.ma"
-    path = output.create_output(str(tmp_path), "rig")
-    output.set_output(path, str(target), hide_joints=True)
-
-    output.PRODUCT.run(path)
-
-    assert cmds.getAttr(joint + ".drawStyle") == 2
-    _open_saved(target)
-    assert cmds.getAttr("root_jnt.drawStyle") == 2
-
-
-def test_hide_joints_skips_locked_draw_style_with_a_warning(new_scene, tmp_path):
-    joint, _ = _rig()
-    cmds.setAttr(joint + ".drawStyle", lock=True)
-    path = output.create_output(str(tmp_path), "rig")
-    output.set_output(path, str(tmp_path / "hero.ma"), hide_joints=True)
-    with runlog.capture() as log:
-        output.PRODUCT.run(path)
-    assert any("root_jnt" in m for m in log.warnings)
-    assert (tmp_path / "hero.ma").is_file()
-
-
-def test_delete_unused_removes_unused_shading_nodes(new_scene, tmp_path):
-    _, shader = _rig()
-    target = tmp_path / "hero.mb"
-    path = output.create_output(str(tmp_path), "rig")
-    output.set_output(path, str(target), delete_unused=True)
-
-    output.PRODUCT.run(path)
-
-    assert not cmds.objExists(shader)
-    assert cmds.objExists("body")
-    _open_saved(target)
-    assert not cmds.objExists("unused_mat") and cmds.objExists("body")
-
-
-def test_cleanup_is_one_undo_step(new_scene, tmp_path):
-    joint, shader = _rig()
-    path = output.create_output(str(tmp_path), "rig")
-    output.set_output(path, str(tmp_path / "hero.ma"), delete_unused=True, hide_joints=True)
-    output.PRODUCT.run(path)
-    assert not cmds.objExists(shader)
-
-    cmds.undo()
-
     assert cmds.objExists(shader)
     assert cmds.getAttr(joint + ".drawStyle") == 0
 
@@ -324,19 +285,14 @@ def test_panel_for_an_empty_entry(tmp_path):
     assert "Not set up" in panel.info[0]
 
 
-def test_panel_shows_settings_and_toggles_options(tmp_path):
+def test_panel_shows_the_path_and_format_only(tmp_path):
     path = output.create_output(str(tmp_path), "rig")
     output.set_output(path, "D:/deliver/hero.fbx")
     panel = output.PRODUCT.panel(path)
     text = "\n".join(panel.info)
     assert "D:/deliver/hero.fbx" in text and "FBX" in text
-    assert "Delete unused nodes: off" in text and "Hide joints: off" in text
-
-    labels = [a.label for a in panel.actions]
-    assert labels == ["Turn On Delete Unused Nodes", "Turn On Hide Joints"]
-    panel.actions[1].fn()
-    assert output.settings(path)["hide_joints"] is True
-    assert [a.label for a in output.PRODUCT.panel(path).actions][1] == "Turn Off Hide Joints"
+    assert "unused" not in text.lower() and "joints" not in text.lower()
+    assert panel.actions == []
 
 
 # -- build plans --------------------------------------------------------------
@@ -346,10 +302,10 @@ def test_build_plan_round_trip(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
     path = output.create_output(str(src), "rig")
-    output.set_output(path, "D:/deliver/hero.mb", hide_joints=True)
+    output.set_output(path, "D:/deliver/hero.mb")
 
     item = output.PRODUCT.to_plan(path)
-    assert item == {"path": "D:/deliver/hero.mb", "delete_unused": False, "hide_joints": True}
+    assert item == {"path": "D:/deliver/hero.mb"}
     assert output.PRODUCT.plan_problems(item) == []
 
     dst = str(tmp_path / "dst.out")
@@ -367,10 +323,18 @@ def test_empty_entry_plans_as_empty(tmp_path):
 
 @pytest.mark.parametrize(
     "item",
-    ({"path": 3}, {"path": "a.obj"}, {"path": "a.ma", "hide_joints": "yes"}, {"delete_unused": True}),
+    ({"path": 3}, {"path": "a.obj"}),
 )
 def test_plan_problems(item):
     assert output.PRODUCT.plan_problems(item)
+
+
+def test_a_plan_with_old_clean_up_fields_imports_the_path(tmp_path):
+    item = {"path": "D:/deliver/hero.ma", "delete_unused": True, "hide_joints": True}
+    assert output.PRODUCT.plan_problems(item) == []
+    dst = str(tmp_path / "dst.out")
+    output.PRODUCT.from_plan(dst, item)
+    assert output.settings(dst) == {"path": "D:/deliver/hero.ma"}
 
 
 def test_plan_export_includes_output_settings(tmp_path):

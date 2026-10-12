@@ -530,7 +530,7 @@ def test_entry_label_hides_extension_and_type_label_names_product(tmp_path):
     assert by_name["parts.v2"].label == "parts.v2"
     assert by_name["rig.py"].type_label == "Script(.py)"
     assert by_name["Build.MEL"].type_label == "Script(.mel)"
-    assert by_name["body.scene"].type_label == "Scene"
+    assert by_name["body.scene"].type_label == "Import Scene"
     # A product with only one extension doesn't repeat it.
     assert by_name["head.mesh"].type_label == "Mesh"
     assert by_name["parts.v2"].type_label == ""

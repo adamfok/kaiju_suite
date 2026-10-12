@@ -45,9 +45,10 @@ def picked(monkeypatch):
 
 
 def test_scene_items_are_scene_pointer_files(tmp_path):
+    assert scene.PRODUCT.name == "Import Scene"
     assert scene.PRODUCT.extensions == (".scene",)
     assert products.product_for(str(_touch(tmp_path / "a.scene"))) is scene.PRODUCT
-    # Maya files are what a Scene points to, not Assembler items themselves.
+    # Maya files are what an Import Scene points to, not Assembler items themselves.
     for name in ("a.ma", "a.mb"):
         assert products.product_for(str(_touch(tmp_path / name))) is None
 
@@ -55,7 +56,7 @@ def test_scene_items_are_scene_pointer_files(tmp_path):
 def test_type_column_shows_scene(tmp_path):
     _touch(tmp_path / "body.scene")
     (entry,) = logic.scan(str(tmp_path))
-    assert entry.label == "body" and entry.type_label == "Scene"
+    assert entry.label == "body" and entry.type_label == "Import Scene"
 
 
 def test_new_scene_is_an_empty_entry_needing_no_selection(new_scene, tmp_path):
@@ -70,7 +71,7 @@ def test_new_scene_is_an_empty_entry_needing_no_selection(new_scene, tmp_path):
 
 def test_scene_is_in_the_new_menu_after_script():
     labels = [None if e is None else e[1].label for e in products.new_menu()]
-    assert labels[:3] == ["Script", "Scene", None]
+    assert labels[:3] == ["Script", "Import Scene", None]
     (creator,) = scene.PRODUCT.creators
     assert creator.choices is None and not creator.open_after
 
@@ -100,7 +101,7 @@ def test_point_to_saves_the_path_as_a_version(new_scene, tmp_path, ext):
     source = _maya_file(tmp_path / "files" / f"hero_v1{ext}", "hero")
     path = scene.create_scene(str(tmp_path), "hero")
 
-    assert scene.point_to(path, source) == "Published Scene hero.scene v001"
+    assert scene.point_to(path, source) == "Published Import Scene hero.scene v001"
     assert os.path.normcase(scene.target(path)) == os.path.normcase(os.path.abspath(source))
     assert _numbers(path) == [1]
     # Under the entry's folder, so it's stored relative to it.
@@ -124,7 +125,7 @@ def test_each_publish_is_a_version_and_restore_points_back(new_scene, tmp_path):
     path = scene.create_scene(str(tmp_path), "hero")
 
     scene.point_to(path, first)
-    assert scene.point_to(path, second) == "Published Scene hero.scene v002"
+    assert scene.point_to(path, second) == "Published Import Scene hero.scene v002"
     assert _numbers(path) == [2, 1]
     assert scene.target(path).endswith("b.mb")
 
@@ -210,7 +211,7 @@ def test_publish_points_to_the_picked_file(new_scene, tmp_path, picked):
 
     action = versions.publish_action(path)
     assert action.label == "Publish" and action.confirm is None
-    assert action.fn() == "Published Scene hero.scene v001"
+    assert action.fn() == "Published Import Scene hero.scene v001"
     assert scene.target(path).endswith("hero.mb")
     # With nothing published yet, the browser opens in the entry's folder.
     assert os.path.normcase(picked.opened_in[0]) == os.path.normcase(str(tmp_path))

@@ -254,24 +254,10 @@ def test_republish_asks_for_a_description_and_keeps_it(new_scene, tags, tmp_path
     assert _descriptions(path) == {2: "Moved the box", 1: "First"}
 
 
-def test_output_option_toggles_describe_themselves(tmp_path):
+def test_export_scene_keeps_the_description_given(tmp_path):
     path = output.create_output(str(tmp_path), "rig")
     output.set_output(path, str(tmp_path / "rig.ma"), description="Save to rig.ma")
-    output.set_option(path, "hide_joints", True)
-    output.set_option(path, "delete_unused", True)
-    output.set_option(path, "hide_joints", False)
-    assert _descriptions(path) == {
-        4: "Output: hide joints off",
-        3: "Output: delete unused nodes on",
-        2: "Output: hide joints on",
-        1: "Save to rig.ma",
-    }
-
-
-def test_output_option_buttons_dont_ask(tmp_path):
-    path = output.create_output(str(tmp_path), "rig")
-    output.set_output(path, str(tmp_path / "rig.ma"))
-    assert not any(a.describe for a in output.PRODUCT.panel(path).actions)
+    assert _descriptions(path) == {1: "Save to rig.ma"}
 
 
 # -- the Versions window ----------------------------------------------------------

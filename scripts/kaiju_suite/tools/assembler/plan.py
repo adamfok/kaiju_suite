@@ -13,7 +13,7 @@ A plan lists a folder's items in build order; folders nest::
 An item with ``items`` is a folder; any other is a file, whose extension
 says its product. ``enabled`` defaults to true. The rest of an item is its
 content, as its product describes it (see ``Product.to_plan``): Scripts
-carry their code, Scenes the Maya file's path, Rig Modules their module and
+carry their code, Import Scenes the Maya file's path, Rig Modules their module and
 parameters. Other items (Mesh, Joints, ...) are planned as empty entries to
 publish into. Versions and run logs aren't part of a plan.
 
@@ -185,7 +185,7 @@ STARTER_OUTPUT = "output.out"
 
 def start_build(root, output_path):
     """Give the build folder ``root`` its usual start: a ``build`` folder
-    holding an Output saving to ``output_path``, published as its first
+    holding an Export Scene saving to ``output_path``, published as its first
     version. Returns ``[build folder]``. Used for new asset rigs."""
     from kaiju_suite.tools.assembler.products import output  # lazily: it imports versions
 
