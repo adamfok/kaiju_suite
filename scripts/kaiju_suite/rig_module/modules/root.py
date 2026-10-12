@@ -16,8 +16,8 @@ Both controls get ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rig import helpers
-from kaiju_suite.rig.module import Param, RigModule
+from kaiju_suite.rig_module import helpers
+from kaiju_suite.rig_module.module import Param, RigModule
 
 UP = (0, 1, 0)
 OFFSET_SIZE = 0.8  # the offset control's size, relative to the root control's

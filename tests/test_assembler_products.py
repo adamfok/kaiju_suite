@@ -4,7 +4,7 @@ import sys
 import pytest
 from maya import cmds
 
-from kaiju_suite import rig
+from kaiju_suite import rig_module
 from kaiju_suite.tools.assembler import logic, products, versions
 from kaiju_suite.tools.assembler.products import folder, mesh, scene, script, separator
 
@@ -180,7 +180,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "Pose", "Animation", "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers",
         None,
-        *(module.name for module in rig.all_modules()),
+        *(module.name for module in rig_module.all_modules()),
         None,
         "QC", "Output",
     ]
