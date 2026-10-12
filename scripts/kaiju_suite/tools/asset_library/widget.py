@@ -99,7 +99,7 @@ class AssetLibraryWindow(ToolWindow):
             self._rig_menu(menu, "Open in Assembler", rigs, self._open_in_assembler)
             menu.addAction("New Rig...", self._new_rig).setToolTip(
                 "Make this the Asset and add a rig (e.g. skeleton, puppet, proxy) with its own build/ and publish/ "
-                "folders, its build started with a build folder and an Output saving to publish/<rig>/"
+                "folders, its build started with a build folder holding an Output saving to publish/<rig>/"
             )
             menu.addAction("Show in Explorer", self._show_in_explorer)
             menu.addSeparator()

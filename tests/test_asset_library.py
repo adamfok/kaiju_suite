@@ -179,8 +179,9 @@ def test_add_rig_starts_the_build_with_a_build_folder_and_an_output_to_publish(t
     logic.set_current(asset.path)
     logic.add_rig(asset.path, "proxy")
     build = tmp_path / "hero" / "build" / "proxy"
-    assert (build / "build").is_dir()
-    out = datafile.read(str(build / "output.out"), "output")
+    assert (build / "build" / "output.out").is_file()
+    assert sorted(os.listdir(build)) == [".assembler.json", "build"]  # nothing beside the folder
+    out = datafile.read(str(build / "build" / "output.out"), "output")
     # Stored with the variable, so it follows the asset if it moves.
     assert out["path"] == "$ASSET/publish/proxy/hero_proxy.ma"
 
@@ -190,7 +191,7 @@ def test_add_rig_output_is_absolute_when_another_asset_is_current(tmp_path, clea
     logic.set_current(other.path)
     asset = logic.create_asset(str(tmp_path), "hero")
     logic.add_rig(asset.path, "proxy")
-    out = datafile.read(os.path.join(logic.build_folder(asset.path, "proxy"), "output.out"), "output")
+    out = datafile.read(os.path.join(logic.build_folder(asset.path, "proxy"), "build", "output.out"), "output")
     assert _norm(out["path"]) == _norm(os.path.join(logic.publish_folder(asset.path, "proxy"), "hero_proxy.ma"))
 
 
