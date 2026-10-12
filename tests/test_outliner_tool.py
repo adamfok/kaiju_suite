@@ -270,3 +270,18 @@ def test_offset_is_one_undo_step(new_scene):
     cmds.undo()
     assert cmds.ls(nodes, long=True) == nodes
     assert not cmds.ls("*_offset")
+
+
+# -- button icons ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("button", ["group", "chain", "offset"])
+def test_button_icons_ship_as_svg(button):
+    import os
+    import xml.etree.ElementTree as ET
+
+    from kaiju_suite.ui import icons
+
+    path = icons.path(f"outliner_tool_{button}.svg")
+    assert os.path.isfile(path), path
+    assert ET.parse(path).getroot().tag == "{http://www.w3.org/2000/svg}svg"

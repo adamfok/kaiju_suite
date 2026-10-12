@@ -2,11 +2,12 @@ from html import escape
 
 from maya import cmds
 from maya.api import OpenMaya as om
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
 from kaiju_suite.tools.outliner_tool import logic
+from kaiju_suite.ui import icons
 from kaiju_suite.ui.base_window import ToolWindow
 
 SETTINGS_KEY = "outliner_tool"
@@ -45,16 +46,20 @@ class OutlinerToolWindow(ToolWindow):
         self.preview.setMinimumHeight(self.preview.fontMetrics().height())
 
         buttons = QtWidgets.QHBoxLayout()
-        for label, tip, action in (
-            ("Group", "Group the selection under a group named after their shared name (L_arm_grp),\n"
+        buttons.setSpacing(2)
+        for name, tip, action in (
+            ("group", "Group: put the selection under a group named after their shared name (L_arm_grp),\n"
                       "or after the first selected node", self._group),
-            ("Chain", "Parent each selected node under the one selected before it", self._chain),
-            ("Offset", "Put a lined-up <node>_offset group above each selected node", self._offset),
+            ("chain", "Chain: parent each selected node under the one selected before it", self._chain),
+            ("offset", "Offset: put a lined-up <node>_offset group above each selected node", self._offset),
         ):
-            button = QtWidgets.QPushButton(label)
+            button = QtWidgets.QToolButton()
+            button.setIcon(icons.icon(f"outliner_tool_{name}.svg"))
+            button.setIconSize(QtCore.QSize(20, 20))
             button.setToolTip(tip)
             button.clicked.connect(action)
             buttons.addWidget(button)
+        buttons.addStretch()
 
         self.layout.addWidget(self.preview)
         self.layout.addLayout(row)

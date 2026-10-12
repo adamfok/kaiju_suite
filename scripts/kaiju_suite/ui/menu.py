@@ -7,14 +7,12 @@ from maya import cmds
 
 import kaiju_suite
 from kaiju_suite.core.log import get_logger
+from kaiju_suite.ui.icons import ICON_DIR
 
 log = get_logger(__name__)
 
 MENU_NAME = "kaijuSuiteMenu"
 MENU_LABEL = "Kaiju"
-ICON_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(kaiju_suite.__file__), "..", "..", "icons")
-)
 
 
 def build():
