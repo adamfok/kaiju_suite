@@ -248,3 +248,126 @@ def test_panel_describes_the_joints(new_scene, tmp_path):
     other = _joint("other")
     path, _ = _publish(tmp_path, root, other)
     assert joints.PRODUCT.panel(path).info == ["4 joints", "Roots: root, other"]
+
+
+# -- skeleton contract: publish warns about joints other rigs may need -------
+
+
+def _warnings(path, *selection):
+    cmds.select(selection)
+    assert versions.publish_problems(path) == []
+    return versions.publish_warnings(path)
+
+
+def test_first_publish_has_no_warnings(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path = joints.PRODUCT.create(str(tmp_path), "skel")
+    assert _warnings(path, root) == []
+
+
+def test_unchanged_or_added_joints_do_not_warn(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    assert _warnings(path, root) == []
+
+    cmds.setAttr(f"{end}.translateY", 9)
+    _joint("tip", end)
+    _joint("twist", mid)
+    assert _warnings(path, root) == []
+
+
+def test_removed_joints_warn(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.delete(end)
+
+    (warning,) = _warnings(path, root)
+    assert "v001" in warning
+    assert "Removed: end" in warning
+
+
+def test_renamed_joints_warn_as_renamed(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.rename(mid, "elbow")
+
+    (warning,) = _warnings(path, root)
+    assert "Renamed: mid → elbow" in warning
+    # end keeps its parent, only under the parent's new name: not moved.
+    assert "end" not in warning
+    assert "Removed" not in warning
+
+
+def test_reparented_joints_warn(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.parent(end, root)
+
+    (warning,) = _warnings(path, root)
+    assert "Moved to a new parent: end (was under mid, now under root)" in warning
+
+
+def test_a_joint_moved_out_of_the_selection_warns_as_removed(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.parent(end, world=True)
+
+    (warning,) = _warnings(path, root)
+    assert "Removed: end" in warning
+
+
+def test_compares_with_the_latest_publish_not_unpublished_changes(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.delete(end)
+    data.write(path, "joints", joints.PRODUCT.gather([root]))  # unpublished: no end
+
+    (warning,) = _warnings(path, root)
+    assert "Removed: end" in warning
+
+
+def test_compares_with_the_newest_version(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.delete(end)
+    cmds.select(root)
+    versions.publish_action(path).fn()  # v002, without end
+
+    assert _warnings(path, root) == []
+
+
+def test_publishing_anyway_still_works(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.delete(end)
+    cmds.select(root)
+    assert versions.publish_warnings(path)
+    assert versions.publish_action(path).fn().endswith("v002")
+
+
+def test_unreadable_latest_version_does_not_warn(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    with open(versions.list_versions(path)[0].path, "w") as f:
+        f.write("not json")
+    cmds.delete(end)
+
+    assert _warnings(path, root) == []
+
+
+def test_nothing_selected_gives_no_contract_warnings(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.select(clear=True)
+    assert versions.publish_warnings(path) == []
+
+
+def test_a_renamed_joint_under_a_renamed_parent_warns_as_renamed(new_scene, tmp_path):
+    root, mid, end = _chain()
+    path, _ = _publish(tmp_path, root)
+    cmds.rename(end, "wrist")
+    cmds.rename(mid, "elbow")
+
+    (warning,) = _warnings(path, root)
+    assert "Renamed: mid → elbow, end → wrist" in warning
+    assert "Removed" not in warning and "Moved" not in warning

@@ -5,12 +5,16 @@ creates new joints and never changes existing ones: a name that's taken gets
 the next free one (``spine_jnt`` → ``spine_jnt1``). A joint whose parent
 isn't in the file goes under the scene's node of that name, if there is one,
 otherwise under the world.
+
+Other rigs find these joints by name, so Publish warns (and asks whether to
+publish anyway) when the latest published version has joints this publish
+removes, renames or moves to another parent. Added joints don't warn.
 """
 
 from maya import cmds
 
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.tools.assembler import data
+from kaiju_suite.tools.assembler import data, versions
 
 _VECTORS = ("translate", "rotate", "jointOrient", "scale", "preferredAngle")
 _INTS = ("rotateOrder", "side", "type")
@@ -55,6 +59,55 @@ def _record(path, index_of):
     return record
 
 
+def _contract_changes(old, new):
+    """``(removed, renamed, moved)`` going from records ``old`` to ``new``:
+    what breaks rigs that find these joints by name. ``renamed`` pairs a
+    removed joint with an added one under the same parent at the same place;
+    ``moved`` is ``(name, old parent, new parent)``, a renamed parent not
+    counting as a move. Added joints aren't changes."""
+    new_by = {r["name"]: r for r in new}
+    old_names = {r["name"] for r in old}
+    gone = [r for r in old if r["name"] not in new_by]
+    added = [r for r in new if r["name"] not in old_names]
+
+    renamed = {}
+
+    def place(record, old_side=False):
+        parent = renamed.get(record["parent"], record["parent"]) if old_side else record["parent"]
+        return parent, tuple(round(v, 4) for v in record["translate"])
+
+    # A gone joint and an added one match when exactly one of each sits there.
+    # Records are parents first, so a parent's new name is known before its children.
+    for record in gone:
+        here = place(record, old_side=True)
+        matches = [a for a in added if place(a) == here]
+        if len(matches) == 1 and sum(place(g, old_side=True) == here for g in gone) == 1:
+            renamed[record["name"]] = matches[0]["name"]
+    removed = [r["name"] for r in gone if r["name"] not in renamed]
+
+    moved = []
+    for record in old:
+        current = new_by.get(record["name"])
+        if current is not None and renamed.get(record["parent"], record["parent"]) != current["parent"]:
+            moved.append((record["name"], record["parent"], current["parent"]))
+    return removed, list(renamed.items()), moved
+
+
+def _contract_warning(version, old, new):
+    """The publish warning for ``_contract_changes(old, new)``, or ``None``."""
+    removed, renamed, moved = _contract_changes(old, new)
+    if not (removed or renamed or moved):
+        return None
+    lines = [f"Compared with {version.tag}, this changes joints that other rigs find by name:"]
+    if removed:
+        lines.append(f"    Removed: {', '.join(removed)}")
+    if renamed:
+        lines.append(f"    Renamed: {', '.join(f'{a} → {b}' for a, b in renamed)}")
+    for name, was, now in moved:
+        lines.append(f"    Moved to a new parent: {name} (was under {was or 'the world'}, now under {now or 'the world'})")
+    return "\n".join(lines)
+
+
 def _set_values(path, record):
     for attr in _VECTORS:
         cmds.setAttr(f"{path}.{attr}", *record[attr])
@@ -80,6 +133,22 @@ class JointsProduct(data.DataProduct):
         if not cmds.ls(selection, type="joint"):
             return ["No joints selected. Select the root joints to publish."]
         return []
+
+    def publish_warnings(self, path):
+        """Joints the latest published version has that this publish removes,
+        renames or moves to another parent. Skin, Pose Correctives, Wrap and
+        Animation items find joints by name, so these break them."""
+        warnings = super().publish_warnings(path)
+        latest = next(iter(versions.list_versions(path)), None)
+        if latest is None:
+            return warnings
+        try:
+            old = data.read(latest.path, self.kind)["joints"]
+            new = self.gather(cmds.ls(selection=True, long=True) or [])["joints"]
+            warning = _contract_warning(latest, old, new)
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError):
+            return warnings  # nothing to publish, or a version this can't read
+        return warnings + ([warning] if warning else [])
 
     def gather(self, selection):
         paths = _joints_under(selection)
