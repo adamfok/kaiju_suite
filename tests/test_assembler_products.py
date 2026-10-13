@@ -50,7 +50,7 @@ def with_json(monkeypatch):
 def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
-        "Script", "Folder", "Import Scene", "New Scene", "Guide", "Joints", "Mesh", "Curves", "SkinCluster",
+        "Script", "Folder", "Import Scene", "New Scene", "Guide", "Guides to Joints", "Joints", "Mesh", "Curves", "SkinCluster",
         "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives", "Material", "Pose", "Animation",
         "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers", "ControlShape", "Separator",
         "Rig Module", "QC", "Export Scene",
@@ -175,7 +175,7 @@ def test_new_menu_groups_products_with_dividers():
     assert _menu_labels() == [
         "Script", "Import Scene", "New Scene",
         None,
-        "Mesh", "Material", *(guide_module.name for guide_module in all_guide_modules()), "Joints",
+        "Mesh", "Material", *(guide_module.name for guide_module in all_guide_modules()), "Guides to Joints", "Joints",
         "ControlShape", "Curves",
         None,
         "SkinCluster", "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives",

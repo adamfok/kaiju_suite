@@ -141,3 +141,18 @@ def test_set_layout_refuses_a_layout_it_cant_build_and_changes_nothing(new_scene
     with pytest.raises(ValueError, match="different axes"):
         guides.set_layout(group, POSITIONS, UP, aim="x", up="-x")
     assert guides.layout(group) == before
+
+
+
+# -- extract_problems: whether delete_guides can extract the joints ------------
+
+
+def test_extract_problems_is_empty_for_whole_guides(new_scene):
+    assert guides.extract_problems(guides.build_at("arm", POSITIONS, UP)) == []
+
+
+def test_extract_problems_names_missing_guides(new_scene):
+    group = guides.build_at("arm", POSITIONS, UP)
+    cmds.delete(guides.guides(group)["up"])
+    (problem,) = guides.extract_problems(group)
+    assert "arm_guides_grp" in problem and "missing" in problem

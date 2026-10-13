@@ -11,6 +11,10 @@ Like the rest of :mod:`kaiju_suite.rigging`, this imports only
 :mod:`kaiju_suite.core`: never ``ui``, ``tools`` or ``datatypes``, and no Qt.
 """
 
+from maya import cmds
+
+from kaiju_suite.core.selection import short_name
+from kaiju_suite.core.undo import undo_chunk
 from kaiju_suite.rigging import find_instances
 
 
@@ -40,3 +44,31 @@ def get_guide_module(key):
             return guide_module
     known = ", ".join(m.key for m in all_guide_modules()) or "none"
     raise LookupError(f"Unknown guide module {key!r} (known: {known}).")
+
+
+def delete_all_guides():
+    """Extract the joints of every guide module in the scene (see
+    :meth:`.guide_module.GuideModule.extract`), as one undo step. Checks
+    them all first and raises :class:`.guide_module.GuideError`, changing
+    nothing, if any can't be extracted. Returns ``{guides name: joints}``,
+    empty with no guides."""
+    from kaiju_suite.rigging.guide_module.guide_module import TAG, GuideError
+
+    found, problems = [], []
+    for group in cmds.ls(f"*.{TAG}", objectsOnly=True, long=True, recursive=True) or []:
+        try:
+            guide_module = get_guide_module(cmds.getAttr(f"{group}.{TAG}"))
+        except LookupError as e:
+            problems.append(f"{short_name(group)}: {e}")
+            continue
+        problems += [f"{short_name(group)}: {p}" for p in guide_module.check_extract(group)]
+        found.append((cmds.ls(group, uuid=True)[0], guide_module))
+    if problems:
+        raise GuideError("Can't turn the guides into joints:\n" + "\n".join(f"- {p}" for p in problems))
+    extracted = {}
+    with undo_chunk("Kaiju Guides to Joints"):
+        for uuid, guide_module in found:
+            group = cmds.ls(uuid, long=True)[0]
+            name = guide_module.layout(group)["name"]
+            extracted[name] = guide_module.extract(group)
+    return extracted
