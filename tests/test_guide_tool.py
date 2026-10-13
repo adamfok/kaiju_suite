@@ -518,6 +518,31 @@ def test_previews_show_their_local_axis_and_cannot_be_selected(new_scene):
         assert cmds.listRelatives(disc, shapes=True, type="nurbsSurface")
 
 
+def test_preview_discs_are_shaded_so_they_show_where_they_cut_a_mesh(new_scene):
+    group = logic.create_guides("arm", 1)
+    plane = logic.plane(group)
+
+    for preview in logic.previews(group):
+        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+        assert cmds.getAttr(f"{disc}.overrideShading")
+        shape = cmds.listRelatives(disc, shapes=True, fullPath=True)[0]
+        engines = cmds.listConnections(shape, type="shadingEngine") or []
+        assert len(set(engines)) == 1
+        material = cmds.listConnections(f"{engines[0]}.surfaceShader")[0]
+        assert cmds.nodeType(material) == "lambert"
+        assert cmds.getAttr(f"{material}.transparency")[0][0] > 0
+    # The plane stays a wireframe grid, so it doesn't hide the mesh.
+    assert not cmds.getAttr(f"{plane}.overrideShading")
+
+
+def test_guides_show_their_selection_handle(new_scene):
+    group = logic.create_guides("arm", 1)
+
+    found = logic.guides(group)
+    for node in found["chain"] + [found["up"]]:
+        assert cmds.getAttr(f"{node}.displayHandle")
+
+
 @pytest.mark.parametrize("aim, up", [("x", "y"), ("-y", "z"), ("z", "x")])
 def test_preview_discs_ring_the_bone(new_scene, aim, up):
     group = _bent_arm()

@@ -43,6 +43,10 @@ _THIRD = "previewThird"
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
 _DISC_COLOR = 18  # light blue
+# The discs' material: light blue, partly see-through, so a disc shows where
+# it cuts a mesh without hiding the guide in its middle.
+_DISC_SHADE = (0.35, 0.75, 1.0)
+_DISC_TRANSPARENCY = 0.4
 # Turns a disc made around X to ring the aim axis, by the aim axis' index.
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
@@ -111,6 +115,7 @@ def _guide(name, group, position, size):
     shape = cmds.listRelatives(guide, shapes=True, fullPath=True)[0]
     cmds.setAttr(f"{shape}.localScale", size, size, size)
     _lock_to_move_only(guide)
+    cmds.setAttr(f"{guide}.displayHandle", True)
     return guide
 
 
@@ -137,7 +142,11 @@ def _display_curve(name, group, guides):
 def _util(group, node_type, name):
     """A utility node of the preview network, linked to ``group`` so it's
     deleted with it."""
-    node = cmds.createNode(node_type, name=name)
+    return _track(group, cmds.createNode(node_type, name=name))
+
+
+def _track(group, node):
+    """Link ``node`` to ``group`` so it's deleted with it."""
     index = len(cmds.getAttr(f"{group}.{_NODES}", multiIndices=True) or [])
     _link(node, group, f"{_NODES}[{index}]")
     return node
@@ -175,11 +184,11 @@ def _aligned(group, name, position, primary_axis, primary, secondary_axis, secon
     return f"{aim}.outputMatrix"
 
 
-def _visual(node, color=None):
-    """Draw ``node`` as unselectable wireframe."""
+def _visual(node, color=None, shaded=False):
+    """Draw ``node`` unselectable, as wireframe unless ``shaded``."""
     cmds.setAttr(f"{node}.overrideEnabled", True)
     cmds.setAttr(f"{node}.overrideDisplayType", 2)  # reference
-    cmds.setAttr(f"{node}.overrideShading", False)
+    cmds.setAttr(f"{node}.overrideShading", shaded)
     if color is not None:
         cmds.setAttr(f"{node}.overrideColor", color)
 
@@ -192,13 +201,24 @@ def _placed(group, node, matrix):
     return node
 
 
-def _disc(name, parent, radius):
+def _disc_material(group, name):
+    """The shading group the discs of ``group`` share."""
+    material = _util(group, "lambert", f"{name}_disc_mat")
+    cmds.setAttr(f"{material}.color", *_DISC_SHADE)
+    cmds.setAttr(f"{material}.transparency", *([_DISC_TRANSPARENCY] * 3))
+    engine = _track(group, cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=f"{name}_disc_sg"))
+    cmds.connectAttr(f"{material}.outColor", f"{engine}.surfaceShader")
+    return engine
+
+
+def _disc(name, parent, radius, engine):
     circle = cmds.circle(normal=(1, 0, 0), radius=radius, constructionHistory=False)[0]
     disc = cmds.planarSrf(circle, constructionHistory=False)[0]
     cmds.delete(circle)
     disc = cmds.rename(cmds.parent(disc, parent)[0], name)
     disc = _long(f"{parent}|{disc}")
-    _visual(disc, _DISC_COLOR)
+    _visual(disc, _DISC_COLOR, shaded=True)
+    cmds.sets(cmds.listRelatives(disc, shapes=True, fullPath=True), edit=True, forceElement=engine)
     return disc
 
 
@@ -212,6 +232,7 @@ def _preview_network(group, name, chain, up, size):
     cmds.connectAttr(_difference(group, f"{name}_to_up", _world_position(up), start), f"{cross}.input2")
     normal = f"{cross}.output"
 
+    engine = _disc_material(group, name)
     points = [start]
     for i, guide in enumerate(chain[1:-1], start=2):
         position = _world_position(guide)
@@ -237,7 +258,7 @@ def _preview_network(group, name, chain, up, size):
         )
         preview = _placed(group, cmds.createNode("transform", name=f"{label}_preview"), matrix)
         cmds.setAttr(f"{preview}.displayLocalAxis", True)
-        _disc(f"{label}_disc", preview, size * 2)
+        _disc(f"{label}_disc", preview, size * 2, engine)
         _link(preview, group, f"{_PREVIEWS}[{i}]")
 
     center = _util(group, "plusMinusAverage", f"{name}_center")
