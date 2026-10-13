@@ -806,3 +806,27 @@ def test_guide_tool_is_a_top_level_menu_entry():
     assert tool is not None
     assert "category" not in tool
     assert "Guide Tool" in [t["name"] for t in registry.menu_tools()]
+
+
+# -- opened on an Assembler Guide item --------------------------------------------
+
+
+def test_the_tool_opens_on_a_file(tmp_path):
+    assert "open" in registry.find("Guide Tool")
+
+
+def test_item_fields_fill_the_window_from_a_guide_file(new_scene, tmp_path):
+    from kaiju_suite import datatypes
+    from kaiju_suite.datatypes import guides as guide_data
+
+    group = logic.build_guides("L_arm", 3, aim="-x", up="z")
+    path = str(tmp_path / "L_arm.guide")
+    datatypes.save(guide_data, path, [group])
+    assert logic.item_fields(path) == {"name": "L_arm", "count": 3, "aim": "-x", "up": "z"}
+
+
+def test_item_fields_of_an_empty_item_says_to_publish(tmp_path):
+    path = tmp_path / "L_arm.guide"
+    path.write_bytes(b"")
+    with pytest.raises(ValueError, match="L_arm.guide is empty"):
+        logic.item_fields(str(path))

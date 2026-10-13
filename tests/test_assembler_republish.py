@@ -523,6 +523,7 @@ def test_control_shape(new_scene, tmp_path):
 def test_exactly_these_products_can_republish():
     names = {p.name for p in products.all_products() if p.can_republish}
     assert names == {
+        "Guide",
         "Joints",
         "Mesh",
         "SkinCluster",
