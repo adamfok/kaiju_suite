@@ -308,6 +308,49 @@ def test_restore_switches_between_versions_with_different_subfolders(tmp_path):
     assert versions.tree_label(os.path.join(root, "legs", "R.py")) == ("v001", True)
 
 
+def test_restore_switches_a_published_subfolder_to_its_matching_version(rig):
+    sub = os.path.join(rig, "sub")
+    versions.save_version(sub)  # sub v001: b.py v1
+    versions.save_version(rig)  # rig v001
+    _published(os.path.join(sub, "b.py"), "b = 2\n")
+    versions.save_version(sub)  # sub v002: b.py v2
+    versions.save_version(rig)  # rig v002
+
+    versions.restore_version(rig, 1)
+    assert versions.tree_label(sub) == ("v001", False)
+    versions.restore_version(rig, 2)
+    assert versions.tree_label(sub) == ("v002", True)
+
+
+def test_restore_switches_nested_subfolders_to_their_matching_versions(tmp_path):
+    root = str(tmp_path / "rig")
+    arms = os.path.join(root, "arms")
+    hands = os.path.join(arms, "hands")
+    _published(os.path.join(hands, "L.py"), "l = 1\n")
+    versions.save_version(hands)
+    versions.save_version(arms)
+    versions.save_version(root)  # all v001
+    _published(os.path.join(hands, "L.py"), "l = 2\n")
+    versions.save_version(hands)
+    versions.save_version(arms)
+    versions.save_version(root)  # all v002
+
+    versions.restore_version(root, 1)
+    assert versions.tree_label(arms) == ("v001", False)
+    assert versions.tree_label(hands) == ("v001", False)
+
+
+def test_restore_leaves_a_subfolder_starred_when_no_version_of_it_matches(rig):
+    sub = os.path.join(rig, "sub")
+    versions.save_version(sub)  # sub v001: b.py v1
+    _published(os.path.join(sub, "b.py"), "b = 2\n")
+    versions.save_version(rig)  # rig v001: sub not republished
+    _published(os.path.join(sub, "b.py"), "b = 3\n")
+    versions.save_version(rig)  # rig v002
+    versions.restore_version(rig, 1)
+    assert versions.tree_label(sub) == ("v001*", True)
+
+
 def test_a_removed_subfolder_keeps_its_items_histories(tmp_path):
     root = str(tmp_path / "rig")
     _published(os.path.join(root, "a.py"), "a = 1\n")
