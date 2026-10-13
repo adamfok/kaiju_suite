@@ -3,15 +3,17 @@
 A chain's guides are a start guide, any number of middle guides and an end
 guide, plus an up guide off to the side, like a pole vector. They can only
 be moved: rotate and scale are locked. They sit under ``<name>_guides_grp``,
-which finds them (and the joints built from them) through message
-connections, so renaming them is fine.
+which finds them (and their joints) through message connections, so
+renaming them is fine.
 
-Building joints puts them on the plane through the start, end and up
-guides: middle guides off that plane are projected onto it. Each joint's
-aim axis points at the next joint and its up axis lies in the plane, on the
-up guide's side, so the third axis is the plane's normal for every joint
-and the chain bends around that one axis. The end joint sits on the end
-guide and lines up with its parent.
+Building guides also builds a joint chain that follows them live: a node
+network puts the joints on the plane through the start, end and up guides
+(middle guides off that plane are projected onto it). Each joint's aim axis
+points at the next joint and its up axis lies in the plane, on the up
+guide's side, so the third axis is the plane's normal for every joint and
+the chain bends around that one axis. The end joint sits on the end guide
+and lines up with its parent. Deleting the guides extracts the joints: they
+stay where they are, with plain translate and joint orient values.
 
 Every function that changes the scene is one undo step and raises
 ``ValueError``, changing nothing, when its input is wrong.
@@ -41,6 +43,8 @@ _AIM = "previewAim"
 _THIRD = "previewThird"
 # The aim and up axes as chosen ("x", "-y"...), kept for rebuilding the guides.
 _AXES_TEXT = "previewAxes"
+# A joint's channels, locked while the guides drive it.
+_MOVES = ("tx", "ty", "tz", "rx", "ry", "rz")
 # Closer than this counts as the same spot.
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
@@ -134,7 +138,7 @@ def _display_curve(name, group, guides):
     return curve
 
 
-# -- live preview -------------------------------------------------------------
+# A node network places the joints live: it projects the middle
 # A node network does what build_joints does, live: it projects the middle
 # guides onto the plane and orients a preview transform per joint (aim at
 # the next joint, third axis along the plane normal) with aimMatrix nodes.
@@ -292,7 +296,7 @@ def _preview_network(group, name, chain, up, size):
 
 def _apply_axes(group, aim, up):
     """Point the previews' ``aim`` axis down the chain and their ``up`` axis
-    to the up guide's side, as build_joints does (``(index, sign)`` pairs)."""
+    to the up guide's side; the joints follow them (``(index, sign)`` pairs)."""
     direction, normal = om.MVector(1, 0, 0), om.MVector(0, 0, 1)
     matrix = orient.aim_matrix(direction, aim, up, normal ^ direction)
     third = 3 - aim[0] - up[0]
@@ -391,33 +395,29 @@ def planar_positions(points, up):
 # -- editing ------------------------------------------------------------------
 
 
-@undoable
-def create_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim="x", up="y"):
-    """Make guides for a chain named ``name``: start and end guides at
-    ``start`` and ``end``, ``count`` middle guides evenly between them, and
-    an up guide off to the side, with a live preview of the joints (oriented
-    by ``aim`` and ``up``, see :func:`build_joints`) and of their plane.
-    Returns the guide group."""
-    if not isinstance(name, str) or not NAME.match(name):
-        raise ValueError(
-            f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit."
-        )
-    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
-        raise ValueError("The number of middle guides must be 0 or more.")
+def _chain_names(name, count):
+    middles = [f"{name}_mid_{i:02d}_guide" for i in range(1, count + 1)]
+    return [f"{name}_start_guide"] + middles + [f"{name}_end_guide"]
+
+
+def _joint_names(name, count):
+    return [f"{name}_{i:02d}_jnt" for i in range(1, count + 3)]
+
+
+def _names(name, count):
+    """Every name building ``count`` middle guides for ``name`` uses."""
+    names = [f"{name}_guides_grp", f"{name}_up_guide", f"{name}_guide_crv", f"{name}_up_crv", f"{name}_plane"]
+    names += _chain_names(name, count) + _joint_names(name, count)
+    return names + [f"{name}_{i:02d}_{kind}" for i in range(1, count + 3) for kind in ("preview", "disc")]
+
+
+def _create_guides(name, count, start, end, axes):
+    """Make the guide group, guides and preview for a chain named ``name``:
+    start and end guides at ``start`` and ``end``, ``count`` middle guides
+    evenly between them, and an up guide off to the side."""
     start, end = om.MVector(start), om.MVector(end)
     span = end - start
-    if span.length() < _TOLERANCE:
-        raise ValueError("The start and end guides can't be on the same spot.")
-    axes = _axes(aim, up)
-
-    chain_names = (
-        [f"{name}_start_guide"] + [f"{name}_mid_{i:02d}_guide" for i in range(1, count + 1)] + [f"{name}_end_guide"]
-    )
-    names = [f"{name}_guides_grp", f"{name}_up_guide", f"{name}_guide_crv", f"{name}_up_crv", f"{name}_plane"]
-    names += chain_names + [f"{name}_{i:02d}_{kind}" for i in range(1, count + 3) for kind in ("preview", "disc")]
-    taken = [n for n in names if cmds.objExists(n)]
-    if taken:
-        raise ValueError(f"These names are already used, rename or delete them first: {', '.join(taken)}")
+    chain_names = _chain_names(name, count)
 
     group = _long(cmds.createNode("transform", name=f"{name}_guides_grp"))
     cmds.addAttr(group, longName=_TAG, dataType="string")
@@ -453,98 +453,140 @@ def create_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim="x", up="y")
     return group
 
 
-@undoable
-def build_joints(group, aim="x", up="y"):
-    """Build a planar joint chain from ``group``'s guides, or, if one was
-    built already, move and re-orient those joints (keeping their names
-    and what's attached to them). ``aim`` points at the next joint and
-    ``up`` towards the up guide's side, both ``"x"``, ``"-y"``...
-    Returns the joints, top first."""
-    group = guide_group(group)
-    aim_axis, up_axis = _axes(aim, up)
-    found = guides(group)
-    positions, normal = _plane([_position(g) for g in found["chain"]], _position(found["up"]))
-
-    existing = joints(group)
-    if existing and len(existing) != len(positions):
-        raise ValueError(
-            f"The chain built from these guides has {len(existing)} joints but the guides make {len(positions)}. "
-            "Delete the joints to build a new chain."
-        )
-    if existing:
-        uuids = cmds.ls(existing, uuid=True)
-    else:
-        name = cmds.getAttr(f"{group}.{_TAG}")
-        names = [f"{name}_{i:02d}_jnt" for i in range(1, len(positions) + 1)]
-        taken = [n for n in names if cmds.objExists(n)]
-        if taken:
-            raise ValueError(f"These names are already used, rename or delete them first: {', '.join(taken)}")
+def _live_joints(group, name, uuids=None):
+    """Make the chain's joints follow the previews (``uuids`` are joints to
+    reuse, top first; new ones are made if not given). Each joint's offset
+    parent matrix is its preview's world matrix in the space of the preview
+    above it, which is where its parent joint is (the top joint takes its
+    preview's world matrix, so it must stay at the world root). Reading the
+    joints' own parentInverseMatrix instead goes stale. Translate and rotate
+    stay zero, locked."""
+    if uuids is None:
         uuids, parent = [], None
-        for i, joint_name in enumerate(names):
-            joint = cmds.createNode("joint", name=joint_name, **({"parent": parent} if parent else {}))
-            joint = _long(joint)
+        for joint_name in _joint_names(name, len(previews(group)) - 2):
+            joint = _long(cmds.createNode("joint", name=joint_name, **({"parent": parent} if parent else {})))
             if parent:
                 cmds.connectAttr(f"{parent}.scale", f"{joint}.inverseScale", force=True)
-            _link(joint, group, f"{_JOINTS}[{i}]")
             uuids.append(cmds.ls(joint, uuid=True)[0])
             parent = joint
-
-    _apply_axes(group, aim_axis, up_axis)
-    last = len(uuids) - 1
-    for i, uuid in enumerate(uuids):
+    shown = previews(group)
+    for i, (uuid, preview) in enumerate(zip(uuids, shown)):
         joint = _by_uuid(uuid)
-        position = positions[i]
-        cmds.xform(joint, worldSpace=True, translation=(position.x, position.y, position.z))
-        if i < last:
-            direction = positions[i + 1] - position
-            world = orient.aim_matrix(direction, aim_axis, up_axis, normal ^ direction)
-            orient.set_world_rotation(joint, world)
+        for attr in _MOVES:
+            cmds.setAttr(f"{joint}.{attr}", lock=False)
+        for attr in ("translate", "rotate", "rotateAxis", "jointOrient"):
+            cmds.setAttr(f"{joint}.{attr}", 0, 0, 0)
+        for attr in _MOVES:
+            cmds.setAttr(f"{joint}.{attr}", lock=True)
+        if i == 0:
+            cmds.connectAttr(f"{preview}.worldMatrix[0]", f"{joint}.offsetParentMatrix", force=True)
         else:
-            for attr in ("rotate", "rotateAxis", "jointOrient"):
-                cmds.setAttr(f"{joint}.{attr}", 0, 0, 0)
+            mult = _util(group, "multMatrix", f"{name}_{i + 1:02d}_joint_mult")
+            cmds.connectAttr(f"{preview}.worldMatrix[0]", f"{mult}.matrixIn[0]")
+            cmds.connectAttr(f"{shown[i - 1]}.worldInverseMatrix[0]", f"{mult}.matrixIn[1]")
+            cmds.connectAttr(f"{mult}.matrixSum", f"{joint}.offsetParentMatrix", force=True)
+        _link(joint, group, f"{_JOINTS}[{i}]")
+
+
+def _extract(group):
+    """Delete ``group`` and everything it made, and cut its joints loose
+    where they are, with plain translate and joint orient values (rotate
+    zero). Returns them, top first."""
+    found = guides(group)
+    _plane([_position(g) for g in found["chain"]], _position(found["up"]))  # raises if it can't be built
+    linked = joints(group)
+    uuids = cmds.ls(linked, uuid=True)
+    worlds = [om.MMatrix(cmds.xform(j, query=True, worldSpace=True, matrix=True)) for j in linked]
+    # One delete takes the drivers too, so the joints keep their last value.
+    _remove(group)
+    for uuid in uuids:
+        joint = _by_uuid(uuid)
+        cmds.setAttr(f"{joint}.offsetParentMatrix", list(om.MMatrix()), type="matrix")
+        for attr in _MOVES:
+            cmds.setAttr(f"{joint}.{attr}", lock=False)
+    for uuid, world in zip(uuids, worlds):
+        joint = _by_uuid(uuid)
+        cmds.xform(joint, worldSpace=True, translation=(world[12], world[13], world[14]))
+        orient.set_world_rotation(joint, world)
     return [_by_uuid(uuid) for uuid in uuids]
 
 
-@undoable
-def set_axes(group, aim="x", up="y"):
-    """Turn ``group``'s previews to show joints built with ``aim`` and
-    ``up`` (see :func:`build_joints`)."""
-    _apply_axes(guide_group(group), *_axes(aim, up))
+def _remove(group):
+    cmds.delete(_connected(group, _NODES) + [group])
 
 
 @undoable
-def rebuild_guides(group, count):
-    """Give ``group``'s chain ``count`` middle guides, evenly between its
-    start and end guides, which stay where they are with the up guide; the
-    preview keeps its axes and the built joints stay linked. Returns the new
-    guide group, named as before."""
-    group = guide_group(group)
+def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None):
+    """Build guides for a chain named ``name`` with ``count`` middle guides,
+    and a joint chain that follows them live (``aim`` points at the next
+    joint and ``up`` towards the up guide's side, ``"x"``, ``"-y"``...).
+
+    New guides go from ``start`` to ``end`` with the up guide to the side,
+    aiming +X with up +Y unless given. If guides named ``name`` exist, their
+    start, end and up guides stay where they are and the middle guides are
+    replaced by ``count`` new ones, evenly between start and end; the axes
+    stay unless given. Their joints stay too, unless the number of joints
+    changes: then the old joints are replaced by new ones.
+    Returns the guide group."""
+    if not isinstance(name, str) or not NAME.match(name):
+        raise ValueError(
+            f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit."
+        )
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise ValueError("The number of middle guides must be 0 or more.")
-    found = guides(group)
-    start, end, up = _position(found["chain"][0]), _position(found["chain"][-1]), _position(found["up"])
-    name = cmds.getAttr(f"{group}.{_TAG}")
-    # Guides made before the axes were kept have none: use the defaults.
-    kept = cmds.attributeQuery(_AXES_TEXT, node=group, exists=True) and cmds.getAttr(f"{group}.{_AXES_TEXT}")
-    aim, up_axis = kept.split() if kept else ("x", "y")
-    built = cmds.ls(joints(group), uuid=True)
+    old = f"{name}_guides_grp"
+    old = _long(old) if cmds.objExists(old) and _is_group(old) else None
+    owned, keep, doomed = set(), None, []
+    if old:
+        found = guides(old)
+        start, end = _position(found["chain"][0]), _position(found["chain"][-1])
+        up_position = _position(found["up"])
+        # Guides made before the axes were kept have none: use the defaults.
+        kept = cmds.attributeQuery(_AXES_TEXT, node=old, exists=True) and cmds.getAttr(f"{old}.{_AXES_TEXT}")
+        kept = kept.split() if kept else ("x", "y")
+        aim, up = aim or kept[0], up or kept[1]
+        linked = joints(old)
+        if len(linked) == count + 2:
+            keep = cmds.ls(linked, uuid=True)
+        else:
+            doomed = cmds.ls(linked, uuid=True)
+        # Names the old guides (and joints about to go) use are free to reuse.
+        owned = set(cmds.ls(old, dag=True, long=True)) | set(cmds.ls(_connected(old, _NODES), long=True))
+        owned |= set(cmds.ls(linked, dag=True, long=True))
+    axes = _axes(aim or "x", up or "y")
+    if (om.MVector(end) - om.MVector(start)).length() < _TOLERANCE:
+        raise ValueError("The start and end guides can't be on the same spot.")
+    taken = [n for n in _names(name, count) if set(cmds.ls(n, long=True)) - owned]
+    if taken:
+        raise ValueError(f"These names are already used, rename or delete them first: {', '.join(taken)}")
 
-    delete_guides(group)
-    group = create_guides(name, count, start=start, end=end, aim=aim, up=up_axis)
-    cmds.xform(guides(group)["up"], worldSpace=True, translation=(up.x, up.y, up.z))
-    for i, uuid in enumerate(built):
-        _link(_by_uuid(uuid), group, f"{_JOINTS}[{i}]")
+    if old:
+        _remove(old)
+        for uuid in doomed:
+            if cmds.ls(uuid):
+                cmds.delete(cmds.ls(uuid, long=True))
+    group = _create_guides(name, count, start, end, axes)
+    if old:
+        cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
+    _live_joints(group, name, keep)
     return group
 
 
 @undoable
+def set_axes(group, aim="x", up="y"):
+    """Turn ``group``'s joints and previews: ``aim`` points at the next joint
+    and ``up`` towards the up guide's side (see :func:`build_guides`)."""
+    _apply_axes(guide_group(group), *_axes(aim, up))
+
+
+@undoable
 def toggle_joints(group):
-    """Hide the joints built from ``group``'s guides, or show them all if any
+    """Hide ``group``'s joints, or show them all if any
     is hidden. Only the joints are hidden (draw style None), not what hangs
     below them. Returns whether they're shown now."""
     found = joints(group)
     if not found:
-        raise ValueError("No joints built from these guides yet. Build Joints first.")
+        raise ValueError("No joints linked to these guides. Build the guides again.")
     show = any(cmds.getAttr(f"{joint}.drawStyle") == 2 for joint in found)
     for joint in found:
         cmds.setAttr(f"{joint}.drawStyle", 0 if show else 2)  # 0 = Bone, 2 = None
@@ -553,7 +595,7 @@ def toggle_joints(group):
 
 @undoable
 def delete_guides(group):
-    """Delete ``group``, its guides and their preview. Joints built from
-    them stay."""
-    group = guide_group(group)
-    cmds.delete(_connected(group, _NODES) + [group])
+    """Delete ``group``, its guides and their preview, and extract their
+    joints: they stay where they are, cut loose, with plain translate and
+    joint orient values. Returns the joints, top first."""
+    return _extract(guide_group(group))

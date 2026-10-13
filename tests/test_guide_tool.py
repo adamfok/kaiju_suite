@@ -34,10 +34,10 @@ def _normal(group):
     return ((end - start) ^ (up - start)).normalize()
 
 
-def _bent_arm():
+def _bent_arm(**kwargs):
     """Guides for an arm with three middle guides dragged off the plane,
     one of them so far that its segment points back towards the up guide."""
-    group = logic.create_guides("arm", 3, start=(0, 0, 0), end=(12, 0, 0))
+    group = logic.build_guides("arm", 3, start=(0, 0, 0), end=(12, 0, 0), **kwargs)
     found = logic.guides(group)
     _move(found["up"], 6, 5, 0)
     mids = found["chain"][1:-1]
@@ -45,6 +45,41 @@ def _bent_arm():
     _move(mids[1], 6, -3, -4)
     _move(mids[2], 7, 4, 2)
     return group
+
+
+def _rows(node):
+    return [_axis(node, axis) for axis in ("x", "y", "z")]
+
+
+def _same_frame(a, b):
+    assert (_pos(a) - _pos(b)).length() < 1e-4, (a, b)
+    for row_a, row_b in zip(_rows(a), _rows(b)):
+        assert (row_a - row_b).length() < 1e-4, (a, b)
+
+
+def _planar(group):
+    found = logic.guides(group)
+    return logic.planar_positions([_pos(g) for g in found["chain"]], _pos(found["up"]))
+
+
+def _center(node):
+    box = cmds.exactWorldBoundingBox(node)
+    return om.MVector((box[0] + box[3]) / 2, (box[1] + box[4]) / 2, (box[2] + box[5]) / 2)
+
+
+def _disc(preview):
+    return cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+
+
+def _frames(nodes):
+    return [(_pos(n), _rows(n)) for n in nodes]
+
+
+def _same_frames(before, after):
+    for (pos_a, rows_a), (pos_b, rows_b) in zip(before, after):
+        assert (pos_a - pos_b).length() < 1e-4
+        for a, b in zip(rows_a, rows_b):
+            assert (a - b).length() < 1e-4
 
 
 # -- planar_positions ---------------------------------------------------------
@@ -95,11 +130,11 @@ def test_planar_positions_reject_two_joints_on_the_same_spot():
         logic.planar_positions([(0, 0, 0), (0, 0, 5), (10, 0, 0)], (5, 5, 0))
 
 
-# -- create_guides ------------------------------------------------------------
+# -- build_guides: new guides -------------------------------------------------
 
 
-def test_create_guides_names_them_and_lines_them_up(new_scene):
-    group = logic.create_guides("arm", 2, start=(0, 0, 0), end=(9, 0, 0))
+def test_build_guides_names_them_and_lines_them_up(new_scene):
+    group = logic.build_guides("arm", 2, start=(0, 0, 0), end=(9, 0, 0))
 
     assert cmds.ls(group)[0] == "arm_guides_grp"
     found = logic.guides(group)
@@ -114,21 +149,22 @@ def test_create_guides_names_them_and_lines_them_up(new_scene):
         assert (_pos(node) - om.MVector(x, 0, 0)).length() < 1e-6
 
 
-def test_create_guides_puts_the_up_guide_off_the_chain(new_scene):
-    group = logic.create_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
+def test_build_guides_puts_the_up_guide_off_the_chain(new_scene):
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
 
     up = _pos(logic.guides(group)["up"])
     assert ((om.MVector(10, 0, 0)) ^ up).length() > 1.0
 
 
-def test_create_guides_with_no_middle_guides(new_scene):
-    group = logic.create_guides("spine", 0)
+def test_build_guides_with_no_middle_guides(new_scene):
+    group = logic.build_guides("spine", 0)
 
     assert len(logic.guides(group)["chain"]) == 2
+    assert len(logic.joints(group)) == 2
 
 
 def test_guides_can_only_be_moved(new_scene):
-    group = logic.create_guides("arm", 1)
+    group = logic.build_guides("arm", 1)
 
     found = logic.guides(group)
     for node in found["chain"] + [found["up"]]:
@@ -141,8 +177,16 @@ def test_guides_can_only_be_moved(new_scene):
             assert cmds.getAttr(f"{node}.{attr}", keyable=True)
 
 
+def test_guides_show_their_selection_handle(new_scene):
+    group = logic.build_guides("arm", 1)
+
+    found = logic.guides(group)
+    for node in found["chain"] + [found["up"]]:
+        assert cmds.getAttr(f"{node}.displayHandle")
+
+
 def test_display_curve_follows_the_guides(new_scene):
-    group = logic.create_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
     found = logic.guides(group)
 
     _move(found["chain"][1], 4, 3, 2)
@@ -156,7 +200,7 @@ def test_display_curve_follows_the_guides(new_scene):
 
 
 def test_guides_are_found_after_renaming(new_scene):
-    group = logic.create_guides("arm", 1)
+    group = logic.build_guides("arm", 1)
     mid = logic.guides(group)["chain"][1]
 
     cmds.rename(mid, "elbow_guide")
@@ -164,9 +208,9 @@ def test_guides_are_found_after_renaming(new_scene):
     assert cmds.ls(logic.guides(group)["chain"][1])[0] == "elbow_guide"
 
 
-def test_guide_group_from_a_guide_the_group_or_a_built_joint(new_scene):
-    group = logic.create_guides("arm", 1)
-    joints = logic.build_joints(group)
+def test_guide_group_from_a_guide_the_group_or_a_joint(new_scene):
+    group = logic.build_guides("arm", 1)
+    joints = logic.joints(group)
 
     for node in (group, logic.guides(group)["chain"][1], logic.guides(group)["up"], joints[1]):
         assert logic.guide_group(node) == group
@@ -180,22 +224,22 @@ def test_guide_group_rejects_other_nodes(new_scene):
 
 
 def test_find_group_uses_the_selection(new_scene):
-    arm = logic.create_guides("arm", 1)
-    leg = logic.create_guides("leg", 1)
+    arm = logic.build_guides("arm", 1)
+    leg = logic.build_guides("leg", 1)
 
     assert logic.find_group([logic.guides(leg)["up"]]) == leg
     assert logic.find_group([arm]) == arm
 
 
 def test_find_group_with_nothing_selected_uses_the_only_group(new_scene):
-    arm = logic.create_guides("arm", 1)
+    arm = logic.build_guides("arm", 1)
 
     assert logic.find_group([]) == arm
 
 
 def test_find_group_with_nothing_selected_and_several_groups(new_scene):
-    logic.create_guides("arm", 1)
-    logic.create_guides("leg", 1)
+    logic.build_guides("arm", 1)
+    logic.build_guides("leg", 1)
 
     with pytest.raises(ValueError, match="Select"):
         logic.find_group([])
@@ -207,70 +251,96 @@ def test_find_group_with_no_guides_in_the_scene(new_scene):
 
 
 def test_find_group_rejects_guides_of_two_chains(new_scene):
-    arm = logic.create_guides("arm", 1)
-    leg = logic.create_guides("leg", 1)
+    arm = logic.build_guides("arm", 1)
+    leg = logic.build_guides("leg", 1)
 
     with pytest.raises(ValueError, match="one chain"):
         logic.find_group([arm, leg])
 
 
 @pytest.mark.parametrize("name", ["", "1arm", "my arm"])
-def test_create_guides_rejects_bad_names(new_scene, name):
+def test_build_guides_rejects_bad_names(new_scene, name):
     with pytest.raises(ValueError):
-        logic.create_guides(name, 1)
+        logic.build_guides(name, 1)
 
 
-def test_create_guides_rejects_a_negative_count(new_scene):
+def test_build_guides_rejects_a_negative_count(new_scene):
     with pytest.raises(ValueError):
-        logic.create_guides("arm", -1)
+        logic.build_guides("arm", -1)
 
 
-def test_create_guides_rejects_start_on_end(new_scene):
+def test_build_guides_rejects_start_on_end(new_scene):
     with pytest.raises(ValueError):
-        logic.create_guides("arm", 1, start=(1, 1, 1), end=(1, 1, 1))
+        logic.build_guides("arm", 1, start=(1, 1, 1), end=(1, 1, 1))
 
 
-def test_create_guides_refuses_a_taken_name_and_changes_nothing(new_scene):
-    cmds.createNode("transform", name="arm_mid_01_guide")
+def test_build_guides_rejects_the_same_aim_and_up_axis(new_scene):
+    with pytest.raises(ValueError):
+        logic.build_guides("arm", 1, aim="x", up="-x")
+    assert not cmds.ls(type="joint")
+
+
+@pytest.mark.parametrize("taken", ["arm_mid_01_guide", "arm_02_jnt"])
+def test_build_guides_refuses_a_taken_name_and_changes_nothing(new_scene, taken):
+    cmds.createNode("joint" if taken.endswith("_jnt") else "transform", name=taken)
     before = set(cmds.ls())
 
-    with pytest.raises(ValueError, match="arm_mid_01_guide"):
-        logic.create_guides("arm", 1)
+    with pytest.raises(ValueError, match=taken):
+        logic.build_guides("arm", 1)
 
     assert set(cmds.ls()) == before
 
 
-def test_create_guides_is_one_undo_step(new_scene):
+def test_build_guides_is_one_undo_step(new_scene):
     before = set(cmds.ls())
-    logic.create_guides("arm", 2)
+    logic.build_guides("arm", 2)
 
     cmds.undo()
 
     assert set(cmds.ls()) == before
 
 
-# -- build_joints -------------------------------------------------------------
+# -- live joints ----------------------------------------------------------------
 
 
-def test_build_joints_makes_a_named_chain(new_scene):
-    group = logic.create_guides("arm", 2)
+def test_build_guides_makes_a_named_joint_chain(new_scene):
+    group = logic.build_guides("arm", 2)
 
-    joints = logic.build_joints(group)
-
+    joints = logic.joints(group)
     assert [cmds.ls(j)[0] for j in joints] == ["arm_01_jnt", "arm_02_jnt", "arm_03_jnt", "arm_04_jnt"]
     assert cmds.listRelatives(joints[0], parent=True) is None
     for parent, child in zip(joints, joints[1:]):
         assert cmds.listRelatives(child, parent=True, fullPath=True)[0] == parent
-    assert logic.joints(group) == joints
 
 
-def test_built_chain_is_planar_and_ends_on_the_end_guide(new_scene):
+def test_live_joints_follow_the_guides_and_the_group(new_scene):
+    group = _bent_arm()
+    joints = logic.joints(group)
+    found = logic.guides(group)
+
+    for guide, xyz in ((found["chain"][2], (5, 6, 7)), (found["chain"][-1], (11, 3, -2)), (found["up"], (4, 2, 8))):
+        _move(guide, *xyz)
+        for joint, preview in zip(joints, logic.previews(group)):
+            _same_frame(joint, preview)
+    # Moving the start turns every parent joint: the ones below must follow.
+    _move(found["chain"][0], -2, 1, 1)
+    for joint, preview in zip(joints, logic.previews(group)):
+        _same_frame(joint, preview)
+    cmds.move(1, 2, 3, group, relative=True)
+
+    for joint, preview in zip(joints, logic.previews(group)):
+        _same_frame(joint, preview)
+    for joint, position in zip(joints, _planar(group)):
+        assert (_pos(joint) - position).length() < 1e-4
+
+
+def test_live_joints_are_planar_and_end_on_the_end_guide(new_scene):
     group = _bent_arm()
     found = logic.guides(group)
     start = _pos(found["chain"][0])
     normal = _normal(group)
 
-    joints = logic.build_joints(group)
+    joints = logic.joints(group)
 
     for joint in joints:
         assert abs((_pos(joint) - start) * normal) < 1e-5
@@ -278,160 +348,69 @@ def test_built_chain_is_planar_and_ends_on_the_end_guide(new_scene):
     assert (_pos(joints[-1]) - _pos(found["chain"][-1])).length() < 1e-5
 
 
-def test_built_joints_aim_down_the_chain_and_bend_around_the_plane_normal(new_scene):
+def test_live_joints_aim_down_the_chain_and_bend_around_the_plane_normal(new_scene):
     group = _bent_arm()
     normal = _normal(group)
 
-    joints = logic.build_joints(group, aim="x", up="y")
+    joints = logic.joints(group)
 
     for joint, child in zip(joints, joints[1:]):
         assert (_axis(joint, "x") - (_pos(child) - _pos(joint)).normalize()).length() < 1e-4
         assert (_axis(joint, "z") - normal).length() < 1e-4
-        assert cmds.getAttr(f"{joint}.rotate")[0] == pytest.approx((0, 0, 0))
 
 
-def test_built_joints_up_axis_points_towards_the_up_guide(new_scene):
-    group = logic.create_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
-    found = logic.guides(group)
-    _move(found["up"], 5, 0, -6)
+def test_live_joints_up_axis_points_towards_the_up_guide(new_scene):
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
+    _move(logic.guides(group)["up"], 5, 0, -6)
 
-    joints = logic.build_joints(group, aim="x", up="y")
+    joints = logic.joints(group)
 
     assert (_axis(joints[0], "y") - om.MVector(0, 0, -1)).length() < 1e-4
 
 
-def test_built_joints_with_other_axes(new_scene):
-    group = _bent_arm()
+@pytest.mark.parametrize("aim, up, third", [("-y", "z", "-x"), ("z", "-x", "-y")])
+def test_live_joints_with_other_axes(new_scene, aim, up, third):
+    group = _bent_arm(aim=aim, up=up)
     normal = _normal(group)
 
-    joints = logic.build_joints(group, aim="-y", up="z")
+    joints = logic.joints(group)
+
+    for joint, child in zip(joints, joints[1:]):
+        assert (_axis(joint, aim) - (_pos(child) - _pos(joint)).normalize()).length() < 1e-4
+        # The third axis is the same plane normal for every joint.
+        assert (_axis(joint, third) - normal).length() < 1e-4
+
+
+def test_live_joints_follow_the_axes(new_scene):
+    group = _bent_arm()
+    joints = logic.joints(group)
+
+    logic.set_axes(group, aim="-y", up="z")
 
     for joint, child in zip(joints, joints[1:]):
         assert (_axis(joint, "-y") - (_pos(child) - _pos(joint)).normalize()).length() < 1e-4
-        # The third axis (x here) is the same plane normal for every joint.
-        assert (_axis(joint, "-x") - normal).length() < 1e-4
+        assert (_axis(joint, "-x") - _normal(group)).length() < 1e-4
 
 
 def test_end_joint_lines_up_with_its_parent(new_scene):
-    joints = logic.build_joints(_bent_arm())
+    joints = logic.joints(_bent_arm())
 
-    end = joints[-1]
-    assert cmds.getAttr(f"{end}.jointOrient")[0] == pytest.approx((0, 0, 0), abs=1e-6)
-    assert cmds.getAttr(f"{end}.rotate")[0] == pytest.approx((0, 0, 0))
     for axis in ("x", "y", "z"):
-        assert (_axis(end, axis) - _axis(joints[-2], axis)).length() < 1e-5
+        assert (_axis(joints[-1], axis) - _axis(joints[-2], axis)).length() < 1e-5
 
 
-def test_build_joints_rejects_the_same_aim_and_up_axis(new_scene):
-    group = logic.create_guides("arm", 1)
+def test_live_joints_can_only_be_moved_through_the_guides(new_scene):
+    group = logic.build_guides("arm", 1)
 
-    with pytest.raises(ValueError):
-        logic.build_joints(group, aim="x", up="-x")
-    assert not cmds.ls(type="joint")
-
-
-def test_build_joints_with_up_in_line_changes_nothing(new_scene):
-    group = logic.create_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
-    _move(logic.guides(group)["up"], 20, 0, 0)
-
-    with pytest.raises(ValueError, match="in line"):
-        logic.build_joints(group)
-    assert not cmds.ls(type="joint")
+    for joint in logic.joints(group):
+        for attr in ("tx", "ty", "tz", "rx", "ry", "rz"):
+            assert cmds.getAttr(f"{joint}.{attr}", lock=True), (joint, attr)
 
 
-def test_build_joints_refuses_names_taken_by_other_joints(new_scene):
-    group = logic.create_guides("arm", 1)
-    cmds.createNode("joint", name="arm_02_jnt")
-
-    with pytest.raises(ValueError, match="arm_02_jnt"):
-        logic.build_joints(group)
-    assert len(cmds.ls(type="joint")) == 1
+# -- previews: a disc per joint, and the plane ---------------------------------
 
 
-def test_build_joints_is_one_undo_step(new_scene):
-    group = logic.create_guides("arm", 2)
-    before = set(cmds.ls())
-
-    logic.build_joints(group)
-    cmds.undo()
-
-    assert set(cmds.ls()) == before
-    assert logic.joints(group) == []
-
-
-# -- building again updates the chain -----------------------------------------
-
-
-def test_building_again_moves_the_same_joints(new_scene):
-    group = logic.create_guides("arm", 2, start=(0, 0, 0), end=(9, 0, 0))
-    joints = logic.build_joints(group)
-    uuids = [_uuid(j) for j in joints]
-    cmds.rename(joints[1], "elbow_jnt")
-    child = cmds.spaceLocator(name="extra")[0]
-    cmds.parent(child, cmds.ls(uuids[2], long=True)[0])
-    found = logic.guides(group)
-    _move(found["chain"][1], 3, 2, 1)
-    _move(found["chain"][-1], 9, 0, 4)
-    normal = _normal(group)
-
-    rebuilt = logic.build_joints(group)
-
-    assert [_uuid(j) for j in rebuilt] == uuids
-    assert cmds.ls(rebuilt[1])[0] == "elbow_jnt"
-    assert "extra" in cmds.listRelatives(rebuilt[2], children=True)
-    assert len(cmds.ls(type="joint")) == 4
-    assert (_pos(rebuilt[-1]) - om.MVector(9, 0, 4)).length() < 1e-5
-    for joint, nxt in zip(rebuilt, rebuilt[1:]):
-        assert abs((_pos(joint) - _pos(rebuilt[0])) * normal) < 1e-5
-        assert (_axis(joint, "x") - (_pos(nxt) - _pos(joint)).normalize()).length() < 1e-4
-        assert (_axis(joint, "z") - normal).length() < 1e-4
-
-
-def test_undo_puts_an_updated_chain_back(new_scene):
-    group = logic.create_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
-    joints = logic.build_joints(group)
-    before = [_pos(j) for j in joints]
-    _move(logic.guides(group)["chain"][-1], 10, 5, 0)
-
-    logic.build_joints(group)
-    cmds.undo()
-
-    for joint, position in zip(joints, before):
-        assert (_pos(joint) - position).length() < 1e-5
-
-
-def test_building_again_with_a_different_guide_count_changes_nothing(new_scene):
-    group = logic.create_guides("arm", 1)
-    joints = logic.build_joints(group)
-    cmds.delete(joints[-1])
-    before = [_pos(j) for j in logic.joints(group)]
-
-    with pytest.raises(ValueError, match="2 joints"):
-        logic.build_joints(group)
-
-    assert [_pos(j) for j in logic.joints(group)] == before
-    assert len(cmds.ls(type="joint")) == 2
-
-
-# -- live preview: a disc per joint, and the plane ----------------------------
-
-
-def _rows(node):
-    return [_axis(node, axis) for axis in ("x", "y", "z")]
-
-
-def _same_frame(a, b):
-    assert (_pos(a) - _pos(b)).length() < 1e-4, (a, b)
-    for row_a, row_b in zip(_rows(a), _rows(b)):
-        assert (row_a - row_b).length() < 1e-4, (a, b)
-
-
-def _planar(group):
-    found = logic.guides(group)
-    return logic.planar_positions([_pos(g) for g in found["chain"]], _pos(found["up"]))
-
-
-def test_previews_sit_where_the_joints_will_land(new_scene):
+def test_previews_sit_where_the_joints_land(new_scene):
     group = _bent_arm()
 
     previews = logic.previews(group)
@@ -441,55 +420,8 @@ def test_previews_sit_where_the_joints_will_land(new_scene):
         assert (_pos(preview) - position).length() < 1e-4
 
 
-def test_previews_match_the_built_joints(new_scene):
-    group = _bent_arm()
-
-    joints = logic.build_joints(group)
-
-    for preview, joint in zip(logic.previews(group), joints):
-        _same_frame(preview, joint)
-
-
-def test_previews_follow_the_guides(new_scene):
-    group = _bent_arm()
-    previews = logic.previews(group)
-    found = logic.guides(group)
-
-    _move(found["chain"][2], 5, 6, 7)
-    _move(found["chain"][-1], 11, 3, -2)
-    _move(found["up"], 4, 2, 8)
-    cmds.move(1, 2, 3, group, relative=True)
-    joints = logic.build_joints(group)
-
-    for preview, joint in zip(previews, joints):
-        _same_frame(preview, joint)
-
-
-def test_previews_follow_the_axes(new_scene):
-    group = _bent_arm()
-
-    logic.set_axes(group, aim="-y", up="z")
-    other = logic.create_guides("copy", 3)
-    for source, target in zip(logic.guides(group)["chain"] + [logic.guides(group)["up"]],
-                              logic.guides(other)["chain"] + [logic.guides(other)["up"]]):
-        _move(target, *_pos(source))
-    joints = logic.build_joints(other, aim="-y", up="z")
-
-    for preview, joint in zip(logic.previews(group), joints):
-        _same_frame(preview, joint)
-
-
-def test_building_joints_sets_the_preview_axes(new_scene):
-    group = _bent_arm()
-
-    joints = logic.build_joints(group, aim="z", up="-x")
-
-    for preview, joint in zip(logic.previews(group), joints):
-        _same_frame(preview, joint)
-
-
 def test_set_axes_rejects_the_same_aim_and_up_axis(new_scene):
-    group = logic.create_guides("arm", 1)
+    group = logic.build_guides("arm", 1)
 
     with pytest.raises(ValueError):
         logic.set_axes(group, aim="y", up="-y")
@@ -508,19 +440,14 @@ def test_set_axes_is_one_undo_step(new_scene):
 
 
 def test_previews_show_their_local_axis_and_cannot_be_selected(new_scene):
-    group = logic.create_guides("arm", 1)
+    group = logic.build_guides("arm", 1)
 
     for preview in logic.previews(group):
         assert cmds.getAttr(f"{preview}.displayLocalAxis")
-        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+        disc = _disc(preview)
         assert cmds.getAttr(f"{disc}.overrideEnabled")
         assert cmds.getAttr(f"{disc}.overrideDisplayType") == 2  # reference
         assert cmds.listRelatives(disc, shapes=True, type="nurbsSurface")
-
-
-def _center(node):
-    box = cmds.exactWorldBoundingBox(node)
-    return om.MVector((box[0] + box[3]) / 2, (box[1] + box[4]) / 2, (box[2] + box[5]) / 2)
 
 
 def test_preview_discs_sit_on_their_joint(new_scene):
@@ -528,42 +455,9 @@ def test_preview_discs_sit_on_their_joint(new_scene):
     cmds.move(1, 2, 3, group, relative=True)
 
     for preview in logic.previews(group):
-        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+        disc = _disc(preview)
         assert (_pos(disc) - _pos(preview)).length() < 1e-4
         assert (_center(disc) - _pos(preview)).length() < 1e-3
-
-
-def test_plane_is_centered_between_start_and_end(new_scene):
-    group = _bent_arm()
-    found = logic.guides(group)
-
-    expected = (_pos(found["chain"][0]) + _pos(found["chain"][-1])) * 0.5
-    assert (_center(logic.plane(group)) - expected).length() < 1e-3
-
-
-def test_preview_discs_and_plane_share_one_see_through_shader(new_scene):
-    group = logic.create_guides("arm", 1)
-    plane = logic.plane(group)
-
-    discs = [cmds.listRelatives(p, children=True, type="transform", fullPath=True)[0] for p in logic.previews(group)]
-    shapes = [cmds.listRelatives(node, shapes=True, fullPath=True)[0] for node in discs + [plane]]
-    assert len({engine for shape in shapes for engine in cmds.listConnections(shape, type="shadingEngine")}) == 1
-    for node in discs + [plane]:
-        assert cmds.getAttr(f"{node}.overrideShading")
-        shape = cmds.listRelatives(node, shapes=True, fullPath=True)[0]
-        engines = cmds.listConnections(shape, type="shadingEngine") or []
-        assert len(set(engines)) == 1
-        material = cmds.listConnections(f"{engines[0]}.surfaceShader")[0]
-        assert cmds.nodeType(material) == "lambert"
-        assert cmds.getAttr(f"{material}.transparency")[0][0] > 0
-
-
-def test_guides_show_their_selection_handle(new_scene):
-    group = logic.create_guides("arm", 1)
-
-    found = logic.guides(group)
-    for node in found["chain"] + [found["up"]]:
-        assert cmds.getAttr(f"{node}.displayHandle")
 
 
 @pytest.mark.parametrize("aim, up", [("x", "y"), ("-y", "z"), ("z", "x")])
@@ -572,9 +466,32 @@ def test_preview_discs_ring_the_bone(new_scene, aim, up):
     logic.set_axes(group, aim=aim, up=up)
 
     for preview in logic.previews(group):
-        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
         # The disc is a circle around its local X.
-        assert abs(_axis(disc, "x") * _axis(preview, aim)) == pytest.approx(1.0, abs=1e-4)
+        assert abs(_axis(_disc(preview), "x") * _axis(preview, aim)) == pytest.approx(1.0, abs=1e-4)
+
+
+def test_preview_discs_and_plane_share_one_see_through_shader(new_scene):
+    group = logic.build_guides("arm", 1)
+    plane = logic.plane(group)
+
+    discs = [_disc(p) for p in logic.previews(group)]
+    shapes = [cmds.listRelatives(node, shapes=True, fullPath=True)[0] for node in discs + [plane]]
+    assert len({engine for shape in shapes for engine in cmds.listConnections(shape, type="shadingEngine")}) == 1
+    for node in discs + [plane]:
+        assert cmds.getAttr(f"{node}.overrideShading")
+        shape = cmds.listRelatives(node, shapes=True, fullPath=True)[0]
+        engines = cmds.listConnections(shape, type="shadingEngine") or []
+        material = cmds.listConnections(f"{engines[0]}.surfaceShader")[0]
+        assert cmds.nodeType(material) == "lambert"
+        assert cmds.getAttr(f"{material}.transparency")[0][0] > 0
+
+
+def test_plane_is_centered_between_start_and_end(new_scene):
+    group = _bent_arm()
+    found = logic.guides(group)
+
+    expected = (_pos(found["chain"][0]) + _pos(found["chain"][-1])) * 0.5
+    assert (_center(logic.plane(group)) - expected).length() < 1e-3
 
 
 def test_plane_lies_on_the_guides_plane_and_follows_them(new_scene):
@@ -593,96 +510,99 @@ def test_plane_lies_on_the_guides_plane_and_follows_them(new_scene):
     assert cmds.listRelatives(plane, shapes=True, type="nurbsSurface")
 
 
-# -- rebuilding guides with another number of middle guides -------------------
+# -- build_guides again: reset the middles --------------------------------------
 
 
-def test_rebuild_guides_keeps_start_end_and_up_and_resets_the_middles(new_scene):
+def test_building_again_keeps_start_end_and_up_and_resets_the_middles(new_scene):
     group = _bent_arm()
     cmds.move(1, 2, 3, group, relative=True)
     old = logic.guides(group)
     start, end, up = _pos(old["chain"][0]), _pos(old["chain"][-1]), _pos(old["up"])
 
-    group = logic.rebuild_guides(group, 1)
+    group = logic.build_guides("arm", 1)
 
     found = logic.guides(group)
     assert cmds.ls(group)[0] == "arm_guides_grp"
+    assert len(cmds.ls("arm_guides_grp")) == 1
     assert [cmds.ls(n)[0] for n in found["chain"]] == ["arm_start_guide", "arm_mid_01_guide", "arm_end_guide"]
     assert (_pos(found["chain"][0]) - start).length() < 1e-5
     assert (_pos(found["chain"][-1]) - end).length() < 1e-5
     assert (_pos(found["up"]) - up).length() < 1e-5
     assert (_pos(found["chain"][1]) - (start + end) * 0.5).length() < 1e-5
     assert len(logic.previews(group)) == 3
-    assert len(cmds.ls("arm_guides_grp")) == 1
 
 
-def test_rebuild_guides_spreads_more_middles_evenly(new_scene):
-    group = logic.create_guides("arm", 1, start=(0, 0, 0), end=(8, 0, 0))
+def test_building_again_spreads_more_middles_evenly(new_scene):
+    logic.build_guides("arm", 1, start=(0, 0, 0), end=(8, 0, 0))
 
-    group = logic.rebuild_guides(group, 3)
+    group = logic.build_guides("arm", 3)
 
     for node, x in zip(logic.guides(group)["chain"], (0, 2, 4, 6, 8)):
         assert (_pos(node) - om.MVector(x, 0, 0)).length() < 1e-5
 
 
-def test_rebuild_guides_keeps_the_axes(new_scene):
+def test_building_again_keeps_the_axes_unless_given(new_scene):
     group = _bent_arm()
     logic.set_axes(group, aim="z", up="-x")
 
-    group = logic.rebuild_guides(group, 2)
+    group = logic.build_guides("arm", 2)
+    joints = logic.joints(group)
+    assert (_axis(joints[0], "z") - (_pos(joints[1]) - _pos(joints[0])).normalize()).length() < 1e-4
 
-    for preview, joint in zip(logic.previews(group), logic.build_joints(group, aim="z", up="-x")):
-        _same_frame(preview, joint)
+    group = logic.build_guides("arm", 2, aim="x", up="y")
+    joints = logic.joints(group)
+    assert (_axis(joints[0], "x") - (_pos(joints[1]) - _pos(joints[0])).normalize()).length() < 1e-4
 
 
-def test_rebuild_guides_made_before_axes_were_kept(new_scene):
-    group = logic.create_guides("arm", 1)
+def test_building_again_with_the_same_count_keeps_the_joints_live(new_scene):
+    group = logic.build_guides("arm", 2)
+    uuids = [_uuid(j) for j in logic.joints(group)]
+    cmds.rename(logic.joints(group)[1], "elbow_jnt")
+
+    group = logic.build_guides("arm", 2)
+    _move(logic.guides(group)["chain"][1], 3, 4, 0)
+
+    joints = logic.joints(group)
+    assert [_uuid(j) for j in joints] == uuids
+    assert cmds.ls(joints[1])[0] == "elbow_jnt"
+    for joint, preview in zip(joints, logic.previews(group)):
+        _same_frame(joint, preview)
+
+
+def test_building_again_with_another_count_replaces_the_joints(new_scene):
+    group = logic.build_guides("arm", 2)
+    old = [_uuid(j) for j in logic.joints(group)]
+
+    group = logic.build_guides("arm", 4)
+
+    joints = logic.joints(group)
+    assert [cmds.ls(j)[0] for j in joints] == [f"arm_{i:02d}_jnt" for i in range(1, 7)]
+    assert not any(cmds.ls(u) for u in old)
+    assert len(cmds.ls(type="joint")) == 6
+    for joint, preview in zip(joints, logic.previews(group)):
+        _same_frame(joint, preview)
+
+
+def test_building_again_made_before_axes_were_kept(new_scene):
+    group = logic.build_guides("arm", 1)
     cmds.deleteAttr(f"{group}.previewAxes")
 
-    group = logic.rebuild_guides(group, 2)
+    group = logic.build_guides("arm", 2)
 
     assert len(logic.guides(group)["chain"]) == 4
 
 
-def test_rebuild_guides_keeps_the_built_joints(new_scene):
-    group = logic.create_guides("arm", 1)
-    joints = logic.build_joints(group)
-    uuids = [_uuid(j) for j in joints]
-
-    group = logic.rebuild_guides(group, 1)
-
-    assert [_uuid(j) for j in logic.joints(group)] == uuids
-    assert [_uuid(j) for j in logic.build_joints(group)] == uuids
-
-
-def test_rebuild_guides_rejects_a_negative_count_and_changes_nothing(new_scene):
+def test_building_again_is_one_undo_step(new_scene):
     group = _bent_arm()
     before = [_pos(n) for n in logic.guides(group)["chain"]]
 
-    with pytest.raises(ValueError):
-        logic.rebuild_guides(group, -1)
-
-    assert [_pos(n) for n in logic.guides(group)["chain"]] == before
-
-
-def test_rebuild_guides_is_one_undo_step(new_scene):
-    group = _bent_arm()
-    before = [_pos(n) for n in logic.guides(group)["chain"]]
-
-    logic.rebuild_guides(group, 1)
+    logic.build_guides("arm", 1)
     cmds.undo()
 
     after = [_pos(n) for n in logic.guides("arm_guides_grp")["chain"]]
     assert len(after) == len(before)
     assert all((a - b).length() < 1e-5 for a, b in zip(after, before))
-
-
-def test_rebuild_then_delete_leaves_nothing_behind(new_scene):
-    before = set(cmds.ls())
-    group = logic.rebuild_guides(_bent_arm(), 4)
-
-    logic.delete_guides(group)
-
-    assert set(cmds.ls()) == before
+    assert len(logic.joints("arm_guides_grp")) == 5
 
 
 # -- hiding joints --------------------------------------------------------------
@@ -692,9 +612,9 @@ def _drawn(joint):
     return cmds.getAttr(f"{joint}.drawStyle") != 2  # 2 = None
 
 
-def test_toggle_joints_hides_then_shows_the_built_joints(new_scene):
-    group = logic.create_guides("arm", 1)
-    joints = logic.build_joints(group)
+def test_toggle_joints_hides_then_shows_the_joints(new_scene):
+    group = logic.build_guides("arm", 1)
+    joints = logic.joints(group)
 
     assert logic.toggle_joints(group) is False
     assert not any(_drawn(j) for j in joints)
@@ -703,8 +623,8 @@ def test_toggle_joints_hides_then_shows_the_built_joints(new_scene):
 
 
 def test_toggle_joints_shows_them_all_if_any_is_hidden(new_scene):
-    group = logic.create_guides("arm", 1)
-    joints = logic.build_joints(group)
+    group = logic.build_guides("arm", 1)
+    joints = logic.joints(group)
     cmds.setAttr(f"{joints[1]}.drawStyle", 2)
 
     assert logic.toggle_joints(group) is True
@@ -712,10 +632,10 @@ def test_toggle_joints_shows_them_all_if_any_is_hidden(new_scene):
 
 
 def test_toggle_joints_leaves_what_hangs_below_them_visible(new_scene):
-    group = logic.create_guides("arm", 1)
-    joints = logic.build_joints(group)
+    group = logic.build_guides("arm", 1)
+    joints = logic.joints(group)
     extra = cmds.spaceLocator(name="extra")[0]
-    extra = cmds.parent(extra, joints[1])[0]
+    cmds.parent(extra, joints[1])
 
     logic.toggle_joints(group)
 
@@ -723,16 +643,17 @@ def test_toggle_joints_leaves_what_hangs_below_them_visible(new_scene):
     assert cmds.ls("extra", visible=True)
 
 
-def test_toggle_joints_with_no_joints_built(new_scene):
-    group = logic.create_guides("arm", 1)
+def test_toggle_joints_with_the_joints_deleted(new_scene):
+    group = logic.build_guides("arm", 1)
+    cmds.delete(logic.joints(group)[0])
 
     with pytest.raises(ValueError, match="No joints"):
         logic.toggle_joints(group)
 
 
 def test_toggle_joints_is_one_undo_step(new_scene):
-    group = logic.create_guides("arm", 2)
-    joints = logic.build_joints(group)
+    group = logic.build_guides("arm", 2)
+    joints = logic.joints(group)
 
     logic.toggle_joints(group)
     cmds.undo()
@@ -740,38 +661,75 @@ def test_toggle_joints_is_one_undo_step(new_scene):
     assert all(_drawn(j) for j in joints)
 
 
-# -- delete_guides ------------------------------------------------------------
+# -- delete_guides: extract the joints ------------------------------------------
+
+
+def test_delete_guides_extracts_the_joints_where_they_are(new_scene):
+    group = _bent_arm()
+    joints = logic.joints(group)
+    uuids = [_uuid(j) for j in joints]
+    before = _frames(joints)
+
+    extracted = logic.delete_guides(group)
+
+    assert [_uuid(j) for j in extracted] == uuids
+    _same_frames(before, _frames(extracted))
+
+
+def test_extracted_joints_have_plain_values(new_scene):
+    joints = logic.delete_guides(_bent_arm())
+
+    for joint in joints:
+        assert not cmds.listConnections(f"{joint}.offsetParentMatrix", source=True, destination=False)
+        assert cmds.getAttr(f"{joint}.offsetParentMatrix") == pytest.approx(list(om.MMatrix()))
+        assert cmds.getAttr(f"{joint}.rotate")[0] == pytest.approx((0, 0, 0))
+        for attr in ("tx", "ty", "tz", "rx", "ry", "rz"):
+            assert not cmds.getAttr(f"{joint}.{attr}", lock=True)
+    assert cmds.getAttr(f"{joints[-1]}.jointOrient")[0] == pytest.approx((0, 0, 0), abs=1e-6)
 
 
 def test_delete_guides_leaves_nothing_behind_but_the_joints(new_scene):
     before = set(cmds.ls())
     group = _bent_arm()
-    joints = logic.build_joints(group)
+    names = {cmds.ls(j)[0] for j in logic.joints(group)}
 
     logic.delete_guides(group)
 
-    assert set(cmds.ls()) - before == {cmds.ls(j)[0] for j in joints}
+    assert set(cmds.ls()) - before == names
+    assert not before - set(cmds.ls())
 
 
-def test_delete_guides_keeps_the_joints(new_scene):
-    group = logic.create_guides("arm", 1)
-    joints = logic.build_joints(group)
-    uuids = [_uuid(j) for j in joints]
+def test_build_again_then_delete_leaves_nothing_behind_but_the_joints(new_scene):
+    before = set(cmds.ls())
+    _bent_arm()
+    group = logic.build_guides("arm", 4)
 
     logic.delete_guides(group)
 
-    assert not cmds.ls("arm_*_guide")
-    assert not cmds.objExists("arm_guides_grp")
-    assert all(cmds.ls(u) for u in uuids)
+    assert set(cmds.ls()) - before == {f"arm_{i:02d}_jnt" for i in range(1, 7)}
+
+
+def test_delete_guides_with_up_in_line_changes_nothing(new_scene):
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
+    _move(logic.guides(group)["up"], 20, 0, 0)
+
+    with pytest.raises(ValueError, match="in line"):
+        logic.delete_guides(group)
+    assert cmds.objExists("arm_guides_grp")
 
 
 def test_delete_guides_is_one_undo_step(new_scene):
-    group = logic.create_guides("arm", 1)
+    group = _bent_arm()
+    joints = logic.joints(group)
 
     logic.delete_guides(group)
     cmds.undo()
 
-    assert len(logic.guides("arm_guides_grp")["chain"]) == 3
+    group = "arm_guides_grp"
+    assert len(logic.guides(group)["chain"]) == 5
+    _move(logic.guides(group)["chain"][2], 5, 6, 7)
+    for joint, preview in zip(joints, logic.previews(group)):
+        _same_frame(joint, preview)
 
 
 # -- menu -----------------------------------------------------------------------

@@ -66,10 +66,10 @@ Reusable pieces in the repo: `rigging/helpers.py` (`circle`, `box`, `diamond`, `
 
 ## Added since
 11. **Guide Tool** — **Done** (branch `feature/guide-tool`). Place a joint chain with move-only guide
-    locators (start, middles, end, and an up guide like a pole vector), then build a joint chain that is
-    always planar: middle guides are projected onto the start/end/up plane, every joint bends around the
-    plane normal, and the end joint lines up with its parent. Building again updates the same joints.
-    *Next:* live joints that follow the guides while they're dragged (separate ticket).
+    locators (start, middles, end, and an up guide like a pole vector) and a joint chain that follows them
+    live and is always planar: middle guides are projected onto the start/end/up plane, every joint bends
+    around the plane normal, and the end joint lines up with its parent. Building again resets the middle
+    guides; deleting the guides extracts clean joints.
 
 ## How any one of these gets built (same pattern for each)
 - New worktree from latest `main` (per CLAUDE.md), feature branch `feature/<tool>`.

@@ -48,7 +48,7 @@ class GuideToolWindow(ToolWindow):
         return combo
 
     def _create_box(self):
-        box = QtWidgets.QGroupBox("Create Guides")
+        box = QtWidgets.QGroupBox("Guides")
         grid = QtWidgets.QGridLayout(box)
         self.name = QtWidgets.QLineEdit(settings.get(SETTINGS_KEY, "name", "chain"))
         self.name.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
@@ -64,22 +64,16 @@ class GuideToolWindow(ToolWindow):
         grid.addWidget(self.count, 1, 1)
         buttons = self._buttons(
             (
-                "Create Guides",
-                "Make start, middle and end guides along X, and a yellow up guide to the side. "
-                "Guides can only be moved. A disc and local axis show where each joint will land, "
-                "and a see-through surface shows the chain's plane.",
-                self._create,
-            ),
-            (
-                "Rebuild Guides",
-                "Give the selected chain (or the only guides in the scene) this many middle guides, evenly between "
-                "its start and end guides. Start, end and up guides stay where they are. If the joint count no "
-                "longer matches, delete the joints before Build Joints.",
-                self._rebuild,
+                "Build Guides",
+                "Make guides named after Name, with a joint chain that follows them live: start, middle and end "
+                "guides along X, and a yellow up guide to the side. Guides can only be moved. If guides with this "
+                "name exist, their start, end and up guides stay and the middle guides are reset to this number.",
+                self._build,
             ),
             (
                 "Delete Guides",
-                "Delete the selected chain's guides (or the only guides in the scene). Joints built from them stay.",
+                "Delete the selected chain's guides (or the only guides in the scene). Their joints stay where "
+                "they are, cut loose, with plain translate and joint orient values.",
                 self._delete,
             ),
         )
@@ -87,7 +81,7 @@ class GuideToolWindow(ToolWindow):
         return box
 
     def _build_box(self):
-        box = QtWidgets.QGroupBox("Build Joints")
+        box = QtWidgets.QGroupBox("Joints")
         layout = QtWidgets.QVBoxLayout(box)
         self.aim = self._combo("aim", "x", "The axis that points at the next joint.")
         self.up = self._combo("up", "y", "The axis that points towards the up guide's side, in the chain's plane.")
@@ -96,21 +90,16 @@ class GuideToolWindow(ToolWindow):
             axes.addWidget(QtWidgets.QLabel(label), 0, column)
             axes.addWidget(combo, 1, column)
         layout.addLayout(axes)
-        buttons = self._buttons(
-            (
-                "Build Joints",
-                "Build a joint chain on the plane through the start, end and up guides of the selected guides "
-                "(or the only guides in the scene). If it was built already, move and re-orient those joints.",
-                self._build,
-            ),
-            (
-                "Hide Joints",
-                "Hide the joints built from the selected guides, to see the preview; click again to show them. "
-                "Only the joints are hidden, not what's parented under them.",
-                self._toggle_joints,
-            ),
+        layout.addLayout(
+            self._buttons(
+                (
+                    "Hide Joints",
+                    "Hide the selected chain's joints, to see the preview; click again to show them. "
+                    "Only the joints are hidden, not what's parented under them.",
+                    self._toggle_joints,
+                ),
+            )
         )
-        layout.addLayout(buttons)
         return box
 
     # -- actions ---------------------------------------------------------------
@@ -126,45 +115,25 @@ class GuideToolWindow(ToolWindow):
     def _group(self):
         return self._run(logic.find_group, selected())
 
-    def _create(self):
+    def _build(self):
+        name = self.name.text().strip()
         group = self._run(
-            logic.create_guides,
-            self.name.text().strip(),
-            self.count.value(),
-            aim=self.aim.currentData(),
-            up=self.up.currentData(),
+            logic.build_guides, name, self.count.value(), aim=self.aim.currentData(), up=self.up.currentData()
         )
         if group is not None:
-            cmds.select(logic.guides(group)["chain"])
-            self.status.setText(f"Created guides for {self.name.text().strip()}. Move them, then Build Joints.")
-
-    def _rebuild(self):
-        group = self._group()
-        if group is None:
-            return
-        group = self._run(logic.rebuild_guides, group, self.count.value())
-        if group is not None:
             cmds.select(logic.guides(group)["chain"][1:-1] or logic.guides(group)["chain"])
-            self.status.setText(f"Rebuilt the guides with {self.count.value()} middle guides.")
-
-    def _build(self):
-        group = self._group()
-        if group is None:
-            return
-        done = self._run(logic.build_joints, group, aim=self.aim.currentData(), up=self.up.currentData())
-        if done is not None:
-            self.status.setText(f"Placed {len(done)} joints.")
+            self.status.setText(f"Built guides for {name} with {self.count.value()} middle guides. Move them around.")
 
     def _preview_axes(self, *_):
-        """Turn the selected guides' preview to the chosen axes. Quiet when
-        no guides are selected, or while the two combos share an axis."""
+        """Turn the selected chain to the chosen axes. Quiet when no guides
+        are selected, or while the two combos share an axis."""
         if not hasattr(self, "up"):
             return  # still building the window
         try:
             logic.set_axes(logic.find_group(selected()), aim=self.aim.currentData(), up=self.up.currentData())
         except ValueError:
             return
-        self.status.setText("Preview turned to the new axes.")
+        self.status.setText("Joints turned to the new axes.")
 
     def _toggle_joints(self):
         group = self._group()
@@ -176,6 +145,10 @@ class GuideToolWindow(ToolWindow):
 
     def _delete(self):
         group = self._group()
-        if group is not None:
-            logic.delete_guides(group)
-            self.status.setText("Deleted the guides.")
+        if group is None:
+            return
+        joints = self._run(logic.delete_guides, group)
+        if joints is not None:
+            if joints:
+                cmds.select(joints[0])
+            self.status.setText(f"Deleted the guides; {len(joints)} joints extracted.")
