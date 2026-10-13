@@ -86,6 +86,21 @@ class GuideToolWindow(ToolWindow):
         combo.currentIndexChanged.connect(self._preview_axes)
         return combo
 
+    def open_file(self, path):
+        """Fill Name, # Mid, Aim and Up from the Assembler Guide item at ``path``."""
+        try:
+            fields = logic.item_fields(path)
+        except (OSError, ValueError) as e:
+            _warn(str(e))
+            return
+        self.name.setText(fields["name"])
+        self.count.setValue(fields["count"])
+        for key, combo in (("aim", self.aim), ("up", self.up)):
+            combo.blockSignals(True)  # don't turn the selected guides while filling in
+            combo.setCurrentIndex(max(combo.findData(fields[key]), 0))
+            combo.blockSignals(False)
+            settings.set(SETTINGS_KEY, key, combo.currentData())
+
     # -- actions ---------------------------------------------------------------
 
     def _run(self, func, *args, **kwargs):

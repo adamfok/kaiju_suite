@@ -10,7 +10,7 @@ build can be checked before anything is built. No Qt here.
 
 from dataclasses import dataclass
 
-from kaiju_suite.core.naming import opposite_name
+from kaiju_suite.core.naming import MIRRORED_SUFFIX, mirrored_name, opposite_name  # noqa: F401 (re-exported)
 from kaiju_suite.core.undo import undo_chunk
 
 # What a parameter holds. "node" is a scene node's name; editors offer to
@@ -18,23 +18,6 @@ from kaiju_suite.core.undo import undo_chunk
 # Drawing Overrides palette); 0 means Maya's default color.
 KINDS = ("string", "node", "float", "bool", "choice", "color")
 COLORS = range(32)
-
-# Added to a name with no side to mirror it, e.g. ``spine`` -> ``spine_mirrored``.
-# An underscore, since module names become node names.
-MIRRORED_SUFFIX = "_mirrored"
-
-
-def mirrored_name(name):
-    """``name`` for the other side: its side swapped (``L_arm`` -> ``R_arm``),
-    or, with no side, :data:`MIRRORED_SUFFIX` added or taken off again
-    (``spine`` <-> ``spine_mirrored``)."""
-    opposite = opposite_name(name)
-    if opposite is not None:
-        return opposite
-    if name.endswith(MIRRORED_SUFFIX) and len(name) > len(MIRRORED_SUFFIX):
-        return name[: -len(MIRRORED_SUFFIX)]
-    return name + MIRRORED_SUFFIX
-
 
 @dataclass(frozen=True)
 class Param:

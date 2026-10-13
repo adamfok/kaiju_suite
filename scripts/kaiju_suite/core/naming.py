@@ -37,3 +37,20 @@ def opposite_name(name):
     """
     swapped, count = _SIDE.subn(lambda m: _SIDES[m.group()], name)
     return swapped if count else None
+
+
+# Added to a name with no side to mirror it, e.g. ``spine`` -> ``spine_mirrored``.
+# An underscore, since these names become node names.
+MIRRORED_SUFFIX = "_mirrored"
+
+
+def mirrored_name(name):
+    """``name`` for the other side: its side swapped (``L_arm`` -> ``R_arm``),
+    or, with no side, :data:`MIRRORED_SUFFIX` added or taken off again
+    (``spine`` <-> ``spine_mirrored``)."""
+    opposite = opposite_name(name)
+    if opposite is not None:
+        return opposite
+    if name.endswith(MIRRORED_SUFFIX) and len(name) > len(MIRRORED_SUFFIX):
+        return name[: -len(MIRRORED_SUFFIX)]
+    return name + MIRRORED_SUFFIX
