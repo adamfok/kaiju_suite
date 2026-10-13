@@ -3,8 +3,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite import registry
-from kaiju_suite.rigging import guides as rig_guides
-from kaiju_suite.rigging.guides import spec
+from kaiju_suite.rigging.guide_module import get_guide_module, spec
 from kaiju_suite.tools.guide_module_editor import logic
 
 _AXES = {"x": 0, "y": 1, "z": 2}
@@ -813,7 +812,7 @@ def test_the_editor_opens_files_from_the_assembler_and_isnt_in_the_menu():
 
 def _chain_file(tmp_path, name="L_arm"):
     path = str(tmp_path / f"{name}.guide")
-    spec.write(path, "chain", rig_guides.get_guide_module("chain").default_layout(name))
+    spec.write(path, "chain", get_guide_module("chain").default_layout(name))
     return path
 
 

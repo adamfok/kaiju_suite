@@ -11,9 +11,9 @@ projected onto the chain's plane) and of its up guide::
 from maya import cmds
 
 from kaiju_suite.core.naming import mirrored_name
-from kaiju_suite.rigging.guides import planar_chain
+from kaiju_suite.rigging.guide_module import planar_chain
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.rigging.guides.guide_module import GuideError, GuideModule, tag
+from kaiju_suite.rigging.guide_module.guide_module import GuideError, GuideModule, tag
 
 _KEYS = ("name", "aim", "up", "guides", "up_guide")
 

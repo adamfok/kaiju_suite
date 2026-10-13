@@ -3,8 +3,8 @@ import json
 import pytest
 from maya import cmds
 
-from kaiju_suite import rigging
-from kaiju_suite.rigging import controls
+from kaiju_suite.rigging.rig_module import all_rig_modules, get_rig_module
+from kaiju_suite.rigging.rig_module import controls
 from rig_cases import CASES
 
 
@@ -220,7 +220,7 @@ RIG_MODULE_SETS = {
 def test_every_rig_module_makes_a_set_of_its_controls(new_scene, key):
     params, expected = CASES[key]()
 
-    rigging.get_rig_module(key).build(params)
+    get_rig_module(key).build(params)
 
     assert _short(cmds.sets(RIG_MODULE_SETS[key], query=True)) == sorted(expected)
 
@@ -229,20 +229,20 @@ def test_space_switch_makes_no_rig_module_set(new_scene):
     params, _ = CASES["space_switch"]()
     before = set(cmds.ls(type="objectSet"))
 
-    rigging.get_rig_module("space_switch").build(params)
+    get_rig_module("space_switch").build(params)
 
     assert set(cmds.ls(type="objectSet")) - before == {controls.SET}
 
 
 def test_every_rig_module_has_a_case():
-    assert sorted(CASES) == sorted(m.key for m in rigging.all_rig_modules())
+    assert sorted(CASES) == sorted(m.key for m in all_rig_modules())
 
 
 @pytest.mark.parametrize("key", sorted(CASES))
 def test_every_rig_module_makes_its_controls_rig_controls(new_scene, key):
     params, expected = CASES[key]()
 
-    rigging.get_rig_module(key).build(params)
+    get_rig_module(key).build(params)
 
     assert _short(controls.all_controls()) == sorted(expected)
     for control in expected:
@@ -255,7 +255,7 @@ def test_every_rig_module_makes_its_controls_rig_controls(new_scene, key):
 
 def test_space_switch_stores_its_enum_at_the_default_space(new_scene):
     params, _ = CASES["space_switch"]()
-    rigging.get_rig_module("space_switch").build(dict(params, default_space="chest"))
+    get_rig_module("space_switch").build(dict(params, default_space="chest"))
 
     assert controls.defaults("hand_ctrl")["space"] == 1
 
@@ -270,7 +270,7 @@ def test_space_switch_stores_its_enum_at_the_default_space(new_scene):
 )
 def test_rig_module_attributes_reset_to_their_defaults(new_scene, key, control, attr, default):
     params, expected = CASES[key]()
-    rigging.get_rig_module(key).build(params)
+    get_rig_module(key).build(params)
     cmds.setAttr(f"{control}.{attr}", 0.5)
     posed = expected[-1]  # e.g. an FK control: the switch's own rotation is locked
     cmds.setAttr(f"{posed}.rotateX", 30)
@@ -286,7 +286,7 @@ def test_undoing_a_rig_module_build_removes_its_controls(new_scene):
     cmds.undoInfo(state=True)
     cmds.flushUndo()
 
-    rigging.get_rig_module("simple_ik").build(params)
+    get_rig_module("simple_ik").build(params)
     cmds.undo()
 
     assert controls.all_controls() == []

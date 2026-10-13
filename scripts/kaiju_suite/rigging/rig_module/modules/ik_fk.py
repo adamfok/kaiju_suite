@@ -32,13 +32,13 @@ sits beside the end joint, on the side away from the bend. Every control
 gets ``color``.
 
 The switch control is linked to the controls and chains, so animators can
-switch without a pop (see :mod:`kaiju_suite.rigging.ik_fk_match`).
+switch without a pop (see :mod:`kaiju_suite.rigging.rig_module.ik_fk_match`).
 """
 
 from maya import cmds
 
-from kaiju_suite.rigging import controls, helpers, ik_fk_match
-from kaiju_suite.rigging.rig_module import Param, RigModule
+from kaiju_suite.rigging.rig_module import controls, helpers, ik_fk_match
+from kaiju_suite.rigging.rig_module.rig_module import Param, RigModule
 
 
 def _copy_chain(chain, name, side, parent):

@@ -5,7 +5,7 @@
 
 import os
 
-from kaiju_suite import rigging
+from kaiju_suite.rigging.rig_module import get_rig_module
 from kaiju_suite.core import datafile
 
 KIND = "rigModule"
@@ -38,5 +38,5 @@ def load(path):
     its parameters completed with that rig module's defaults. Raises
     :class:`LookupError` for a rig module this Kaiju Suite doesn't have."""
     key, params = read(path)
-    rig_module = rigging.get_rig_module(key)
+    rig_module = get_rig_module(key)
     return rig_module, rig_module.complete(params)

@@ -8,7 +8,7 @@ should make or change.
 
 from maya import cmds
 
-from kaiju_suite import rigging
+from kaiju_suite.rigging.rig_module import get_rig_module
 
 
 def _joint(name, parent=None, translate=(0, 0, 0)):
@@ -25,7 +25,7 @@ def _arm():
 
 
 def _params(key, **values):
-    params = rigging.get_rig_module(key).defaults()
+    params = get_rig_module(key).defaults()
     params.update(values)
     return params
 

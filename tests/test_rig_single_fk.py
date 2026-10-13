@@ -2,7 +2,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite import rigging
+from kaiju_suite.rigging.rig_module import get_rig_module
 
 
 @pytest.fixture
@@ -20,7 +20,7 @@ def elbow(new_scene):
 
 
 def _params(**overrides):
-    params = rigging.get_rig_module("single_fk").defaults()
+    params = get_rig_module("single_fk").defaults()
     params.update(name="L_elbow", joint="elbow")
     params.update(overrides)
     return params
@@ -46,7 +46,7 @@ def _same_matrix(a, b, tolerance=1e-3):
 
 
 def test_fk_parameters_and_defaults():
-    rig_module = rigging.get_rig_module("single_fk")
+    rig_module = get_rig_module("single_fk")
 
     assert [p.key for p in rig_module.params] == ["name", "joint", "control_size", "color", "parent"]
     assert rig_module.defaults() == {"name": "fk", "joint": "", "control_size": 1.0, "color": 17, "parent": ""}
@@ -54,7 +54,7 @@ def test_fk_parameters_and_defaults():
 
 
 def test_valid_params_have_no_problems(elbow):
-    assert rigging.get_rig_module("single_fk").problems(_params()) == []
+    assert get_rig_module("single_fk").problems(_params()) == []
 
 
 @pytest.mark.parametrize(
@@ -74,7 +74,7 @@ def test_valid_params_have_no_problems(elbow):
 def test_problems(elbow, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rigging.get_rig_module("single_fk").problems(_params(**overrides))
+    problems = get_rig_module("single_fk").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
@@ -83,15 +83,15 @@ def test_ambiguous_joint_name_is_a_problem(elbow):
     cmds.group(empty=True, name="other")
     cmds.createNode("joint", name="elbow", parent="other", skipSelect=True)
 
-    problems = rigging.get_rig_module("single_fk").problems(_params())
+    problems = get_rig_module("single_fk").problems(_params())
 
     assert any("elbow" in p and "Several" in p for p in problems), problems
 
 
 def test_existing_rig_module_with_the_same_name_is_a_problem(elbow):
-    rigging.get_rig_module("single_fk").build(_params())
+    get_rig_module("single_fk").build(_params())
 
-    problems = rigging.get_rig_module("single_fk").problems(_params())
+    problems = get_rig_module("single_fk").problems(_params())
 
     assert any("L_elbow_fk_grp" in p for p in problems), problems
 
@@ -100,7 +100,7 @@ def test_existing_rig_module_with_the_same_name_is_a_problem(elbow):
 
 
 def test_build_creates_groups_control_and_constraint(elbow):
-    created = rigging.get_rig_module("single_fk").build(_params())
+    created = get_rig_module("single_fk").build(_params())
 
     assert created == {
         "group": "L_elbow_fk_grp",
@@ -115,7 +115,7 @@ def test_build_creates_groups_control_and_constraint(elbow):
 
 
 def test_control_sits_on_the_joint_matching_its_orientation(elbow):
-    rigging.get_rig_module("single_fk").build(_params())
+    get_rig_module("single_fk").build(_params())
 
     assert _same_matrix(_matrix("L_elbow_fk_ctrl_grp"), _matrix("elbow"))
     assert _same_matrix(_matrix("L_elbow_fk_ctrl"), _matrix("elbow"))
@@ -128,14 +128,14 @@ def test_build_doesnt_move_or_rotate_the_joint(elbow):
     matrix = _matrix(elbow)
     rotate = cmds.getAttr(f"{elbow}.rotate")[0]
 
-    rigging.get_rig_module("single_fk").build(_params())
+    get_rig_module("single_fk").build(_params())
 
     assert _same_matrix(_matrix(elbow), matrix)
     assert cmds.getAttr(f"{elbow}.rotate")[0] == pytest.approx(rotate, abs=1e-3)
 
 
 def test_moving_and_rotating_the_control_drives_the_joint(elbow):
-    rigging.get_rig_module("single_fk").build(_params())
+    get_rig_module("single_fk").build(_params())
 
     cmds.move(1, 2, 3, "L_elbow_fk_ctrl", relative=True, worldSpace=True)
     cmds.rotate(15, -25, 35, "L_elbow_fk_ctrl", relative=True, objectSpace=True)
@@ -150,13 +150,13 @@ def _color(control):
 
 
 def test_color_goes_on_the_control(elbow):
-    rigging.get_rig_module("single_fk").build(_params(color=13))
+    get_rig_module("single_fk").build(_params(color=13))
 
     assert _color("L_elbow_fk_ctrl") == {(True, 13)}
 
 
 def test_color_0_leaves_the_control_maya_default_color(elbow):
-    rigging.get_rig_module("single_fk").build(_params(color=0))
+    get_rig_module("single_fk").build(_params(color=0))
 
     assert _color("L_elbow_fk_ctrl") == {(False, 0)}
 
@@ -164,16 +164,16 @@ def test_color_0_leaves_the_control_maya_default_color(elbow):
 def test_build_goes_under_the_parent(elbow):
     cmds.group(empty=True, name="rig_grp")
 
-    rigging.get_rig_module("single_fk").build(_params(parent="rig_grp"))
+    get_rig_module("single_fk").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("L_elbow_fk_grp", parent=True) == ["rig_grp"]
 
 
 def test_control_size_scales_the_control(elbow):
-    rigging.get_rig_module("single_fk").build(_params(name="small", control_size=1.0))
+    get_rig_module("single_fk").build(_params(name="small", control_size=1.0))
     small = cmds.exactWorldBoundingBox("small_fk_ctrl")
     cmds.delete("small_fk_grp")
-    rigging.get_rig_module("single_fk").build(_params(name="big", control_size=2.0))
+    get_rig_module("single_fk").build(_params(name="big", control_size=2.0))
     big = cmds.exactWorldBoundingBox("big_fk_ctrl")
 
     small_diagonal = om.MVector(small[3:]) - om.MVector(small[:3])
@@ -186,7 +186,7 @@ def test_build_is_one_undo_step(elbow):
     cmds.undoInfo(state=True)
     nodes_before = set(cmds.ls())
 
-    rigging.get_rig_module("single_fk").build(_params())
+    get_rig_module("single_fk").build(_params())
     cmds.move(1, 2, 3, "L_elbow_fk_ctrl", relative=True)
     cmds.undo()
     cmds.undo()
@@ -199,6 +199,6 @@ def test_build_with_problems_creates_nothing(elbow):
     nodes_before = set(cmds.ls())
 
     with pytest.raises(ValueError):
-        rigging.get_rig_module("single_fk").build(_params(joint="nothing"))
+        get_rig_module("single_fk").build(_params(joint="nothing"))
 
     assert set(cmds.ls()) == nodes_before

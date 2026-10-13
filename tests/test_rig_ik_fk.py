@@ -2,7 +2,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite import rigging
+from kaiju_suite.rigging.rig_module import get_rig_module
 
 
 def _joint(name, parent=None, translate=(0, 0, 0)):
@@ -21,7 +21,7 @@ def arm(new_scene):
 
 
 def _params(**overrides):
-    params = rigging.get_rig_module("ik_fk").defaults()
+    params = get_rig_module("ik_fk").defaults()
     params.update(name="L_arm", start_joint="shoulder", end_joint="wrist")
     params.update(overrides)
     return params
@@ -58,7 +58,7 @@ SWITCH = "L_arm_switch_ctrl"
 
 
 def test_ik_fk_parameters_and_defaults():
-    rig_module = rigging.get_rig_module("ik_fk")
+    rig_module = get_rig_module("ik_fk")
 
     assert [p.key for p in rig_module.params] == [
         "name",
@@ -82,7 +82,7 @@ def test_ik_fk_parameters_and_defaults():
 
 
 def test_valid_params_have_no_problems(arm):
-    assert rigging.get_rig_module("ik_fk").problems(_params()) == []
+    assert get_rig_module("ik_fk").problems(_params()) == []
 
 
 @pytest.mark.parametrize(
@@ -109,7 +109,7 @@ def test_valid_params_have_no_problems(arm):
 def test_problems(arm, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rigging.get_rig_module("ik_fk").problems(_params(**overrides))
+    problems = get_rig_module("ik_fk").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
@@ -119,7 +119,7 @@ def test_straight_chain_is_a_problem(new_scene):
     _joint("b", "a", translate=(5, 0, 0))
     _joint("c", "b", translate=(5, 0, 0))
 
-    problems = rigging.get_rig_module("ik_fk").problems(_params(start_joint="a", end_joint="c"))
+    problems = get_rig_module("ik_fk").problems(_params(start_joint="a", end_joint="c"))
 
     assert any("straight" in p for p in problems), problems
 
@@ -128,15 +128,15 @@ def test_ambiguous_joint_name_is_a_problem(arm):
     cmds.group(empty=True, name="other")
     _joint("wrist", "other")
 
-    problems = rigging.get_rig_module("ik_fk").problems(_params())
+    problems = get_rig_module("ik_fk").problems(_params())
 
     assert any("wrist" in p and "Several" in p for p in problems), problems
 
 
 def test_existing_rig_module_with_the_same_name_is_a_problem(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
-    problems = rigging.get_rig_module("ik_fk").problems(_params())
+    problems = get_rig_module("ik_fk").problems(_params())
 
     assert any("L_arm_ikfk_grp" in p for p in problems), problems
 
@@ -145,7 +145,7 @@ def test_existing_rig_module_with_the_same_name_is_a_problem(arm):
 
 
 def test_build_creates_the_rig(arm):
-    created = rigging.get_rig_module("ik_fk").build(_params())
+    created = get_rig_module("ik_fk").build(_params())
 
     assert created == {
         "group": "L_arm_ikfk_grp",
@@ -206,7 +206,7 @@ def test_build_creates_the_rig(arm):
 
 
 def test_bind_joints_keep_their_parents(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     assert cmds.listRelatives("shoulder", parent=True) is None
     assert cmds.listRelatives("elbow", parent=True) == ["shoulder"]
@@ -216,7 +216,7 @@ def test_bind_joints_keep_their_parents(arm):
 def test_building_does_not_move_the_bind_joints(arm):
     positions, rotations = _positions(arm), _rotations(arm)
 
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     assert _close(_positions(arm), positions)
     assert _close(_rotations(arm), rotations)
@@ -225,19 +225,19 @@ def test_building_does_not_move_the_bind_joints(arm):
 
 
 def test_ik_control_sits_on_the_end_joint(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     assert _close([_world("L_arm_ik_ctrl")], [_world("wrist")])
 
 
 def test_fk_controls_sit_on_their_joints(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     assert _close(_positions(FK_CONTROLS), _positions(arm))
 
 
 def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
-    rigging.get_rig_module("ik_fk").build(_params(pole_distance=4.0))
+    get_rig_module("ik_fk").build(_params(pole_distance=4.0))
 
     start, mid, end = _positions(arm)
     pole = _world("L_arm_pv_ctrl")
@@ -248,7 +248,7 @@ def test_pole_vector_lies_on_the_chain_plane_out_from_the_middle(arm):
 
 
 def test_at_fk_rotating_an_fk_control_rotates_the_bind_chain(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     before = _world("elbow")
 
     cmds.setAttr("L_arm_01_fk_ctrl.rotateZ", 30)
@@ -259,7 +259,7 @@ def test_at_fk_rotating_an_fk_control_rotates_the_bind_chain(arm):
 
 
 def test_at_fk_the_ik_control_does_not_move_the_bind_chain(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     before = _positions(arm)
 
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
@@ -268,7 +268,7 @@ def test_at_fk_the_ik_control_does_not_move_the_bind_chain(arm):
 
 
 def test_at_ik_moving_the_ik_control_drives_the_bind_chain(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     cmds.setAttr(f"{SWITCH}.ikFk", 1)
 
     cmds.move(-2, -2, 0, "L_arm_ik_ctrl", relative=True)
@@ -281,7 +281,7 @@ def test_at_ik_moving_the_ik_control_drives_the_bind_chain(arm):
 
 
 def test_switch_follows_the_end_joint(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     offset = _world(SWITCH) - _world("wrist")
 
     cmds.setAttr("L_arm_01_fk_ctrl.rotateZ", 30)
@@ -295,7 +295,7 @@ def _visible(group):
 
 @pytest.mark.parametrize("ik_fk, ik_visible, fk_visible", [(0, False, True), (0.5, True, True), (1, True, False)])
 def test_control_visibility_follows_the_switch(arm, ik_fk, ik_visible, fk_visible):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     cmds.setAttr(f"{SWITCH}.ikFk", ik_fk)
 
@@ -311,14 +311,14 @@ def _color(control):
 
 
 def test_color_goes_on_every_control(arm):
-    rigging.get_rig_module("ik_fk").build(_params(color=13))
+    get_rig_module("ik_fk").build(_params(color=13))
 
     for control in IK_CONTROLS + FK_CONTROLS + (SWITCH,):
         assert _color(control) == {(True, 13)}, control
 
 
 def test_color_0_leaves_the_controls_maya_default_color(arm):
-    rigging.get_rig_module("ik_fk").build(_params(color=0))
+    get_rig_module("ik_fk").build(_params(color=0))
 
     for control in IK_CONTROLS + FK_CONTROLS + (SWITCH,):
         assert _color(control) == {(False, 0)}, control
@@ -327,7 +327,7 @@ def test_color_0_leaves_the_controls_maya_default_color(arm):
 def test_build_goes_under_the_parent(arm):
     cmds.group(empty=True, name="rig_grp")
 
-    rigging.get_rig_module("ik_fk").build(_params(parent="rig_grp"))
+    get_rig_module("ik_fk").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("L_arm_ikfk_grp", parent=True) == ["rig_grp"]
 
@@ -335,7 +335,7 @@ def test_build_goes_under_the_parent(arm):
 def test_build_keeps_the_selection(arm):
     cmds.select("elbow")
 
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     assert cmds.ls(selection=True) == ["elbow"]
 
@@ -345,7 +345,7 @@ def test_build_is_one_undo_step(arm):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     cmds.setAttr("L_arm_01_fk_ctrl.rotateZ", 30)
     cmds.undo()
     cmds.undo()
@@ -360,14 +360,14 @@ def test_build_with_problems_creates_nothing(arm):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rigging.get_rig_module("ik_fk").build(_params(end_joint="nothing"))
+        get_rig_module("ik_fk").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before
 
 
 # -- matching (switch without a pop) -------------------------------------------------
 
-from kaiju_suite.rigging import ik_fk_match  # noqa: E402
+from kaiju_suite.rigging.rig_module import ik_fk_match  # noqa: E402
 
 BIND = ("shoulder", "elbow", "wrist")
 
@@ -395,7 +395,7 @@ def _pose_fk():
 
 
 def test_the_switch_stores_what_matching_needs(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     info = ik_fk_match.links(SWITCH)
 
@@ -407,7 +407,7 @@ def test_the_switch_stores_what_matching_needs(arm):
 
 
 def test_a_control_of_the_limb_finds_its_switch(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
 
     for node in FK_CONTROLS + IK_CONTROLS + (SWITCH,):
         assert ik_fk_match.find_switch(node) == SWITCH
@@ -415,7 +415,7 @@ def test_a_control_of_the_limb_finds_its_switch(arm):
 
 
 def test_match_fk_to_ik_switches_to_fk_without_moving_the_bind_chain(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     cmds.setAttr(f"{SWITCH}.ikFk", 1)
     _pose_ik()
     before = _bind_matrices()
@@ -427,7 +427,7 @@ def test_match_fk_to_ik_switches_to_fk_without_moving_the_bind_chain(arm):
 
 
 def test_match_ik_to_fk_switches_to_ik_without_moving_the_bind_chain(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     _pose_fk()
     before = _bind_matrices()
 
@@ -440,7 +440,7 @@ def test_match_ik_to_fk_switches_to_ik_without_moving_the_bind_chain(arm):
 def test_match_ik_to_fk_of_a_pose_ik_cant_reach_still_matches_the_joint_positions(arm):
     """An elbow twisted out of its plane can't be copied by a hinge, but
     every joint still lands where it was."""
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     _pose_fk()
     cmds.setAttr("L_arm_02_fk_ctrl.rotateX", 25)
     before = _positions(BIND)
@@ -451,7 +451,7 @@ def test_match_ik_to_fk_of_a_pose_ik_cant_reach_still_matches_the_joint_position
 
 
 def test_match_ik_to_fk_puts_the_pole_vector_on_the_chain_plane(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     _pose_fk()
 
     ik_fk_match.match_ik_to_fk(SWITCH)
@@ -462,7 +462,7 @@ def test_match_ik_to_fk_puts_the_pole_vector_on_the_chain_plane(arm):
 
 
 def test_match_with_key_keys_both_frames_and_steps_the_switch(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     cmds.setAttr(f"{SWITCH}.ikFk", 1)
     _pose_ik()
     cmds.currentTime(10)
@@ -480,7 +480,7 @@ def test_match_with_key_keys_both_frames_and_steps_the_switch(arm):
 
 
 def test_matching_a_rig_built_without_the_links_says_to_rebuild(arm):
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     cmds.deleteAttr(f"{SWITCH}.{ik_fk_match.FK_CONTROLS}")
 
     with pytest.raises(ValueError, match="rebuild"):
@@ -489,7 +489,7 @@ def test_matching_a_rig_built_without_the_links_says_to_rebuild(arm):
 
 def test_match_fk_to_ik_on_an_oriented_chain(arm):
     cmds.joint("shoulder", edit=True, orientJoint="xyz", secondaryAxisOrient="yup", children=True, zeroScaleOrient=True)
-    rigging.get_rig_module("ik_fk").build(_params())
+    get_rig_module("ik_fk").build(_params())
     cmds.setAttr(f"{SWITCH}.ikFk", 1)
     _pose_ik()
     before = _bind_matrices()

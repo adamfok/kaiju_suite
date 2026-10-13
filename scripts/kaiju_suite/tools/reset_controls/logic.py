@@ -1,9 +1,9 @@
 """Reset Controls: put rig controls back to the values they were built with
-(see :mod:`kaiju_suite.rigging.controls`). No Qt here."""
+(see :mod:`kaiju_suite.rigging.rig_module.controls`). No Qt here."""
 
 from maya import cmds
 
-from kaiju_suite.rigging import controls
+from kaiju_suite.rigging.rig_module import controls
 
 
 def reset_controls():

@@ -3,9 +3,8 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.rigging.guides import planar_chain as core_guides
-from kaiju_suite.rigging import guides as rigging_guides
-from kaiju_suite.rigging.guides import spec
+from kaiju_suite.rigging.guide_module import all_guide_modules, get_guide_module, spec
+from kaiju_suite.rigging.guide_module import planar_chain as core_guides
 from kaiju_suite.tools.assembler import data, logic, products, versions
 from kaiju_suite.tools.assembler.products import guides
 
@@ -45,14 +44,14 @@ def _creator(label):
 def test_new_menu_lists_each_guide_module():
     labels = [c.label for p, c in filter(None, products.new_menu()) if p is guides.PRODUCT]
     assert "Chain Guide" in labels
-    assert labels == [m.name for m in rigging_guides.all_guide_modules()]
+    assert labels == [m.name for m in all_guide_modules()]
 
 
 def test_new_item_holds_the_guide_modules_default_layout(new_scene, tmp_path):
     path = _creator("Chain Guide").fn(str(tmp_path), "L_arm", None)
     assert path == str(tmp_path / "L_arm.guide")
     key, layout = spec.read(path)
-    assert key == "chain" and layout == rigging_guides.get_guide_module("chain").default_layout("L_arm")
+    assert key == "chain" and layout == get_guide_module("chain").default_layout("L_arm")
     guides.PRODUCT.run(path)
     assert len(core_guides.joints("L_arm_guides_grp")) == 3
 

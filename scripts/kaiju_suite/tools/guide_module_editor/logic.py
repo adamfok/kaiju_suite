@@ -4,8 +4,8 @@ The editor opens an Assembler Guide item (a ``.guide`` file) and tracks the
 guides in the scene that it describes. Its unsaved edits are the guides
 themselves: **Save** writes their layout back to the file, and **Revert**
 puts them back as the file has them. Guide modules and their files are
-:mod:`kaiju_suite.rigging.guides`; the planar chains a Chain is made of are
-:mod:`kaiju_suite.rigging.guides.planar_chain`. Each function here that
+:mod:`kaiju_suite.rigging.guide_module`; the planar chains a Chain is made of are
+:mod:`kaiju_suite.rigging.guide_module.planar_chain`. Each function here that
 changes the scene is one undo step.
 """
 
@@ -14,11 +14,11 @@ import os
 from maya import cmds
 
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.rigging.guides import planar_chain as _planar_chain
-from kaiju_suite.rigging.guides import spec as _spec
-from kaiju_suite.rigging.guides.guide_module import tag as _tag
-from kaiju_suite.rigging.guides.guide_modules import chain as _chain
-from kaiju_suite.rigging.guides.planar_chain import (  # noqa: F401 (re-exported for the editor and its tests)
+from kaiju_suite.rigging.guide_module import planar_chain as _planar_chain
+from kaiju_suite.rigging.guide_module import spec as _spec
+from kaiju_suite.rigging.guide_module.guide_module import tag as _tag
+from kaiju_suite.rigging.guide_module.modules import chain as _chain
+from kaiju_suite.rigging.guide_module.planar_chain import (  # noqa: F401 (re-exported for the editor and its tests)
     NAME,
     display_curves,
     find_group,

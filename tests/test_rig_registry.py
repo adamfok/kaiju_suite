@@ -5,8 +5,8 @@ import pytest
 
 from kaiju_suite import rigging
 from kaiju_suite.core import datafile
-from kaiju_suite.rigging import spec
-from kaiju_suite.rigging.rig_module import Param, RigModule
+from kaiju_suite.rigging.rig_module import all_rig_modules, get_rig_module, spec
+from kaiju_suite.rigging.rig_module.rig_module import Param, RigModule
 
 
 class _Box(RigModule):
@@ -25,13 +25,13 @@ class _Box(RigModule):
 
 
 def test_simple_ik_is_discovered():
-    assert rigging.get_rig_module("simple_ik").name == "Simple IK"
-    assert "simple_ik" in [rig_module.key for rig_module in rigging.all_rig_modules()]
+    assert get_rig_module("simple_ik").name == "Simple IK"
+    assert "simple_ik" in [rig_module.key for rig_module in all_rig_modules()]
 
 
 def test_get_rejects_an_unknown_rig_module():
     with pytest.raises(LookupError) as info:
-        rigging.get_rig_module("nope")
+        get_rig_module("nope")
     assert "nope" in str(info.value)
 
 
@@ -43,6 +43,17 @@ def test_the_package_is_rigging_so_rig_is_free_for_asset_rigs():
     for old in ("rig", "rig_module"):
         path = os.path.join(root, old, "__init__.py")
         assert not os.path.exists(path), f"the {old} package should be renamed to rigging"
+
+
+def test_rig_modules_and_guide_modules_each_have_a_package():
+    root = os.path.dirname(rigging.__file__)
+    for kind in ("rig_module", "guide_module"):
+        for name in ("__init__.py", f"{kind}.py", "spec.py", os.path.join("modules", "__init__.py")):
+            assert os.path.exists(os.path.join(root, kind, name)), f"{kind}/{name} is missing"
+    for name in ("controls.py", "helpers.py", "ik_fk_match.py", "space_switch.py"):
+        assert os.path.exists(os.path.join(root, "rig_module", name)), f"rig_module/{name} is missing"
+    for old in ("guides", "rig_modules", "rig_module.py", "spec.py", "controls.py", "helpers.py", "ik_fk_match.py", "space_switch.py"):
+        assert not os.path.exists(os.path.join(root, old)), f"rigging/{old} should have moved"
 
 
 def test_rig_package_imports_no_qt_tools_or_ui():
@@ -121,7 +132,7 @@ def test_load_completes_the_params_with_defaults(tmp_path):
 
     rig_module, params = spec.load(path)
 
-    assert rig_module is rigging.get_rig_module("simple_ik")
+    assert rig_module is get_rig_module("simple_ik")
     assert params["name"] == "L_arm"
     assert params["pole_distance"] == 5.0
 

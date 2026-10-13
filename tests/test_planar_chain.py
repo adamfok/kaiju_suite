@@ -1,4 +1,4 @@
-"""Planar chains (kaiju_suite.rigging.guides.planar_chain), shared by the
+"""Planar chains (kaiju_suite.rigging.guide_module.planar_chain), shared by the
 Guide Module Editor and the Chain guide module. Most of their behaviour is
 covered in tests/test_guide_module_editor.py; this covers building a chain from a saved
 layout and reading it back."""
@@ -7,7 +7,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.rigging.guides import planar_chain as guides
+from kaiju_suite.rigging.guide_module import planar_chain as guides
 
 POSITIONS = [(0, 0, 0), (3, 1, 0.5), (6, -1, 0), (10, 0, 0)]
 UP = (5, 6, 0)
