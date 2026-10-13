@@ -1,7 +1,7 @@
 """Separators (.sep): empty files that divide the tree into sections.
 
-They aren't run, versioned or disabled; the Version and Type columns show
-``=====`` so they stand out as dividers.
+They aren't run, versioned or disabled; their row has a dark grey background and
+the Version and Type columns show ``=====``, so they stand out as dividers.
 """
 
 from kaiju_suite.tools.assembler.products import Creator, Product, new_path
@@ -23,6 +23,7 @@ class SeparatorProduct(Product):
     order = 130
     top_menu = True
     columns_text = "====="
+    row_color = (60, 60, 60)  # dark grey
     creators = (Creator("Separator", lambda directory, name, _ext: create_separator(directory, name)),)
 
 

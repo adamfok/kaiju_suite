@@ -42,6 +42,7 @@ class FolderProduct(Product):
     top_menu = True
     can_disable = True  # Run All skips a disabled folder and everything in it
     versioned = True  # its versions record its build plan and items' versions
+    row_color = (60, 60, 60)  # dark grey, as Separators
     creators = (Creator("Folder", lambda directory, name, _ext: create_folder(directory, name)),)
 
     def claims(self, path):

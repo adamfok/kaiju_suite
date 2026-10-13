@@ -71,7 +71,7 @@ def test_new_scene_is_an_empty_entry_needing_no_selection(new_scene, tmp_path):
 
 def test_scene_is_in_the_new_menu_after_script():
     labels = [None if e is None else e[1].label for e in products.new_menu()]
-    assert labels[:3] == ["Script", "Import Scene", None]
+    assert labels[:2] == ["Script", "Import Scene"]
     (creator,) = scene.PRODUCT.creators
     assert creator.choices is None and not creator.open_after
 

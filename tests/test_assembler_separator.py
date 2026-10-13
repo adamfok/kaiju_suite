@@ -3,7 +3,7 @@ import os
 import pytest
 
 from kaiju_suite.tools.assembler import logic, products
-from kaiju_suite.tools.assembler.products import separator
+from kaiju_suite.tools.assembler.products import folder, separator
 
 
 def test_new_separator_is_an_empty_file(tmp_path):
@@ -27,6 +27,11 @@ def test_separator_is_not_versioned_run_or_disabled():
     assert not product.versioned
     assert not product.runnable
     assert not product.can_disable
+
+
+def test_separators_and_folders_are_the_same_dark_grey():
+    shaded = {p.name: p.row_color for p in products.all_products() if p.row_color}
+    assert shaded == {"Folder": (60, 60, 60), "Separator": (60, 60, 60)}
 
 
 def test_separator_shows_equals_in_version_and_type_columns(tmp_path):
