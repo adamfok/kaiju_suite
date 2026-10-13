@@ -661,6 +661,68 @@ def test_toggle_joints_is_one_undo_step(new_scene):
     assert all(_drawn(j) for j in joints)
 
 
+# -- hiding displays ------------------------------------------------------------
+
+
+def _displays(group):
+    return logic.previews(group) + [logic.plane(group)] + list(logic.display_curves(group))
+
+
+def _visible(node):
+    return bool(cmds.ls(node, visible=True))
+
+
+def test_toggle_displays_hides_then_shows_the_discs_plane_and_lines(new_scene):
+    group = logic.build_guides("arm", 1)
+    found = logic.guides(group)
+
+    assert logic.toggle_displays(group) is False
+    assert not any(_visible(n) for n in _displays(group))
+    assert all(_visible(g) for g in found["chain"] + [found["up"]])
+    assert all(_visible(j) for j in logic.joints(group))
+    assert logic.toggle_displays(group) is True
+    assert all(_visible(n) for n in _displays(group))
+
+
+def test_toggle_displays_shows_them_all_if_any_is_hidden(new_scene):
+    group = logic.build_guides("arm", 1)
+    cmds.setAttr(f"{logic.plane(group)}.visibility", False)
+
+    assert logic.toggle_displays(group) is True
+    assert all(_visible(n) for n in _displays(group))
+
+
+def test_toggle_displays_is_one_undo_step(new_scene):
+    group = logic.build_guides("arm", 2)
+
+    logic.toggle_displays(group)
+    cmds.undo()
+
+    assert all(_visible(n) for n in _displays(group))
+
+
+def test_hidden_displays_still_drive_the_joints(new_scene):
+    group = _bent_arm()
+    logic.toggle_displays(group)
+
+    _move(logic.guides(group)["chain"][2], 5, 6, 7)
+
+    for joint, preview in zip(logic.joints(group), logic.previews(group)):
+        _same_frame(joint, preview)
+
+
+@pytest.mark.parametrize("button", ["build", "delete", "joints", "displays"])
+def test_button_icons_ship_as_svg(button):
+    import os
+    import xml.etree.ElementTree as ET
+
+    from kaiju_suite.ui import icons
+
+    path = icons.path(f"guide_tool_{button}.svg")
+    assert os.path.isfile(path), path
+    assert ET.parse(path).getroot().tag == "{http://www.w3.org/2000/svg}svg"
+
+
 # -- delete_guides: extract the joints ------------------------------------------
 
 

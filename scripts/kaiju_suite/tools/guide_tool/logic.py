@@ -704,6 +704,20 @@ def toggle_joints(group):
 
 
 @undoable
+def toggle_displays(group):
+    """Hide what ``group`` draws to help placing the guides (the discs with
+    their local axes, the plane and the guide lines), or show it all if any
+    of it is hidden. The guides and joints stay. Returns whether it's shown
+    now."""
+    group = guide_group(group)
+    found = previews(group) + [plane(group)] + list(display_curves(group))
+    show = not all(cmds.getAttr(f"{node}.visibility") for node in found)
+    for node in found:
+        cmds.setAttr(f"{node}.visibility", show)
+    return show
+
+
+@undoable
 def delete_guides(group):
     """Delete ``group``, its guides and their preview, and extract their
     joints: they stay where they are, cut loose, with plain translate and
