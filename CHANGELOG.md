@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Assembler: creating a new item from the right-click **New** menu now starts the name box with the item's type (e.g. `Separator`, `SkinCluster`, `Simple IK`), already selected so typing replaces it. If that name is taken in the folder it becomes `Separator_2`, `Separator_3`...
 - Fix: Assembler: restoring a folder version now also switches its subfolders to the subfolder version that matches what was restored, so they show e.g. `v001` instead of their old version with a `*`. A subfolder that wasn't published at that point still shows a `*`
 - Assembler: new **New Scene** item type (`.newscene`), in the right-click **New** menu after Import Scene. It doesn't ask for a name: it's always called `new`. When run it starts a new, empty scene without asking to save the open one, so put it first in a build to start clean. Like a Separator it holds nothing and has no versions (no Publish, empty Version column); unlike a Separator it runs with Run All and can be disabled
 - Assembler: **Separator** and **folder** rows now have a dark grey background, so sections and folders stand out
