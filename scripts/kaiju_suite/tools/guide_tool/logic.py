@@ -43,10 +43,10 @@ _THIRD = "previewThird"
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
 _DISC_COLOR = 18  # light blue
-# The discs' material: light blue, partly see-through, so a disc shows where
-# it cuts a mesh without hiding the guide in its middle.
-_DISC_SHADE = (0.35, 0.75, 1.0)
-_DISC_TRANSPARENCY = 0.4
+# Materials (color, transparency) of the discs and the plane: shaded, so they
+# show where they cut a mesh, and see-through, so they don't hide the guides.
+_DISC_SHADE = ((0.35, 0.75, 1.0), 0.4)  # light blue
+_PLANE_SHADE = ((1.0, 0.9, 0.4), 0.75)  # pale yellow, like the up guide
 # Turns a disc made around X to ring the aim axis, by the aim axis' index.
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
@@ -195,18 +195,19 @@ def _visual(node, color=None, shaded=False):
 
 def _placed(group, node, matrix):
     """Put ``node`` under ``group``, placed in world space by ``matrix``."""
-    node = _long(cmds.parent(node, group)[0])
+    node = _long(cmds.parent(node, group, relative=True)[0])
     cmds.setAttr(f"{node}.inheritsTransform", False)
     cmds.connectAttr(matrix, f"{node}.offsetParentMatrix")
     return node
 
 
-def _disc_material(group, name):
-    """The shading group the discs of ``group`` share."""
-    material = _util(group, "lambert", f"{name}_disc_mat")
-    cmds.setAttr(f"{material}.color", *_DISC_SHADE)
-    cmds.setAttr(f"{material}.transparency", *([_DISC_TRANSPARENCY] * 3))
-    engine = _track(group, cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=f"{name}_disc_sg"))
+def _material(group, name, shade):
+    """A shading group with a lambert of ``shade`` (color, transparency)."""
+    color, transparency = shade
+    material = _util(group, "lambert", f"{name}_mat")
+    cmds.setAttr(f"{material}.color", *color)
+    cmds.setAttr(f"{material}.transparency", transparency, transparency, transparency)
+    engine = _track(group, cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=f"{name}_sg"))
     cmds.connectAttr(f"{material}.outColor", f"{engine}.surfaceShader")
     return engine
 
@@ -215,7 +216,8 @@ def _disc(name, parent, radius, engine):
     circle = cmds.circle(normal=(1, 0, 0), radius=radius, constructionHistory=False)[0]
     disc = cmds.planarSrf(circle, constructionHistory=False)[0]
     cmds.delete(circle)
-    disc = cmds.rename(cmds.parent(disc, parent)[0], name)
+    # Relative: the parent is already in place, and the disc must not keep its world position.
+    disc = cmds.rename(cmds.parent(disc, parent, relative=True)[0], name)
     disc = _long(f"{parent}|{disc}")
     _visual(disc, _DISC_COLOR, shaded=True)
     cmds.sets(cmds.listRelatives(disc, shapes=True, fullPath=True), edit=True, forceElement=engine)
@@ -232,7 +234,7 @@ def _preview_network(group, name, chain, up, size):
     cmds.connectAttr(_difference(group, f"{name}_to_up", _world_position(up), start), f"{cross}.input2")
     normal = f"{cross}.output"
 
-    engine = _disc_material(group, name)
+    engine = _material(group, f"{name}_disc", _DISC_SHADE)
     points = [start]
     for i, guide in enumerate(chain[1:-1], start=2):
         position = _world_position(guide)
@@ -278,7 +280,12 @@ def _preview_network(group, name, chain, up, size):
     for letter in "XY":
         cmds.connectAttr(f"{length}.distance", f"{scale}.input1{letter}")
         cmds.connectAttr(f"{scale}.output{letter}", f"{surface}.scale{letter}")
-    _visual(surface)
+    _visual(surface, shaded=True)
+    cmds.sets(
+        cmds.listRelatives(surface, shapes=True, fullPath=True),
+        edit=True,
+        forceElement=_material(group, f"{name}_plane", _PLANE_SHADE),
+    )
     _link(surface, group, _PLANE)
 
 

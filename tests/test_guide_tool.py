@@ -518,21 +518,42 @@ def test_previews_show_their_local_axis_and_cannot_be_selected(new_scene):
         assert cmds.listRelatives(disc, shapes=True, type="nurbsSurface")
 
 
+def _center(node):
+    box = cmds.exactWorldBoundingBox(node)
+    return om.MVector((box[0] + box[3]) / 2, (box[1] + box[4]) / 2, (box[2] + box[5]) / 2)
+
+
+def test_preview_discs_sit_on_their_joint(new_scene):
+    group = _bent_arm()
+    cmds.move(1, 2, 3, group, relative=True)
+
+    for preview in logic.previews(group):
+        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+        assert (_pos(disc) - _pos(preview)).length() < 1e-4
+        assert (_center(disc) - _pos(preview)).length() < 1e-3
+
+
+def test_plane_is_centered_between_start_and_end(new_scene):
+    group = _bent_arm()
+    found = logic.guides(group)
+
+    expected = (_pos(found["chain"][0]) + _pos(found["chain"][-1])) * 0.5
+    assert (_center(logic.plane(group)) - expected).length() < 1e-3
+
+
 def test_preview_discs_are_shaded_so_they_show_where_they_cut_a_mesh(new_scene):
     group = logic.create_guides("arm", 1)
     plane = logic.plane(group)
 
-    for preview in logic.previews(group):
-        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
-        assert cmds.getAttr(f"{disc}.overrideShading")
-        shape = cmds.listRelatives(disc, shapes=True, fullPath=True)[0]
+    discs = [cmds.listRelatives(p, children=True, type="transform", fullPath=True)[0] for p in logic.previews(group)]
+    for node in discs + [plane]:
+        assert cmds.getAttr(f"{node}.overrideShading")
+        shape = cmds.listRelatives(node, shapes=True, fullPath=True)[0]
         engines = cmds.listConnections(shape, type="shadingEngine") or []
         assert len(set(engines)) == 1
         material = cmds.listConnections(f"{engines[0]}.surfaceShader")[0]
         assert cmds.nodeType(material) == "lambert"
         assert cmds.getAttr(f"{material}.transparency")[0][0] > 0
-    # The plane stays a wireframe grid, so it doesn't hide the mesh.
-    assert not cmds.getAttr(f"{plane}.overrideShading")
 
 
 def test_guides_show_their_selection_handle(new_scene):
