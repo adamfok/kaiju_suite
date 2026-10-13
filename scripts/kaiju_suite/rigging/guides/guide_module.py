@@ -13,6 +13,7 @@ tagged with the guide module's key (:data:`TAG`), which is how
 
 from maya import cmds
 
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.core.undo import undo_chunk
 
 # On a guide module's top group: the key of the guide module that built it.
@@ -40,7 +41,9 @@ def tagged_key(node):
 class GuideModule:
     """Subclass, set ``key`` (saved in guide files; never change it) and
     ``name``, and implement :meth:`default_layout`, :meth:`check`,
-    :meth:`create`, :meth:`layout` and :meth:`mirrored`."""
+    :meth:`create`, :meth:`layout`, :meth:`reset` and :meth:`mirrored`;
+    override :meth:`rebuild` if an earlier build can leave something to
+    reuse."""
 
     key = ""
     name = ""
@@ -63,6 +66,32 @@ class GuideModule:
         with undo_chunk(f"Kaiju {self.name}"):
             group = self.create(layout)
             tag(group, self.key)
+        return group
+
+    def rebuild(self, layout):
+        """Like :meth:`build`, but reusing what an earlier build of
+        ``layout`` left in the scene (e.g. joints after Delete Guides),
+        where the guide module has something to reuse. The base class
+        hasn't: it builds."""
+        return self.build(layout)
+
+    def restore(self, group, layout):
+        """Put the guides under ``group`` back as ``layout`` has them, as
+        one undo step, and return their top group (a new one if they had to
+        be made again). Raises :class:`GuideError`, changing nothing, if
+        ``group`` holds guides of another name or ``layout`` can't be put
+        back."""
+        if not isinstance(layout, dict):
+            raise GuideError(f"The {self.name} layout must be a dictionary.")
+        current = self.layout(group)["name"]
+        if current != layout.get("name"):
+            raise GuideError(f"{short_name(group)} holds {current}, not {layout.get('name')}.")
+        try:
+            with undo_chunk(f"Kaiju {self.name}"):
+                group = self.reset(group, layout)
+                tag(group, self.key)
+        except ValueError as e:
+            raise GuideError(f"Can't put back {current}: {e}") from None
         return group
 
     def nodes(self, layout):
@@ -89,6 +118,12 @@ class GuideModule:
 
     def layout(self, group):
         """The layout of the guides under ``group`` as they are now."""
+        raise NotImplementedError
+
+    def reset(self, group, layout):
+        """Put the guides under ``group`` back as ``layout`` (same name) has
+        them; return the top group. Raises ``ValueError`` before changing
+        anything if it can't."""
         raise NotImplementedError
 
     def mirrored(self, layout):

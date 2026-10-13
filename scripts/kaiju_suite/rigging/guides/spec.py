@@ -21,7 +21,7 @@ from kaiju_suite.rigging.guides.guide_module import tagged_key
 
 KIND = "guideModule"
 EXTENSION = ".guide"
-# Guide Tool chains carry no tag: an untagged planar chain is a Chain guide module.
+# Chains built before guide modules carry no tag: an untagged planar chain is a Chain guide module.
 _PLANAR = "chain"
 _NOTHING = "Nothing selected. Select guides, a guide group or a joint they drive."
 

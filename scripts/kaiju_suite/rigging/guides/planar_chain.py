@@ -1,6 +1,6 @@
 """Planar chains: place a joint chain with guide locators. No Qt here.
 
-Shared by the Guide Tool, which wraps the functions that change the scene
+Shared by the Guide Module Editor, which wraps the functions that change the scene
 in one undo step each, and the guide modules
 (:mod:`kaiju_suite.rigging.guides`): the Chain guide module is one planar
 chain, and other guide modules are built from several.
@@ -663,7 +663,7 @@ def guides_from_joints(joint, name=None, aim=None, up=None):
     """Build guides for the joint chain ``joint`` is in, e.g. one extracted
     by :func:`delete_guides`, and make those same joints follow them live
     again: one guide on each joint, and the up guide where it was. A chain
-    the Guide Tool didn't make takes ``name`` and the ``aim`` and ``up``
+    Delete Guides didn't leave takes ``name`` and the ``aim`` and ``up``
     axes (default +X, +Y), and gets its up guide to the side its top joint's
     up axis points to. Returns the guide group."""
     found = cmds.ls(joint, long=True, type="joint") if joint else []
@@ -710,6 +710,38 @@ def delete_guides(group):
     joints: they stay where they are, cut loose, with plain translate and
     joint orient values. Returns the joints, top first."""
     return _extract(guide_group(group))
+
+
+def leftover_joint(name):
+    """The top joint :func:`delete_guides` left of guides named ``name``,
+    if it doesn't follow guides again, else ``None``."""
+    for joint in cmds.ls(f"*.{_NOTE_NAME}", objectsOnly=True, type="joint", long=True) or []:
+        if _note(joint, _NOTE_NAME) == name and free_joint([joint]):
+            return joint
+    return None
+
+
+def set_layout(group, positions, up_position, aim="x", up="y"):
+    """Put ``group``'s guides on ``positions`` (start, middles, end) and its
+    up guide on ``up_position``, turned to ``aim`` and ``up``. If the
+    number of middle guides differs, they're made again first, as
+    :func:`build_guides` does. Returns the guide group: a new one if the
+    middle guides were made again."""
+    group = guide_group(group)
+    if len(positions) < 2:
+        raise ValueError(f"The {short_name(group)} chain needs 2 guides or more.")
+    axes = _axes(aim, up)
+    positions, up_position = [om.MVector(p) for p in positions], om.MVector(up_position)
+    _plane(positions, up_position)  # raises if it can't be built
+    if len(guides(group)["chain"]) != len(positions):
+        group = build_guides(cmds.getAttr(f"{group}.{_TAG}"), len(positions) - 2, aim=aim, up=up)
+    else:
+        _apply_axes(group, *axes)
+    found = guides(group)
+    for guide, position in zip(found["chain"], positions):
+        cmds.xform(guide, worldSpace=True, translation=(position.x, position.y, position.z))
+    cmds.xform(found["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
+    return group
 
 
 def taken_names(name, count):

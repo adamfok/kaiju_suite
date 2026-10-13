@@ -1,5 +1,4 @@
-"""Chain guide module: one planar chain (:mod:`..planar_chain`), as the
-Guide Tool builds it.
+"""Chain guide module: one planar chain (:mod:`..planar_chain`).
 
 Its layout is the chain's name, its aim and up axes, and the world
 position of every guide (start, middles, end, as placed, before they're
@@ -13,7 +12,8 @@ from maya import cmds
 
 from kaiju_suite.core.naming import mirrored_name
 from kaiju_suite.rigging.guides import planar_chain
-from kaiju_suite.rigging.guides.guide_module import GuideModule
+from kaiju_suite.core.undo import undo_chunk
+from kaiju_suite.rigging.guides.guide_module import GuideError, GuideModule, tag
 
 _KEYS = ("name", "aim", "up", "guides", "up_guide")
 
@@ -72,15 +72,34 @@ class ChainGuideModule(GuideModule):
             layout["name"], layout["guides"], layout["up_guide"], layout["aim"], layout["up"]
         )
 
+    def rebuild(self, layout):
+        """Like :meth:`build`, but if Delete Guides left the joints of
+        guides with this name, they come back live, with guides where the
+        joints are now (see :func:`~..planar_chain.guides_from_joints`)."""
+        name = layout.get("name") if isinstance(layout, dict) else None
+        top = planar_chain.leftover_joint(name) if isinstance(name, str) else None
+        if top is None:
+            return self.build(layout)
+        with undo_chunk(f"Kaiju {self.name}"):
+            group = planar_chain.guides_from_joints(top)
+            tag(group, self.key)
+        return group
+
     def layout(self, group):
         return planar_chain.layout(group)
+
+    def reset(self, group, layout):
+        missing = [k for k in _KEYS if k not in layout]
+        if missing:
+            raise GuideError(f"The {self.name} layout is missing {', '.join(missing)}.")
+        return planar_chain.set_layout(group, layout["guides"], layout["up_guide"], layout["aim"], layout["up"])
 
     def describe(self, layout):
         count = len(layout["guides"])
         return [f"{layout['name']}: {count} guide{'s' if count != 1 else ''}, aim {layout['aim']}, up {layout['up']}"]
 
     def fields(self, layout):
-        """What the Guide Tool's window shows for ``layout``: ``{"name",
+        """What the Guide Module Editor shows for ``layout``: ``{"name",
         "count"`` (middle guides) ``, "aim", "up"}``."""
         return {
             "name": layout["name"],

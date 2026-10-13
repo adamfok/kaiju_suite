@@ -98,6 +98,17 @@ def test_build_refuses_a_layout_that_isnt_a_dict(new_scene):
     assert _Dot().problems([]) == ["The Dot Guide layout must be a dictionary."]
 
 
+def test_rebuild_builds_when_nothing_is_left_to_reuse(new_scene):
+    group = _Dot().rebuild({"name": "a"})
+    assert cmds.getAttr(f"{group}.kaijuGuideModule") == "dot"
+
+
+def test_restore_refuses_the_guides_of_another_name(new_scene):
+    group = _Dot().build({"name": "a"})
+    with pytest.raises(GuideError, match="a_guides_grp holds a, not b."):
+        _Dot().restore(group, {"name": "b"})
+
+
 # -- Chain ----------------------------------------------------------------------
 
 
@@ -154,3 +165,60 @@ def test_chain_mirrored_flips_across_x_and_reverses_its_axes():
     unsided = {"name": "tail", "aim": "-y", "up": "x", "guides": [[0, 5, -2], [0, 2, -8]], "up_guide": [3, 4, -5]}
     assert chain.mirrored(unsided)["name"] == "tail_mirrored"
     assert chain.mirrored(unsided)["up"] == "-x"
+
+
+def test_chain_rebuild_brings_the_joints_delete_guides_left_back_live(new_scene):
+    chain = guides.get_guide_module("chain")
+    group = chain.build(L_ARM)
+    joints = cmds.ls(planar_chain.joints(group), uuid=True)
+    moved = planar_chain.delete_guides(group)
+    cmds.xform(moved[-1], worldSpace=True, translation=(8, 8, -1))  # moved after Delete Guides
+
+    group = chain.rebuild(L_ARM)
+
+    assert cmds.ls(planar_chain.joints(group), uuid=True) == joints
+    assert cmds.getAttr(f"{group}.kaijuGuideModule") == "chain"
+    assert chain.layout(group)["guides"][-1] == [8.0, 8.0, -1.0]  # the guides go where the joints are
+
+
+def test_chain_rebuild_without_leftovers_builds_the_layout(new_scene):
+    chain = guides.get_guide_module("chain")
+    group = chain.rebuild(L_ARM)
+    assert chain.layout(group)["guides"] == [[2.0, 10.0, 0.0], [7.0, 9.0, -1.0]]
+
+
+def test_chain_rebuild_is_one_undo_step(new_scene):
+    chain = guides.get_guide_module("chain")
+    planar_chain.delete_guides(chain.build(L_ARM))
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    before = set(cmds.ls())
+    chain.rebuild(L_ARM)
+    cmds.undo()
+    assert set(cmds.ls()) == before
+
+
+def test_chain_restore_puts_the_guides_back_and_keeps_the_tag(new_scene):
+    chain = guides.get_guide_module("chain")
+    group = chain.build(L_ARM)
+    planar_chain.build_guides("L_arm", 3)  # another count, and an untagged group
+    group = "L_arm_guides_grp"
+
+    group = chain.restore(group, L_ARM)
+
+    assert chain.layout(group) == chain.layout(chain.restore(group, L_ARM))
+    assert chain.layout(group)["guides"] == [[2.0, 10.0, 0.0], [7.0, 9.0, -1.0]]
+    assert cmds.getAttr(f"{group}.kaijuGuideModule") == "chain"
+
+
+def test_chain_restore_is_one_undo_step(new_scene):
+    chain = guides.get_guide_module("chain")
+    group = chain.build(L_ARM)
+    found = planar_chain.guides(group)
+    cmds.xform(found["chain"][0], worldSpace=True, translation=(1, 1, 1))
+    moved = chain.layout(group)
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    chain.restore(group, L_ARM)
+    cmds.undo()
+    assert chain.layout("L_arm_guides_grp") == moved

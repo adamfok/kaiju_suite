@@ -81,7 +81,7 @@ def mirror(path):
 
 class GuideProduct(data.DataProduct):
     name = "Guide"
-    utility = "Guide Tool"
+    utility = "Guide Module Editor"
     datatype = spec
     order = 38  # just before Joints: guides come first in a build
     menu_slot = (2, 1)

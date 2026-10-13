@@ -1,6 +1,6 @@
 """Planar chains (kaiju_suite.rigging.guides.planar_chain), shared by the
-Guide Tool and the Chain guide module. The Guide Tool's behaviour is covered
-in tests/test_guide_tool.py; this covers building a chain from a saved
+Guide Module Editor and the Chain guide module. Most of their behaviour is
+covered in tests/test_guide_module_editor.py; this covers building a chain from a saved
 layout and reading it back."""
 
 import pytest
@@ -74,3 +74,70 @@ def test_taken_names_lists_names_in_use(new_scene):
     guides.build_at("arm", POSITIONS, UP)
     assert "arm_guides_grp" in guides.taken_names("arm", 2)
 
+
+
+# -- leftover joints: what Delete Guides left -----------------------------------
+
+
+def test_leftover_joint_is_the_top_joint_delete_guides_left(new_scene):
+    group = guides.build_at("arm", POSITIONS, UP)
+    top = guides.joints(group)[0]
+    uuid = cmds.ls(top, uuid=True)[0]
+    assert guides.leftover_joint("arm") is None  # still follows its guides
+    guides.delete_guides(group)
+    assert cmds.ls(guides.leftover_joint("arm"), uuid=True) == [uuid]
+    assert guides.leftover_joint("leg") is None
+
+
+def test_leftover_joint_ignores_joints_that_follow_guides_again(new_scene):
+    group = guides.build_at("arm", POSITIONS, UP)
+    top = guides.delete_guides(group)[0]
+    guides.guides_from_joints(top)
+    assert guides.leftover_joint("arm") is None
+
+
+# -- set_layout: put guides back as a layout has them ---------------------------
+
+
+def _layout(positions=POSITIONS, up=UP, aim="x", up_axis="y"):
+    return {
+        "name": "arm",
+        "aim": aim,
+        "up": up_axis,
+        "guides": [[float(c) for c in p] for p in positions],
+        "up_guide": [float(c) for c in up],
+    }
+
+
+def test_set_layout_moves_the_guides_and_turns_the_axes(new_scene):
+    group = guides.build_at("arm", POSITIONS, UP)
+    joint = cmds.ls(guides.joints(group)[0], uuid=True)[0]
+    found = guides.guides(group)
+    cmds.xform(found["chain"][1], worldSpace=True, translation=(4, 4, 4))
+    cmds.xform(found["up"], worldSpace=True, translation=(5, 9, 1))
+    guides.set_axes(group, aim="-y", up="z")
+
+    group = guides.set_layout(group, POSITIONS, UP, aim="x", up="y")
+
+    assert guides.layout(group) == _layout()
+    assert cmds.ls(guides.joints(group)[0], uuid=True) == [joint]  # the same joints
+
+
+def test_set_layout_remakes_the_middles_for_another_count(new_scene):
+    group = guides.build_at("arm", POSITIONS, UP)
+    three = [(0, 0, 0), (5, 1, 0), (10, 0, 0)]
+
+    group = guides.set_layout(group, three, UP, aim="x", up="y")
+
+    assert guides.layout(group) == _layout(three)
+    assert len(guides.joints(group)) == 3
+
+
+def test_set_layout_refuses_a_layout_it_cant_build_and_changes_nothing(new_scene):
+    group = guides.build_at("arm", POSITIONS, UP)
+    before = guides.layout(group)
+    with pytest.raises(ValueError, match="in line"):
+        guides.set_layout(group, POSITIONS, (20, 0, 0), aim="x", up="y")
+    with pytest.raises(ValueError, match="different axes"):
+        guides.set_layout(group, POSITIONS, UP, aim="x", up="-x")
+    assert guides.layout(group) == before
