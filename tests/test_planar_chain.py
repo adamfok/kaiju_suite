@@ -1,13 +1,13 @@
-"""Guide building in core (kaiju_suite.core.guides), shared by the Guide Tool
-and the Assembler's Guide items. The Guide Tool's behaviour is covered in
-tests/test_guide_tool.py; this covers what core adds for saving and
-rebuilding a chain's layout."""
+"""Planar chains (kaiju_suite.rigging.guides.planar_chain), shared by the
+Guide Tool and the Chain guide module. The Guide Tool's behaviour is covered
+in tests/test_guide_tool.py; this covers building a chain from a saved
+layout and reading it back."""
 
 import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.core import guides
+from kaiju_suite.rigging.guides import planar_chain as guides
 
 POSITIONS = [(0, 0, 0), (3, 1, 0.5), (6, -1, 0), (10, 0, 0)]
 UP = (5, 6, 0)

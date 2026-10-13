@@ -48,9 +48,11 @@ from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product
 class DataProduct(Product):
     """A product whose items are data files published from the selection.
 
-    Subclasses set ``name``, ``order`` and ``datatype``: the
-    :mod:`kaiju_suite.datatypes` module that gathers, applies and describes
-    the data (``kind`` and ``extension`` come from it). The rest (New, Run,
+    Subclasses set ``name``, ``order`` and ``datatype``: the module that
+    gathers, applies and describes the data, usually one in
+    :mod:`kaiju_suite.datatypes` (Guide's is
+    :mod:`kaiju_suite.rigging.guides.spec`); ``kind`` and ``extension``
+    come from it. The rest (New, Run,
     Publish, versions, the double-click panel, right-click **Republish** and
     **Select Objects**) comes from here.
 

@@ -5,6 +5,7 @@ import pytest
 from maya import cmds
 
 from kaiju_suite import rigging
+from kaiju_suite.rigging import guides
 from kaiju_suite.tools.assembler import logic, products, versions
 from kaiju_suite.tools.assembler.products import folder, mesh, scene, script, separator
 
@@ -174,7 +175,8 @@ def test_new_menu_groups_products_with_dividers():
     assert _menu_labels() == [
         "Script", "Import Scene", "New Scene",
         None,
-        "Mesh", "Material", "Guide", "Joints", "ControlShape", "Curves",
+        "Mesh", "Material", *(guide_module.name for guide_module in guides.all_guide_modules()), "Joints",
+        "ControlShape", "Curves",
         None,
         "SkinCluster", "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives",
         None,
