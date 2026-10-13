@@ -3,7 +3,9 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.core import guides as core_guides
+from kaiju_suite.rigging.guides import planar_chain as core_guides
+from kaiju_suite.rigging import guides as rigging_guides
+from kaiju_suite.rigging.guides import spec
 from kaiju_suite.tools.assembler import data, logic, products, versions
 from kaiju_suite.tools.assembler.products import guides
 
@@ -31,17 +33,54 @@ def test_guide_is_discovered_and_owns_guide(tmp_path):
     assert guides.PRODUCT.extensions == (".guide",)
     assert guides.PRODUCT.runnable and guides.PRODUCT.versioned
     assert guides.PRODUCT.utility == "Guide Tool"
-    path = guides.PRODUCT.creators[0].fn(str(tmp_path), "body", None)
+    path = guides.PRODUCT.create(str(tmp_path), "body")
     assert path == str(tmp_path / "body.guide") and os.path.getsize(path) == 0
     assert products.product_for(path) is guides.PRODUCT
+
+
+def _creator(label):
+    return next(c for p, c in filter(None, products.new_menu()) if p is guides.PRODUCT and c.label == label)
+
+
+def test_new_menu_lists_each_guide_module():
+    labels = [c.label for p, c in filter(None, products.new_menu()) if p is guides.PRODUCT]
+    assert "Chain Guide" in labels
+    assert labels == [m.name for m in rigging_guides.all_guide_modules()]
+
+
+def test_new_item_holds_the_guide_modules_default_layout(new_scene, tmp_path):
+    path = _creator("Chain Guide").fn(str(tmp_path), "L_arm", None)
+    assert path == str(tmp_path / "L_arm.guide")
+    key, layout = spec.read(path)
+    assert key == "chain" and layout == rigging_guides.get_guide_module("chain").default_layout("L_arm")
+    guides.PRODUCT.run(path)
+    assert len(core_guides.joints("L_arm_guides_grp")) == 3
+
+
+def test_type_column_shows_the_guide_module_name(tmp_path):
+    path = _creator("Chain Guide").fn(str(tmp_path), "L_arm", None)
+    assert guides.PRODUCT.type_name(path) == "Chain Guide"
+
+
+@pytest.mark.parametrize("content", [b"", b"not json"])
+def test_type_column_falls_back_to_guide_for_an_unreadable_file(tmp_path, content):
+    path = tmp_path / "odd.guide"
+    path.write_bytes(content)
+    assert guides.PRODUCT.type_name(str(path)) == "Guide"
+
+
+def test_type_column_falls_back_to_guide_for_an_unknown_key(tmp_path):
+    path = str(tmp_path / "odd.guide")
+    spec.write(path, "nope", {})
+    assert guides.PRODUCT.type_name(path) == "Guide"
 
 
 def test_round_trip_rebuilds_the_guides(new_scene, tmp_path):
     group = _arm()
     before = [_pos(g) for g in core_guides.guides(group)["chain"]]
     path, message = _publish(tmp_path, core_guides.guides(group)["chain"][1])
-    assert message == "Published Guide body.guide v001"
-    assert data.read(path, "guides")["name"] == "arm"
+    assert message == "Published Chain Guide body.guide v001"
+    assert spec.read(path) == ("chain", core_guides.layout(group))
 
     cmds.file(new=True, force=True)
     logic.run_steps([path])
@@ -80,7 +119,9 @@ def test_publish_refuses_guides_of_two_chains(new_scene, tmp_path):
     leg = core_guides.build_guides("leg", 0, start=(0, 0, 0), end=(0, -8, 0))
     path = guides.PRODUCT.create(str(tmp_path), "body")
     cmds.select(arm, leg)
-    assert guides.PRODUCT.publish_problems(path) == ["Select guides of one chain, not arm_guides_grp, leg_guides_grp."]
+    assert guides.PRODUCT.publish_problems(path) == [
+        "Select guides of one guide module, not arm_guides_grp, leg_guides_grp."
+    ]
 
 
 def test_double_click_hands_the_item_to_the_guide_tool(monkeypatch, tmp_path):
@@ -100,13 +141,13 @@ def test_republish_finds_the_guide_groups_by_name(new_scene, tmp_path):
     cmds.xform(core_guides.guides(group)["up"], worldSpace=True, translation=(4, 0, 7))
     cmds.select(clear=True)
     guides.PRODUCT.republish(path)
-    assert data.read(path, "guides")["up_guide"] == [4.0, 0.0, 7.0]
+    assert spec.read(path)[1]["up_guide"] == [4.0, 0.0, 7.0]
     assert len(versions.list_versions(path)) == 2
 
 
 def test_info_describes_the_chain(new_scene, tmp_path):
     path, _ = _publish(tmp_path, _arm())
-    assert guides.PRODUCT.describe(data.read(path, "guides")) == ["arm: 3 guides, aim x, up y"]
+    assert guides.PRODUCT.describe(data.read(path, spec.KIND)) == ["Chain Guide", "arm: 3 guides, aim x, up y"]
 
 
 # -- Mirror ---------------------------------------------------------------------
@@ -145,7 +186,8 @@ def test_mirror_writes_the_other_sides_item(new_scene, tmp_path):
 
     mirrored = str(tmp_path / "R_arm.guide")
     assert "R_arm.guide" in message
-    chain = data.read(mirrored, "guides")
+    key, chain = spec.read(mirrored)
+    assert key == "chain"
     assert chain["name"] == "R_arm" and (chain["aim"], chain["up"]) == ("-x", "-y")
     assert chain["guides"][1] == [-4.5, 10.5, -0.5]
     assert chain["up_guide"] == [-6.0, 10.0, -6.0]
@@ -170,7 +212,7 @@ def test_mirror_again_updates_the_other_item_as_a_new_version(new_scene, tmp_pat
     _mirror_action(path).fn()
 
     mirrored = str(tmp_path / "R_arm.guide")
-    assert data.read(mirrored, "guides")["up_guide"] == [-6.0, 14.0, -6.0]
+    assert spec.read(mirrored)[1]["up_guide"] == [-6.0, 14.0, -6.0]
     assert [v.number for v in versions.list_versions(mirrored)] == [2, 1]
 
 
@@ -178,7 +220,7 @@ def test_mirror_of_an_unsided_item_adds_mirrored_and_goes_back(new_scene, tmp_pa
     core_guides.build_guides("tail", 1, start=(1, 5, -2), end=(3, 2, -8))
     path, _ = _publish(tmp_path, "tail_guides_grp", name="tail")
     _mirror_action(path).fn()
-    assert data.read(str(tmp_path / "tail_mirrored.guide"), "guides")["name"] == "tail_mirrored"
+    assert spec.read(str(tmp_path / "tail_mirrored.guide"))[1]["name"] == "tail_mirrored"
     _mirror_action(str(tmp_path / "tail_mirrored.guide")).fn()
     assert sorted(n for n in os.listdir(tmp_path) if not n.startswith(".")) == ["tail.guide", "tail_mirrored.guide"]
 

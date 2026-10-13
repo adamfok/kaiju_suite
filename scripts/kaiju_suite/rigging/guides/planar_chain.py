@@ -1,8 +1,9 @@
-"""Guides: place a joint chain with guide locators. No Qt here.
+"""Planar chains: place a joint chain with guide locators. No Qt here.
 
 Shared by the Guide Tool, which wraps the functions that change the scene
-in one undo step each, and the Assembler's Guide items
-(:mod:`kaiju_suite.datatypes.guides`).
+in one undo step each, and the guide modules
+(:mod:`kaiju_suite.rigging.guides`): the Chain guide module is one planar
+chain, and other guide modules are built from several.
 
 A chain's guides are a start guide, any number of middle guides and an end
 guide, plus an up guide off to the side, like a pole vector. They can only

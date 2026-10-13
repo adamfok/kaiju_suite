@@ -18,31 +18,39 @@ from kaiju_suite.core.log import get_logger
 log = get_logger(__name__)
 
 
+def find_instances(package, attr, base, what):
+    """Import every file in ``package`` and return the ``base`` instances
+    they define as ``attr``, sorted by name. A file that fails to import is
+    logged and skipped; of two sharing a ``key``, the first by name wins
+    (``what`` names them in the log, e.g. "rig module")."""
+    found = []
+    for info in pkgutil.iter_modules(package.__path__):
+        module_name = f"{package.__name__}.{info.name}"
+        try:
+            imported = importlib.import_module(module_name)
+        except Exception:
+            log.exception("Failed to import %s %s", what, module_name)
+            continue
+        instance = getattr(imported, attr, None)
+        if isinstance(instance, base):
+            found.append(instance)
+    found.sort(key=lambda m: m.name)
+
+    keys = {}
+    for instance in found:
+        if instance.key in keys:
+            log.warning("%s and %s share the key %r; %s wins", keys[instance.key].name, instance.name, instance.key, keys[instance.key].name)
+        else:
+            keys[instance.key] = instance
+    return found
+
+
 def discover():
     """Import every rig module file and return their rig modules, by name."""
     from kaiju_suite.rigging import rig_modules
     from kaiju_suite.rigging.rig_module import RigModule
 
-    found = []
-    for info in pkgutil.iter_modules(rig_modules.__path__):
-        module_name = f"{rig_modules.__name__}.{info.name}"
-        try:
-            imported = importlib.import_module(module_name)
-        except Exception:
-            log.exception("Failed to import rig module %s", module_name)
-            continue
-        rig_module = getattr(imported, "RIG_MODULE", None)
-        if isinstance(rig_module, RigModule):
-            found.append(rig_module)
-    found.sort(key=lambda m: m.name)
-
-    keys = {}
-    for rig_module in found:
-        if rig_module.key in keys:
-            log.warning("%s and %s share the key %r; %s wins", keys[rig_module.key].name, rig_module.name, rig_module.key, keys[rig_module.key].name)
-        else:
-            keys[rig_module.key] = rig_module
-    return found
+    return find_instances(rig_modules, "RIG_MODULE", RigModule, "rig module")
 
 
 _cache = None
