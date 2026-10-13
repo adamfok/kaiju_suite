@@ -9,5 +9,5 @@ TOOL = {
     "name": "Animation Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Mirror and flip animation across sides; switch IK/FK without a pop.",
+    "description": "Mirror and flip animation across sides; switch IK/FK without a pop; reset rig controls.",
 }
