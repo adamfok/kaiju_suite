@@ -20,13 +20,22 @@ class GuideToolWindow(ToolWindow):
     def build_ui(self):
         self.layout.addWidget(self._create_box())
         self.layout.addWidget(self._build_box())
-        self.layout.addWidget(self._guides_box())
         self.status = QtWidgets.QLabel()
         self.status.setWordWrap(True)
         self.layout.addWidget(self.status)
         self.layout.addStretch()
 
     # -- layout ----------------------------------------------------------------
+
+    def _buttons(self, *buttons):
+        """A row of ``(label, tooltip, slot)`` buttons side by side."""
+        row = QtWidgets.QHBoxLayout()
+        for label, tip, slot in buttons:
+            button = QtWidgets.QPushButton(label)
+            button.setToolTip(tip)
+            button.clicked.connect(slot)
+            row.addWidget(button)
+        return row
 
     def _combo(self, name, default, tip):
         combo = QtWidgets.QComboBox()
@@ -49,18 +58,25 @@ class GuideToolWindow(ToolWindow):
         self.count.setValue(int(settings.get(SETTINGS_KEY, "count", 1)))
         self.count.setToolTip("How many guides go between the start and end guides.")
         self.count.valueChanged.connect(lambda value: settings.set(SETTINGS_KEY, "count", int(value)))
-        create = QtWidgets.QPushButton("Create Guides")
-        create.setToolTip(
-            "Make start, middle and end guides along X, and a yellow up guide to the side. "
-            "Guides can only be moved. A disc and local axis show where each joint will land, "
-            "and a grid shows the chain's plane."
-        )
-        create.clicked.connect(self._create)
         grid.addWidget(QtWidgets.QLabel("Name"), 0, 0)
-        grid.addWidget(self.name, 0, 1, 1, 2)
+        grid.addWidget(self.name, 0, 1)
         grid.addWidget(QtWidgets.QLabel("Middle guides"), 1, 0)
         grid.addWidget(self.count, 1, 1)
-        grid.addWidget(create, 1, 2)
+        buttons = self._buttons(
+            (
+                "Create Guides",
+                "Make start, middle and end guides along X, and a yellow up guide to the side. "
+                "Guides can only be moved. A disc and local axis show where each joint will land, "
+                "and a see-through surface shows the chain's plane.",
+                self._create,
+            ),
+            (
+                "Delete Guides",
+                "Delete the selected chain's guides (or the only guides in the scene). Joints built from them stay.",
+                self._delete,
+            ),
+        )
+        grid.addLayout(buttons, 2, 0, 1, 2)
         return box
 
     def _build_box(self):
@@ -73,27 +89,21 @@ class GuideToolWindow(ToolWindow):
             axes.addWidget(QtWidgets.QLabel(label), 0, column)
             axes.addWidget(combo, 1, column)
         layout.addLayout(axes)
-        build = QtWidgets.QPushButton("Build Joints")
-        build.setToolTip(
-            "Build a joint chain on the plane through the start, end and up guides of the selected guides "
-            "(or the only guides in the scene). If it was built already, move and re-orient those joints."
+        buttons = self._buttons(
+            (
+                "Build Joints",
+                "Build a joint chain on the plane through the start, end and up guides of the selected guides "
+                "(or the only guides in the scene). If it was built already, move and re-orient those joints.",
+                self._build,
+            ),
+            (
+                "Hide Joints",
+                "Hide the joints built from the selected guides, to see the preview; click again to show them. "
+                "Only the joints are hidden, not what's parented under them.",
+                self._toggle_joints,
+            ),
         )
-        build.clicked.connect(self._build)
-        layout.addWidget(build)
-        return box
-
-    def _guides_box(self):
-        box = QtWidgets.QGroupBox("Guides")
-        layout = QtWidgets.QHBoxLayout(box)
-        for label, tip, slot in (
-            ("Select Guides", "Select the guides of the selected chain.", self._select_guides),
-            ("Select Joints", "Select the joints built from the selected guides.", self._select_joints),
-            ("Delete Guides", "Delete the selected chain's guides. Joints built from them stay.", self._delete),
-        ):
-            button = QtWidgets.QPushButton(label)
-            button.setToolTip(tip)
-            button.clicked.connect(slot)
-            layout.addWidget(button)
+        layout.addLayout(buttons)
         return box
 
     # -- actions ---------------------------------------------------------------
@@ -140,21 +150,13 @@ class GuideToolWindow(ToolWindow):
             return
         self.status.setText("Preview turned to the new axes.")
 
-    def _select_guides(self):
-        group = self._group()
-        if group is not None:
-            found = logic.guides(group)
-            cmds.select(found["chain"] + [found["up"]])
-
-    def _select_joints(self):
+    def _toggle_joints(self):
         group = self._group()
         if group is None:
             return
-        found = logic.joints(group)
-        if not found:
-            _warn("No joints built from these guides yet.")
-            return
-        cmds.select(found)
+        shown = self._run(logic.toggle_joints, group)
+        if shown is not None:
+            self.status.setText("Joints shown." if shown else "Joints hidden. Click Hide Joints again to show them.")
 
     def _delete(self):
         group = self._group()

@@ -541,11 +541,13 @@ def test_plane_is_centered_between_start_and_end(new_scene):
     assert (_center(logic.plane(group)) - expected).length() < 1e-3
 
 
-def test_preview_discs_are_shaded_so_they_show_where_they_cut_a_mesh(new_scene):
+def test_preview_discs_and_plane_share_one_see_through_shader(new_scene):
     group = logic.create_guides("arm", 1)
     plane = logic.plane(group)
 
     discs = [cmds.listRelatives(p, children=True, type="transform", fullPath=True)[0] for p in logic.previews(group)]
+    shapes = [cmds.listRelatives(node, shapes=True, fullPath=True)[0] for node in discs + [plane]]
+    assert len({engine for shape in shapes for engine in cmds.listConnections(shape, type="shadingEngine")}) == 1
     for node in discs + [plane]:
         assert cmds.getAttr(f"{node}.overrideShading")
         shape = cmds.listRelatives(node, shapes=True, fullPath=True)[0]
@@ -589,6 +591,61 @@ def test_plane_lies_on_the_guides_plane_and_follows_them(new_scene):
     assert (_axis(plane, "z") - _normal(group)).length() < 1e-4
     assert cmds.getAttr(f"{plane}.overrideDisplayType") == 2
     assert cmds.listRelatives(plane, shapes=True, type="nurbsSurface")
+
+
+# -- hiding joints --------------------------------------------------------------
+
+
+def _drawn(joint):
+    return cmds.getAttr(f"{joint}.drawStyle") != 2  # 2 = None
+
+
+def test_toggle_joints_hides_then_shows_the_built_joints(new_scene):
+    group = logic.create_guides("arm", 1)
+    joints = logic.build_joints(group)
+
+    assert logic.toggle_joints(group) is False
+    assert not any(_drawn(j) for j in joints)
+    assert logic.toggle_joints(group) is True
+    assert all(_drawn(j) for j in joints)
+
+
+def test_toggle_joints_shows_them_all_if_any_is_hidden(new_scene):
+    group = logic.create_guides("arm", 1)
+    joints = logic.build_joints(group)
+    cmds.setAttr(f"{joints[1]}.drawStyle", 2)
+
+    assert logic.toggle_joints(group) is True
+    assert all(_drawn(j) for j in joints)
+
+
+def test_toggle_joints_leaves_what_hangs_below_them_visible(new_scene):
+    group = logic.create_guides("arm", 1)
+    joints = logic.build_joints(group)
+    extra = cmds.spaceLocator(name="extra")[0]
+    extra = cmds.parent(extra, joints[1])[0]
+
+    logic.toggle_joints(group)
+
+    assert cmds.getAttr(f"{joints[0]}.visibility")
+    assert cmds.ls("extra", visible=True)
+
+
+def test_toggle_joints_with_no_joints_built(new_scene):
+    group = logic.create_guides("arm", 1)
+
+    with pytest.raises(ValueError, match="No joints"):
+        logic.toggle_joints(group)
+
+
+def test_toggle_joints_is_one_undo_step(new_scene):
+    group = logic.create_guides("arm", 2)
+    joints = logic.build_joints(group)
+
+    logic.toggle_joints(group)
+    cmds.undo()
+
+    assert all(_drawn(j) for j in joints)
 
 
 # -- delete_guides ------------------------------------------------------------

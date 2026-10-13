@@ -43,10 +43,9 @@ _THIRD = "previewThird"
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
 _DISC_COLOR = 18  # light blue
-# Materials (color, transparency) of the discs and the plane: shaded, so they
-# show where they cut a mesh, and see-through, so they don't hide the guides.
-_DISC_SHADE = ((0.35, 0.75, 1.0), 0.4)  # light blue
-_PLANE_SHADE = ((1.0, 0.9, 0.4), 0.75)  # pale yellow, like the up guide
+# The material (color, transparency) the discs and the plane share: shaded, so
+# they show where they cut a mesh, and see-through, so they don't hide the guides.
+_SHADE = ((0.35, 0.75, 1.0), 0.4)  # light blue
 # Turns a disc made around X to ring the aim axis, by the aim axis' index.
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
@@ -234,7 +233,7 @@ def _preview_network(group, name, chain, up, size):
     cmds.connectAttr(_difference(group, f"{name}_to_up", _world_position(up), start), f"{cross}.input2")
     normal = f"{cross}.output"
 
-    engine = _material(group, f"{name}_disc", _DISC_SHADE)
+    engine = _material(group, f"{name}_preview", _SHADE)
     points = [start]
     for i, guide in enumerate(chain[1:-1], start=2):
         position = _world_position(guide)
@@ -284,7 +283,7 @@ def _preview_network(group, name, chain, up, size):
     cmds.sets(
         cmds.listRelatives(surface, shapes=True, fullPath=True),
         edit=True,
-        forceElement=_material(group, f"{name}_plane", _PLANE_SHADE),
+        forceElement=engine,
     )
     _link(surface, group, _PLANE)
 
@@ -506,6 +505,20 @@ def set_axes(group, aim="x", up="y"):
     """Turn ``group``'s previews to show joints built with ``aim`` and
     ``up`` (see :func:`build_joints`)."""
     _apply_axes(guide_group(group), *_axes(aim, up))
+
+
+@undoable
+def toggle_joints(group):
+    """Hide the joints built from ``group``'s guides, or show them all if any
+    is hidden. Only the joints are hidden (draw style None), not what hangs
+    below them. Returns whether they're shown now."""
+    found = joints(group)
+    if not found:
+        raise ValueError("No joints built from these guides yet. Build Joints first.")
+    show = any(cmds.getAttr(f"{joint}.drawStyle") == 2 for joint in found)
+    for joint in found:
+        cmds.setAttr(f"{joint}.drawStyle", 0 if show else 2)  # 0 = Bone, 2 = None
+    return show
 
 
 @undoable
