@@ -7,7 +7,7 @@ from kaiju_suite.tools.assembler import logic, products
 
 # Product name -> the utility tool double-clicking its items opens.
 UTILITIES = {
-    "Guide": "Guide Tool",
+    "Guide": "Guide Module Editor",
     "Joints": "Joint Tool",
     "Mesh": "Mesh Tool",
     "SkinCluster": "SkinCluster Tool",
@@ -41,7 +41,7 @@ def test_there_is_no_scene_tool():
 
 
 # Full tools that double as a product's utility keep their own menu category.
-ELSEWHERE = {"Guide Tool": None}  # top level in the Kaiju menu
+ELSEWHERE = {}
 
 # Tools that were removed; nothing should register them any more.
 REMOVED = ["Rig Validator", "Offset & Snap Tool", "Attribute Manager", "Space Switch Tool", "Selection Sets"]

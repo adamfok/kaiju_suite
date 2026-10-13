@@ -3,7 +3,9 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite import registry
-from kaiju_suite.tools.guide_tool import logic
+from kaiju_suite.rigging import guides as rig_guides
+from kaiju_suite.rigging.guides import spec
+from kaiju_suite.tools.guide_module_editor import logic
 
 _AXES = {"x": 0, "y": 1, "z": 2}
 
@@ -615,7 +617,7 @@ def test_button_icons_ship_as_svg(button):
 
     from kaiju_suite.ui import icons
 
-    path = icons.path(f"guide_tool_{button}.svg")
+    path = icons.path(f"guide_module_editor_{button}.svg")
     assert os.path.isfile(path), path
     assert ET.parse(path).getroot().tag == "{http://www.w3.org/2000/svg}svg"
 
@@ -797,45 +799,166 @@ def test_guides_from_joints_is_one_undo_step(new_scene):
     assert not cmds.getAttr(f"{joints[0]}.tx", lock=True)
 
 
-# -- menu -----------------------------------------------------------------------
+# -- the editor: opened from the Assembler ----------------------------------------
 
 
-def test_guide_tool_is_a_top_level_menu_entry():
-    tool = registry.find("Guide Tool")
+def test_the_editor_opens_files_from_the_assembler_and_isnt_in_the_menu():
+    tool = registry.find("Guide Module Editor")
 
-    assert tool is not None
-    assert "category" not in tool
-    assert "Guide Tool" in [t["name"] for t in registry.menu_tools()]
-
-
-# -- opened on an Assembler Guide item --------------------------------------------
+    assert tool["category"] == "Utilities"
+    assert callable(tool["open"]) and callable(tool["launch"])
+    assert "Guide Module Editor" not in [t["name"] for t in registry.menu_tools()]
+    assert registry.find("Guide Tool") is None
 
 
-def test_the_tool_opens_on_a_file(tmp_path):
-    assert "open" in registry.find("Guide Tool")
+def _chain_file(tmp_path, name="L_arm"):
+    path = str(tmp_path / f"{name}.guide")
+    spec.write(path, "chain", rig_guides.get_guide_module("chain").default_layout(name))
+    return path
 
 
-def test_item_fields_fill_the_window_from_a_chain_guide_file(new_scene, tmp_path):
-    from kaiju_suite.core import datafile
-    from kaiju_suite.rigging.guides import spec
-
-    group = logic.build_guides("L_arm", 3, aim="-x", up="z")
-    path = str(tmp_path / "L_arm.guide")
-    datafile.write(path, spec.KIND, spec.gather([group]))
-    assert logic.item_fields(path) == {"name": "L_arm", "count": 3, "aim": "-x", "up": "z"}
+def test_load_gives_the_guide_module_and_the_layout(tmp_path):
+    path = _chain_file(tmp_path)
+    guide_module, layout = logic.load(path)
+    assert guide_module.key == "chain"
+    assert layout == guide_module.default_layout("L_arm")
 
 
-def test_item_fields_refuse_another_guide_module(tmp_path):
-    from kaiju_suite.rigging.guides import spec
-
-    path = str(tmp_path / "L_hand.guide")
-    spec.write(path, "hand", {})
-    with pytest.raises(ValueError, match="L_hand.guide isn't a Chain Guide item"):
-        logic.item_fields(path)
-
-
-def test_item_fields_of_an_empty_item_says_to_publish(tmp_path):
+def test_load_of_an_empty_item_says_to_publish(tmp_path):
     path = tmp_path / "L_arm.guide"
     path.write_bytes(b"")
     with pytest.raises(ValueError, match="L_arm.guide is empty"):
-        logic.item_fields(str(path))
+        logic.load(str(path))
+
+
+def test_load_refuses_an_unknown_guide_module(tmp_path):
+    path = str(tmp_path / "L_hand.guide")
+    spec.write(path, "hand", {})
+    with pytest.raises(LookupError, match="hand"):
+        logic.load(path)
+
+
+def test_fields_show_a_chain_files_name_middles_and_axes(tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    assert logic.fields(guide_module, layout) == {"name": "L_arm", "count": 1, "aim": "x", "up": "y"}
+
+
+# -- tracking the file's guides in the scene ---------------------------------------
+
+
+def test_find_guides_finds_the_files_guides_by_name(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    assert logic.find_guides(guide_module, layout) is None
+    group = logic.build(guide_module, layout)
+    assert logic.find_guides(guide_module, layout) == group
+
+
+def test_pick_guides_takes_the_group_of_the_selection(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    group = logic.build(guide_module, layout)
+    assert logic.pick_guides(guide_module, [logic.joints(group)[0]]) == group
+    with pytest.raises(ValueError, match="Nothing selected"):
+        logic.pick_guides(guide_module, [])
+
+
+def test_tracked_guides_survive_a_rename(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    group = logic.build(guide_module, layout)
+    uuid = logic.uuid_of(group)
+    renamed = cmds.rename(group, "spare_grp")
+    assert logic.node_of(uuid) == cmds.ls(renamed, long=True)[0]
+    cmds.delete(renamed)
+    assert logic.node_of(uuid) is None
+    assert logic.node_of(None) is None
+
+
+# -- unsaved edits, Save and Revert ----------------------------------------------
+
+
+def test_unsaved_tells_moved_guides_from_the_file(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    group = logic.build(guide_module, layout)
+    assert not logic.unsaved(guide_module, group, layout)
+    _move(logic.guides(group)["chain"][1], 5, 2, 0)
+    assert logic.unsaved(guide_module, group, layout)
+
+
+def test_save_writes_the_guides_as_they_are_to_the_file(new_scene, tmp_path):
+    path = _chain_file(tmp_path)
+    guide_module, layout = logic.load(path)
+    group = logic.build(guide_module, layout)
+    _move(logic.guides(group)["chain"][1], 5, 2, 0)
+
+    saved = logic.save(path, guide_module, group)
+
+    assert saved["guides"][1] == [5.0, 2.0, 0.0]
+    assert logic.load(path) == (guide_module, saved)
+    assert not logic.unsaved(guide_module, group, saved)
+
+
+def test_revert_puts_the_guides_back_as_the_file_has_them(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    group = logic.build(guide_module, layout)
+    _move(logic.guides(group)["chain"][1], 5, 2, 0)
+    group = logic.set_count(group, 3)
+    logic.set_axes(group, aim="-y", up="z")
+    edited = guide_module.layout(group)
+
+    group = logic.revert(guide_module, group, layout)
+
+    assert guide_module.layout(group) == layout
+    cmds.undo()
+    assert guide_module.layout("L_arm_guides_grp") == edited
+
+
+def test_revert_refuses_guides_of_another_name(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    other = logic.build(guide_module, guide_module.default_layout("spine"))
+    with pytest.raises(ValueError, match="holds spine, not L_arm"):
+        logic.revert(guide_module, other, layout)
+
+
+# -- Build, # Mid and Delete -----------------------------------------------------
+
+
+def test_build_builds_the_files_guides_as_one_undo_step(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    before = set(cmds.ls())
+    group = logic.build(guide_module, layout)
+    assert guide_module.layout(group) == layout
+    assert cmds.getAttr(f"{group}.kaijuGuideModule") == "chain"
+    cmds.undo()
+    assert set(cmds.ls()) == before
+
+
+def test_build_refuses_when_the_guides_are_in_the_scene(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    logic.build(guide_module, layout)
+    with pytest.raises(ValueError, match="already in the scene"):
+        logic.build(guide_module, layout)
+
+
+def test_build_puts_guides_back_on_the_joints_delete_left(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    group = logic.build(guide_module, layout)
+    joints = [_uuid(j) for j in logic.joints(group)]
+    left = logic.delete_guides(group)
+    _move(left[-1], 10, 3, 0)
+
+    group = logic.build(guide_module, layout)
+
+    assert [_uuid(j) for j in logic.joints(group)] == joints
+    assert guide_module.layout(group)["guides"][-1] == [10.0, 3.0, 0.0]
+    assert logic.unsaved(guide_module, group, layout)
+
+
+def test_set_count_remakes_the_middles_as_one_undo_step(new_scene, tmp_path):
+    guide_module, layout = logic.load(_chain_file(tmp_path))
+    group = logic.build(guide_module, layout)
+
+    group = logic.set_count(group, 3)
+
+    assert logic.fields(guide_module, guide_module.layout(group))["count"] == 3
+    assert cmds.getAttr(f"{group}.kaijuGuideModule") == "chain"
+    cmds.undo()
+    assert guide_module.layout("L_arm_guides_grp") == layout

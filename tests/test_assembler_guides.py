@@ -32,7 +32,7 @@ def test_guide_is_discovered_and_owns_guide(tmp_path):
     assert guides.PRODUCT.name == "Guide"
     assert guides.PRODUCT.extensions == (".guide",)
     assert guides.PRODUCT.runnable and guides.PRODUCT.versioned
-    assert guides.PRODUCT.utility == "Guide Tool"
+    assert guides.PRODUCT.utility == "Guide Module Editor"
     path = guides.PRODUCT.create(str(tmp_path), "body")
     assert path == str(tmp_path / "body.guide") and os.path.getsize(path) == 0
     assert products.product_for(path) is guides.PRODUCT
@@ -124,9 +124,9 @@ def test_publish_refuses_guides_of_two_chains(new_scene, tmp_path):
     ]
 
 
-def test_double_click_hands_the_item_to_the_guide_tool(monkeypatch, tmp_path):
+def test_double_click_hands_the_item_to_the_guide_module_editor(monkeypatch, tmp_path):
     tool = logic.utility_for(guides.PRODUCT)
-    assert tool["name"] == "Guide Tool"
+    assert tool["name"] == "Guide Module Editor"
     assert "open" in tool
     opened = []
     monkeypatch.setitem(tool, "open", opened.append)
