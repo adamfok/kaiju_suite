@@ -501,8 +501,7 @@ def _extract(group):
     """Delete ``group`` and everything it made, and cut its joints loose
     where they are, with plain translate and joint orient values (rotate
     zero). Returns them, top first."""
-    found = guides(group)
-    _plane([_position(g) for g in found["chain"]], _position(found["up"]))  # raises if it can't be built
+    found = _check_extract(group)
     linked = joints(group)
     uuids = cmds.ls(linked, uuid=True)
     worlds = [om.MMatrix(cmds.xform(j, query=True, worldSpace=True, matrix=True)) for j in linked]
@@ -521,6 +520,13 @@ def _extract(group):
     if uuids:
         _leave_note(_by_uuid(uuids[0]), *note)
     return [_by_uuid(uuid) for uuid in uuids]
+
+
+def _check_extract(group):
+    """``group``'s guides; raises ``ValueError`` if its joints can't be extracted."""
+    found = guides(group)
+    _plane([_position(g) for g in found["chain"]], _position(found["up"]))  # raises if it can't be built
+    return found
 
 
 def _leave_note(joint, name, axes, up):
@@ -710,6 +716,16 @@ def delete_guides(group):
     joints: they stay where they are, cut loose, with plain translate and
     joint orient values. Returns the joints, top first."""
     return _extract(guide_group(group))
+
+
+def extract_problems(group):
+    """Why :func:`delete_guides` can't extract ``group``'s joints, as
+    messages; empty if it can."""
+    try:
+        _check_extract(guide_group(group))
+    except ValueError as e:
+        return [str(e)]
+    return []
 
 
 def leftover_joint(name):

@@ -41,7 +41,8 @@ def tagged_key(node):
 class GuideModule:
     """Subclass, set ``key`` (saved in guide files; never change it) and
     ``name``, and implement :meth:`default_layout`, :meth:`check`,
-    :meth:`create`, :meth:`layout`, :meth:`reset` and :meth:`mirrored`;
+    :meth:`create`, :meth:`layout`, :meth:`reset`, :meth:`mirrored` and
+    :meth:`delete` (plus :meth:`check_extract` if extracting can fail);
     override :meth:`rebuild` if an earlier build can leave something to
     reuse."""
 
@@ -94,6 +95,18 @@ class GuideModule:
             raise GuideError(f"Can't put back {current}: {e}") from None
         return group
 
+    def extract(self, group):
+        """Delete the guides under ``group``, keeping their joints where they
+        are, as one undo step. Returns the joints. Raises
+        :class:`GuideError`, changing nothing, if they can't be extracted."""
+        problems = self.check_extract(group)
+        if problems:
+            raise GuideError(
+                f"Can't extract the joints of {short_name(group)}:\n" + "\n".join(f"- {p}" for p in problems)
+            )
+        with undo_chunk(f"Kaiju {self.name} to Joints"):
+            return self.delete(group)
+
     def nodes(self, layout):
         """The scene nodes to read the layout back from: the top group."""
         return [f"{layout['name']}_guides_grp"]
@@ -128,4 +141,13 @@ class GuideModule:
 
     def mirrored(self, layout):
         """``layout`` for the other side (``L_arm`` -> ``R_arm``)."""
+        raise NotImplementedError
+
+    def check_extract(self, group):
+        """Why the joints under ``group`` can't be extracted now, as messages."""
+        return []
+
+    def delete(self, group):
+        """Delete ``group`` and its guides, leaving their joints where they
+        are, free of the guides; return the joints."""
         raise NotImplementedError

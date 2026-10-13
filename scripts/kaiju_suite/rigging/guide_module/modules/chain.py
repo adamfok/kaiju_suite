@@ -94,6 +94,13 @@ class ChainGuideModule(GuideModule):
             raise GuideError(f"The {self.name} layout is missing {', '.join(missing)}.")
         return planar_chain.set_layout(group, layout["guides"], layout["up_guide"], layout["aim"], layout["up"])
 
+    def check_extract(self, group):
+        return planar_chain.extract_problems(group)
+
+    def delete(self, group):
+        """Extract the chain's joints (see :func:`~..planar_chain.delete_guides`)."""
+        return planar_chain.delete_guides(group)
+
     def describe(self, layout):
         count = len(layout["guides"])
         return [f"{layout['name']}: {count} guide{'s' if count != 1 else ''}, aim {layout['aim']}, up {layout['up']}"]

@@ -8,7 +8,7 @@ import pytest
 from maya import cmds
 
 from kaiju_suite.rigging import guide_module as guide_module_package
-from kaiju_suite.rigging.guide_module import all_guide_modules, get_guide_module, planar_chain
+from kaiju_suite.rigging.guide_module import all_guide_modules, delete_all_guides, get_guide_module, planar_chain
 from kaiju_suite.rigging.guide_module.guide_module import GuideError, GuideModule
 
 FORBIDDEN = ("kaiju_suite.tools", "kaiju_suite.ui", "kaiju_suite.datatypes", "PySide6", "PySide2", "shiboken")
@@ -101,6 +101,49 @@ def test_build_refuses_a_layout_that_isnt_a_dict(new_scene):
 def test_rebuild_builds_when_nothing_is_left_to_reuse(new_scene):
     group = _Dot().rebuild({"name": "a"})
     assert cmds.getAttr(f"{group}.kaijuGuideModule") == "dot"
+
+
+class _Peg(_Dot):
+    """A Dot whose guides make one joint, for extract."""
+
+    key = "peg"
+
+    def create(self, layout):
+        group = super().create(layout)
+        cmds.select(clear=True)
+        cmds.joint(name=f"{layout['name']}_jnt")
+        return group
+
+    def check_extract(self, group):
+        return [] if cmds.objExists(f"{self.layout(group)['name']}_jnt") else ["Its joint is gone."]
+
+    def delete(self, group):
+        joint = cmds.ls(f"{self.layout(group)['name']}_jnt", long=True)
+        cmds.delete(group)
+        return joint
+
+
+def test_extract_deletes_the_guides_and_returns_the_joints(new_scene):
+    group = _Peg().build({"name": "a"})
+    assert cmds.ls(_Peg().extract(group)) == ["a_jnt"]
+    assert not cmds.objExists("a_guides_grp")
+
+
+def test_extract_checks_first_and_changes_nothing(new_scene):
+    group = _Peg().build({"name": "a"})
+    cmds.delete("a_jnt")
+    with pytest.raises(GuideError, match="Can't extract the joints of a_guides_grp:\n- Its joint is gone."):
+        _Peg().extract(group)
+    assert cmds.objExists("a_guides_grp")
+
+
+def test_extract_is_one_undo_step(new_scene):
+    group = _Peg().build({"name": "a"})
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    _Peg().extract(group)
+    cmds.undo()
+    assert cmds.objExists("a_guides_grp")
 
 
 def test_restore_refuses_the_guides_of_another_name(new_scene):
@@ -222,3 +265,84 @@ def test_chain_restore_is_one_undo_step(new_scene):
     chain.restore(group, L_ARM)
     cmds.undo()
     assert chain.layout("L_arm_guides_grp") == moved
+
+
+def test_chain_extract_cuts_the_joints_loose_where_they_are(new_scene):
+    chain = get_guide_module("chain")
+    group = chain.build(L_ARM)
+    uuids = cmds.ls(planar_chain.joints(group), uuid=True)
+
+    joints = chain.extract(group)
+
+    assert cmds.ls(joints, uuid=True) == uuids
+    assert not cmds.objExists("L_arm_guides_grp")
+    assert not cmds.getAttr(f"{joints[0]}.tx", lock=True)
+    assert planar_chain.leftover_joint("L_arm") is not None  # Rebuild can bring the guides back
+
+
+def test_chain_check_extract_names_missing_guides(new_scene):
+    chain = get_guide_module("chain")
+    group = chain.build(L_ARM)
+    cmds.delete(planar_chain.guides(group)["up"])
+    (problem,) = chain.check_extract(group)
+    assert "missing" in problem
+
+
+# -- delete_all_guides: every guide module's guides to joints ------------------
+
+
+R_LEG = {"name": "R_leg", "aim": "x", "up": "y", "guides": [[-2, 8, 0], [-2, 0, 0]], "up_guide": [-2, 4, 5]}
+
+
+def test_delete_all_guides_extracts_every_guide_module(new_scene):
+    chain = get_guide_module("chain")
+    arm, leg = chain.build(L_ARM), chain.build(R_LEG)
+    uuids = {"L_arm": cmds.ls(planar_chain.joints(arm), uuid=True), "R_leg": cmds.ls(planar_chain.joints(leg), uuid=True)}
+
+    extracted = delete_all_guides()
+
+    assert {name: cmds.ls(joints, uuid=True) for name, joints in extracted.items()} == uuids
+    assert not cmds.objExists("L_arm_guides_grp")
+    assert not cmds.objExists("R_leg_guides_grp")
+    assert cmds.ls(type="locator") == []
+
+
+def test_delete_all_guides_with_no_guides_does_nothing(new_scene):
+    cmds.joint(name="loose_jnt")
+    assert delete_all_guides() == {}
+    assert cmds.objExists("loose_jnt")
+
+
+def test_delete_all_guides_with_a_broken_one_changes_nothing(new_scene):
+    chain = get_guide_module("chain")
+    arm = chain.build(L_ARM)
+    chain.build(R_LEG)
+    cmds.delete(planar_chain.guides(arm)["up"])
+
+    with pytest.raises(GuideError, match="L_arm_guides_grp"):
+        delete_all_guides()
+
+    assert cmds.objExists("L_arm_guides_grp")
+    assert cmds.objExists("R_leg_guides_grp")
+
+
+def test_delete_all_guides_refuses_an_unknown_guide_module(new_scene):
+    group = _Dot().build({"name": "a"})
+    cmds.setAttr(f"{group}.kaijuGuideModule", "nope", type="string")
+    get_guide_module("chain").build(L_ARM)
+
+    with pytest.raises(GuideError, match="a_guides_grp: Unknown guide module 'nope'"):
+        delete_all_guides()
+
+    assert cmds.objExists("L_arm_guides_grp")
+
+
+def test_delete_all_guides_is_one_undo_step(new_scene):
+    chain = get_guide_module("chain")
+    chain.build(L_ARM)
+    chain.build(R_LEG)
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    delete_all_guides()
+    cmds.undo()
+    assert cmds.objExists("L_arm_guides_grp") and cmds.objExists("R_leg_guides_grp")

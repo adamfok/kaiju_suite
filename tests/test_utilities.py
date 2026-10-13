@@ -78,7 +78,7 @@ def test_each_product_opens_its_utility(product_name, utility):
     assert callable(tool["launch"])
 
 
-@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator", "Import Scene", "New Scene"])
+@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator", "Import Scene", "New Scene", "Guides to Joints"])
 def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
     assert logic.utility_for(_product(product_name)) is None
 
@@ -93,7 +93,7 @@ def test_data_products_without_a_utility(product_name):
 
 
 def test_every_other_product_has_a_utility():
-    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Import Scene", "New Scene", *NO_UTILITY}
+    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Import Scene", "New Scene", "Guides to Joints", *NO_UTILITY}
 
     assert names == set(UTILITIES)
 
@@ -103,7 +103,7 @@ def test_products_with_an_info_window_get_right_click_info(product_name):
     assert logic.has_info(_product(product_name))
 
 
-@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator", "New Scene"])
+@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator", "New Scene", "Guides to Joints"])
 def test_products_without_an_info_window_get_no_right_click_info(product_name):
     assert not logic.has_info(_product(product_name))
 
