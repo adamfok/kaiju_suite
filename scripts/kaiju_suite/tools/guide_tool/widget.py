@@ -23,7 +23,7 @@ class GuideToolWindow(ToolWindow):
     TITLE = "Kaiju Guide Tool"
 
     def build_ui(self):
-        # Three rows: the name; middle guides and axes; Build and Delete.
+        # Three rows: name and middle guides; axes; Build and Delete.
         self.name = QtWidgets.QLineEdit(settings.get(SETTINGS_KEY, "name", "chain"))
         self.name.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
         self.name.textChanged.connect(lambda text: settings.set(SETTINGS_KEY, "name", text))
@@ -38,10 +38,12 @@ class GuideToolWindow(ToolWindow):
         name_row = QtWidgets.QHBoxLayout()
         name_row.addWidget(QtWidgets.QLabel("Name"))
         name_row.addWidget(self.name, 1)
+        name_row.addWidget(QtWidgets.QLabel("# Mid"))
+        name_row.addWidget(self.count)
         self.layout.addLayout(name_row)
 
         settings_row = QtWidgets.QHBoxLayout()
-        for label, field in (("Mid", self.count), ("Aim", self.aim), ("Up", self.up)):
+        for label, field in (("Aim", self.aim), ("Up", self.up)):
             settings_row.addWidget(QtWidgets.QLabel(label))
             settings_row.addWidget(field, 1)
         self.layout.addLayout(settings_row)
@@ -52,7 +54,7 @@ class GuideToolWindow(ToolWindow):
                 "Build",
                 "Build Guides: guides named after Name, with a joint chain that follows them live.\n"
                 "If guides with this name exist, their start, end and up guides stay and the middle\n"
-                "guides are reset to Mid. With a joint selected that follows no guides (e.g. after\n"
+                "guides are reset to # Mid. With a joint selected that follows no guides (e.g. after\n"
                 "Delete Guides), build guides on its chain, and the same joints follow them again.",
                 self._build,
             ),
@@ -63,12 +65,9 @@ class GuideToolWindow(ToolWindow):
                 self._delete,
             ),
         ):
-            button = QtWidgets.QToolButton()
-            button.setText(name)
-            button.setIcon(icons.icon(f"guide_tool_{name.lower()}.svg"))
+            # A push button keeps its icon and label centered as it stretches.
+            button = QtWidgets.QPushButton(icons.icon(f"guide_tool_{name.lower()}.svg"), name)
             button.setIconSize(QtCore.QSize(20, 20))
-            button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
-            button.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
             button.setToolTip(tip)
             button.clicked.connect(action)
             buttons.addWidget(button)
