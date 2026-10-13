@@ -185,6 +185,7 @@ class DataProduct(Product):
         if not self.republishable(path):
             return []
         return [
+            Action("Select Objects", lambda: self.select_objects(path)),
             Action(
                 "Republish",
                 lambda: self.republish(path),
@@ -192,7 +193,6 @@ class DataProduct(Product):
                 tooltip="Publishes again from the objects in this file, ignoring the selection.",
                 problems=lambda: self.republish_problems(path),
             ),
-            Action("Select Objects", lambda: self.select_objects(path)),
         ]
 
     # -- Product -------------------------------------------------------------

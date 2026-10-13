@@ -103,7 +103,7 @@ def test_entries_only_for_products_that_name_their_nodes(tags, new_scene, tmp_pa
     cmds.createNode("transform", name="a")
     path = _publish(with_nodes, tmp_path, "a")
     other = _publish(without, tmp_path, "a")
-    assert [a.label for a in with_nodes.actions(path)] == [REPUBLISH, SELECT]
+    assert [a.label for a in with_nodes.actions(path)] == [SELECT, REPUBLISH]
     assert without.actions(other) == []
     assert with_nodes.can_republish and not without.can_republish
     assert with_nodes.republishable(path) and not without.republishable(other)
