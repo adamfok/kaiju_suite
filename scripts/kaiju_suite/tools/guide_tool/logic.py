@@ -39,6 +39,8 @@ _NODES = "guideNodes"  # utility nodes of the preview network, deleted with the 
 # The previews' aim axis and the axis that lines up with the plane normal.
 _AIM = "previewAim"
 _THIRD = "previewThird"
+# The aim and up axes as chosen ("x", "-y"...), kept for rebuilding the guides.
+_AXES_TEXT = "previewAxes"
 # Closer than this counts as the same spot.
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
@@ -299,6 +301,8 @@ def _apply_axes(group, aim, up):
     third_vector[third] = 1 if orient.row(matrix, third) * normal > 0 else -1
     cmds.setAttr(f"{group}.{_AIM}", *aim_vector)
     cmds.setAttr(f"{group}.{_THIRD}", *third_vector)
+    text = " ".join(("-" if sign < 0 else "") + "xyz"[index] for index, sign in (aim, up))
+    cmds.setAttr(f"{group}.{_AXES_TEXT}", text, type="string")
     for preview in _connected(group, _PREVIEWS):
         for disc in cmds.listRelatives(preview, children=True, type="transform", fullPath=True) or []:
             cmds.setAttr(f"{disc}.rotate", *_DISC_ROTATE[aim[0]])
@@ -422,6 +426,7 @@ def create_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim="x", up="y")
         cmds.addAttr(group, longName=attr, attributeType="message", multi=True)
     for attr in (_UP, _PLANE):
         cmds.addAttr(group, longName=attr, attributeType="message")
+    cmds.addAttr(group, longName=_AXES_TEXT, dataType="string")
     for attr in (_AIM, _THIRD):
         cmds.addAttr(group, longName=attr, attributeType="double3")
         for letter in "XYZ":
@@ -505,6 +510,31 @@ def set_axes(group, aim="x", up="y"):
     """Turn ``group``'s previews to show joints built with ``aim`` and
     ``up`` (see :func:`build_joints`)."""
     _apply_axes(guide_group(group), *_axes(aim, up))
+
+
+@undoable
+def rebuild_guides(group, count):
+    """Give ``group``'s chain ``count`` middle guides, evenly between its
+    start and end guides, which stay where they are with the up guide; the
+    preview keeps its axes and the built joints stay linked. Returns the new
+    guide group, named as before."""
+    group = guide_group(group)
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError("The number of middle guides must be 0 or more.")
+    found = guides(group)
+    start, end, up = _position(found["chain"][0]), _position(found["chain"][-1]), _position(found["up"])
+    name = cmds.getAttr(f"{group}.{_TAG}")
+    # Guides made before the axes were kept have none: use the defaults.
+    kept = cmds.attributeQuery(_AXES_TEXT, node=group, exists=True) and cmds.getAttr(f"{group}.{_AXES_TEXT}")
+    aim, up_axis = kept.split() if kept else ("x", "y")
+    built = cmds.ls(joints(group), uuid=True)
+
+    delete_guides(group)
+    group = create_guides(name, count, start=start, end=end, aim=aim, up=up_axis)
+    cmds.xform(guides(group)["up"], worldSpace=True, translation=(up.x, up.y, up.z))
+    for i, uuid in enumerate(built):
+        _link(_by_uuid(uuid), group, f"{_JOINTS}[{i}]")
+    return group
 
 
 @undoable

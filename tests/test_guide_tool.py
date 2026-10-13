@@ -593,6 +593,98 @@ def test_plane_lies_on_the_guides_plane_and_follows_them(new_scene):
     assert cmds.listRelatives(plane, shapes=True, type="nurbsSurface")
 
 
+# -- rebuilding guides with another number of middle guides -------------------
+
+
+def test_rebuild_guides_keeps_start_end_and_up_and_resets_the_middles(new_scene):
+    group = _bent_arm()
+    cmds.move(1, 2, 3, group, relative=True)
+    old = logic.guides(group)
+    start, end, up = _pos(old["chain"][0]), _pos(old["chain"][-1]), _pos(old["up"])
+
+    group = logic.rebuild_guides(group, 1)
+
+    found = logic.guides(group)
+    assert cmds.ls(group)[0] == "arm_guides_grp"
+    assert [cmds.ls(n)[0] for n in found["chain"]] == ["arm_start_guide", "arm_mid_01_guide", "arm_end_guide"]
+    assert (_pos(found["chain"][0]) - start).length() < 1e-5
+    assert (_pos(found["chain"][-1]) - end).length() < 1e-5
+    assert (_pos(found["up"]) - up).length() < 1e-5
+    assert (_pos(found["chain"][1]) - (start + end) * 0.5).length() < 1e-5
+    assert len(logic.previews(group)) == 3
+    assert len(cmds.ls("arm_guides_grp")) == 1
+
+
+def test_rebuild_guides_spreads_more_middles_evenly(new_scene):
+    group = logic.create_guides("arm", 1, start=(0, 0, 0), end=(8, 0, 0))
+
+    group = logic.rebuild_guides(group, 3)
+
+    for node, x in zip(logic.guides(group)["chain"], (0, 2, 4, 6, 8)):
+        assert (_pos(node) - om.MVector(x, 0, 0)).length() < 1e-5
+
+
+def test_rebuild_guides_keeps_the_axes(new_scene):
+    group = _bent_arm()
+    logic.set_axes(group, aim="z", up="-x")
+
+    group = logic.rebuild_guides(group, 2)
+
+    for preview, joint in zip(logic.previews(group), logic.build_joints(group, aim="z", up="-x")):
+        _same_frame(preview, joint)
+
+
+def test_rebuild_guides_made_before_axes_were_kept(new_scene):
+    group = logic.create_guides("arm", 1)
+    cmds.deleteAttr(f"{group}.previewAxes")
+
+    group = logic.rebuild_guides(group, 2)
+
+    assert len(logic.guides(group)["chain"]) == 4
+
+
+def test_rebuild_guides_keeps_the_built_joints(new_scene):
+    group = logic.create_guides("arm", 1)
+    joints = logic.build_joints(group)
+    uuids = [_uuid(j) for j in joints]
+
+    group = logic.rebuild_guides(group, 1)
+
+    assert [_uuid(j) for j in logic.joints(group)] == uuids
+    assert [_uuid(j) for j in logic.build_joints(group)] == uuids
+
+
+def test_rebuild_guides_rejects_a_negative_count_and_changes_nothing(new_scene):
+    group = _bent_arm()
+    before = [_pos(n) for n in logic.guides(group)["chain"]]
+
+    with pytest.raises(ValueError):
+        logic.rebuild_guides(group, -1)
+
+    assert [_pos(n) for n in logic.guides(group)["chain"]] == before
+
+
+def test_rebuild_guides_is_one_undo_step(new_scene):
+    group = _bent_arm()
+    before = [_pos(n) for n in logic.guides(group)["chain"]]
+
+    logic.rebuild_guides(group, 1)
+    cmds.undo()
+
+    after = [_pos(n) for n in logic.guides("arm_guides_grp")["chain"]]
+    assert len(after) == len(before)
+    assert all((a - b).length() < 1e-5 for a, b in zip(after, before))
+
+
+def test_rebuild_then_delete_leaves_nothing_behind(new_scene):
+    before = set(cmds.ls())
+    group = logic.rebuild_guides(_bent_arm(), 4)
+
+    logic.delete_guides(group)
+
+    assert set(cmds.ls()) == before
+
+
 # -- hiding joints --------------------------------------------------------------
 
 

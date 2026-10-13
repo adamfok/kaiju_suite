@@ -71,6 +71,13 @@ class GuideToolWindow(ToolWindow):
                 self._create,
             ),
             (
+                "Rebuild Guides",
+                "Give the selected chain (or the only guides in the scene) this many middle guides, evenly between "
+                "its start and end guides. Start, end and up guides stay where they are. If the joint count no "
+                "longer matches, delete the joints before Build Joints.",
+                self._rebuild,
+            ),
+            (
                 "Delete Guides",
                 "Delete the selected chain's guides (or the only guides in the scene). Joints built from them stay.",
                 self._delete,
@@ -130,6 +137,15 @@ class GuideToolWindow(ToolWindow):
         if group is not None:
             cmds.select(logic.guides(group)["chain"])
             self.status.setText(f"Created guides for {self.name.text().strip()}. Move them, then Build Joints.")
+
+    def _rebuild(self):
+        group = self._group()
+        if group is None:
+            return
+        group = self._run(logic.rebuild_guides, group, self.count.value())
+        if group is not None:
+            cmds.select(logic.guides(group)["chain"][1:-1] or logic.guides(group)["chain"])
+            self.status.setText(f"Rebuilt the guides with {self.count.value()} middle guides.")
 
     def _build(self):
         group = self._group()
