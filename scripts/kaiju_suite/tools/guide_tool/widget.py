@@ -23,7 +23,7 @@ class GuideToolWindow(ToolWindow):
     TITLE = "Kaiju Guide Tool"
 
     def build_ui(self):
-        # Three rows: the name; middle guides and axes; the buttons.
+        # Three rows: the name; middle guides and axes; Build and Delete.
         self.name = QtWidgets.QLineEdit(settings.get(SETTINGS_KEY, "name", "chain"))
         self.name.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
         self.name.textChanged.connect(lambda text: settings.set(SETTINGS_KEY, "name", text))
@@ -47,10 +47,9 @@ class GuideToolWindow(ToolWindow):
         self.layout.addLayout(settings_row)
 
         buttons = QtWidgets.QHBoxLayout()
-        buttons.setSpacing(2)
         for name, tip, action in (
             (
-                "build",
+                "Build",
                 "Build Guides: guides named after Name, with a joint chain that follows them live.\n"
                 "If guides with this name exist, their start, end and up guides stay and the middle\n"
                 "guides are reset to Mid. With a joint selected that follows no guides (e.g. after\n"
@@ -58,31 +57,21 @@ class GuideToolWindow(ToolWindow):
                 self._build,
             ),
             (
-                "delete",
+                "Delete",
                 "Delete Guides: delete the selected chain's guides (or the only guides in the scene).\n"
                 "Their joints stay where they are, cut loose, with plain translate and joint orient values.",
                 self._delete,
             ),
-            (
-                "joints",
-                "Show/Hide Joints: hide the selected chain's joints, or show them again.\n"
-                "Only the joints are hidden, not what's parented under them.",
-                self._toggle_joints,
-            ),
-            (
-                "displays",
-                "Show/Hide Displays: hide the selected chain's discs, plane and guide lines,\n"
-                "or show them again. The guides and joints stay.",
-                self._toggle_displays,
-            ),
         ):
             button = QtWidgets.QToolButton()
-            button.setIcon(icons.icon(f"guide_tool_{name}.svg"))
+            button.setText(name)
+            button.setIcon(icons.icon(f"guide_tool_{name.lower()}.svg"))
             button.setIconSize(QtCore.QSize(20, 20))
+            button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+            button.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
             button.setToolTip(tip)
             button.clicked.connect(action)
             buttons.addWidget(button)
-        buttons.addStretch()
         self.layout.addLayout(buttons)
         self.layout.addStretch()
 
@@ -134,16 +123,6 @@ class GuideToolWindow(ToolWindow):
             logic.set_axes(logic.find_group(selected()), aim=self.aim.currentData(), up=self.up.currentData())
         except ValueError:
             return
-
-    def _toggle_joints(self):
-        group = self._group()
-        if group is not None:
-            self._run(logic.toggle_joints, group)
-
-    def _toggle_displays(self):
-        group = self._group()
-        if group is not None:
-            self._run(logic.toggle_displays, group)
 
     def _delete(self):
         group = self._group()

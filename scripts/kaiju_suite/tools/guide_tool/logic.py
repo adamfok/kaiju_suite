@@ -690,34 +690,6 @@ def set_axes(group, aim="x", up="y"):
 
 
 @undoable
-def toggle_joints(group):
-    """Hide ``group``'s joints, or show them all if any
-    is hidden. Only the joints are hidden (draw style None), not what hangs
-    below them. Returns whether they're shown now."""
-    found = joints(group)
-    if not found:
-        raise ValueError("No joints linked to these guides. Build the guides again.")
-    show = any(cmds.getAttr(f"{joint}.drawStyle") == 2 for joint in found)
-    for joint in found:
-        cmds.setAttr(f"{joint}.drawStyle", 0 if show else 2)  # 0 = Bone, 2 = None
-    return show
-
-
-@undoable
-def toggle_displays(group):
-    """Hide what ``group`` draws to help placing the guides (the discs with
-    their local axes, the plane and the guide lines), or show it all if any
-    of it is hidden. The guides and joints stay. Returns whether it's shown
-    now."""
-    group = guide_group(group)
-    found = previews(group) + [plane(group)] + list(display_curves(group))
-    show = not all(cmds.getAttr(f"{node}.visibility") for node in found)
-    for node in found:
-        cmds.setAttr(f"{node}.visibility", show)
-    return show
-
-
-@undoable
 def delete_guides(group):
     """Delete ``group``, its guides and their preview, and extract their
     joints: they stay where they are, cut loose, with plain translate and
