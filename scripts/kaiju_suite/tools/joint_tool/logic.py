@@ -11,11 +11,10 @@ Every function that changes the scene is one undo step and raises
 ``ValueError``, changing nothing, when its input is wrong.
 """
 
-import math
-
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite.core import orient as _orient
 from kaiju_suite.core.naming import expand_pattern, opposite_name
 from kaiju_suite.core.nodes import unique_name
 from kaiju_suite.core.selection import short_name
@@ -23,22 +22,9 @@ from kaiju_suite.core.undo import undoable
 
 AXES = ("x", "y", "z")
 SIGNED_AXES = ("x", "y", "z", "-x", "-y", "-z")
-_INDEX = {"x": 0, "y": 1, "z": 2}
-# How close to parallel the aim and world up may be before another up is used.
-_PARALLEL = 1e-6
 
 
 # -- helpers ----------------------------------------------------------------
-
-
-def _axis(axis):
-    """``"-y"`` -> ``(1, -1)``: the axis index and its sign."""
-    text = str(axis).strip().lower()
-    sign = -1 if text.startswith("-") else 1
-    letter = text.lstrip("+-")
-    if letter not in _INDEX:
-        raise ValueError(f"Unknown axis {axis!r}; use x, y or z, optionally with - in front.")
-    return _INDEX[letter], sign
 
 
 def _unique(items):
@@ -77,50 +63,19 @@ def _by_uuid(uuid):
     return cmds.ls(uuid, long=True)[0]
 
 
-def _matrix(node, attr="worldMatrix"):
-    return om.MMatrix(cmds.getAttr(f"{node}.{attr}[0]"))
-
-
-def _rotation(matrix):
-    """Only the rotation of ``matrix`` (no scale, shear or translation)."""
-    return om.MTransformationMatrix(matrix).rotation(asQuaternion=True).asMatrix()
-
-
-def _euler_matrix(node, attr, order=0):
-    values = [math.radians(v) for v in cmds.getAttr(f"{node}.{attr}")[0]]
-    return om.MEulerRotation(values, order).asMatrix()
-
-
-def _set_joint_orient(joint, matrix):
-    euler = om.MTransformationMatrix(matrix).rotation()
-    cmds.setAttr(f"{joint}.jointOrient", *(math.degrees(a) for a in (euler.x, euler.y, euler.z)))
-
-
-def _set_world_rotation(joint, world, keep_rotate=False):
-    """Turn ``joint`` to the world rotation ``world`` through its joint
-    orient. Unless ``keep_rotate``, its rotate and rotate axis become zero."""
-    if not keep_rotate:
-        cmds.setAttr(f"{joint}.rotate", 0, 0, 0)
-        cmds.setAttr(f"{joint}.rotateAxis", 0, 0, 0)
-    local = _rotation(_rotation(world) * _rotation(_matrix(joint, "parentMatrix")).inverse())
-    order = cmds.getAttr(f"{joint}.rotateOrder")
-    rotation = _euler_matrix(joint, "rotateAxis") * _euler_matrix(joint, "rotate", order)
-    _set_joint_orient(joint, rotation.inverse() * local)
-
-
 def _restore(node, world):
     """Put ``node`` back at the world matrix ``world``; a joint through its
     translate and joint orient, keeping its rotate."""
     if cmds.nodeType(node) == "joint":
         cmds.xform(node, worldSpace=True, translation=(world[12], world[13], world[14]))
-        _set_world_rotation(node, world, keep_rotate=True)
+        _orient.set_world_rotation(node, world, keep_rotate=True)
     else:
         cmds.xform(node, worldSpace=True, matrix=list(world))
 
 
 def _edit_keeping_children(node, edit):
     """Call ``edit()``, then put ``node``'s children back where they were."""
-    kept = [(cmds.ls(child, uuid=True)[0], _matrix(child)) for child in _children(node)]
+    kept = [(cmds.ls(child, uuid=True)[0], _orient.matrix(child)) for child in _children(node)]
     edit()
     for uuid, world in kept:
         _restore(_by_uuid(uuid), world)
@@ -128,29 +83,6 @@ def _edit_keeping_children(node, edit):
 
 def _position(node):
     return om.MVector(cmds.xform(node, query=True, worldSpace=True, translation=True))
-
-
-def _row(matrix, index):
-    return om.MVector(matrix[index * 4], matrix[index * 4 + 1], matrix[index * 4 + 2])
-
-
-def _aim_matrix(direction, aim, up, world_up, fallback_up=None):
-    """A rotation whose ``aim`` axis points along ``direction`` and whose
-    ``up`` axis is as close to ``world_up`` as it can be."""
-    (aim_index, aim_sign), (up_index, up_sign) = aim, up
-    direction = om.MVector(direction).normalize()
-    candidates = [world_up] + ([fallback_up] if fallback_up is not None else [])
-    candidates += [om.MVector(v) for v in ((0, 1, 0), (0, 0, 1), (1, 0, 0))]
-    for candidate in candidates:
-        upward = candidate - direction * (candidate * direction)
-        if upward.length() > _PARALLEL:
-            break
-    rows = [None, None, None]
-    rows[aim_index] = direction * aim_sign
-    rows[up_index] = upward.normalize() * up_sign
-    third = 3 - aim_index - up_index
-    rows[third] = rows[(third + 1) % 3] ^ rows[(third + 2) % 3]
-    return om.MMatrix([[r.x, r.y, r.z, 0.0] for r in rows] + [[0.0, 0.0, 0.0, 1.0]])
 
 
 def _zero(joint):
@@ -169,8 +101,8 @@ def orient(joints, aim="x", up="y", world_up="y", children=True, zero_end=True):
     to the world ``world_up`` axis as it can. A joint with no child joint
     (an end joint) gets a zero joint orient, matching its parent, if
     ``zero_end``, else keeps its orientation. Returns the oriented joints."""
-    aim_axis, up_axis = _axis(aim), _axis(up)
-    world_index, world_sign = _axis(world_up)
+    aim_axis, up_axis = _orient.axis(aim), _orient.axis(up)
+    world_index, world_sign = _orient.axis(world_up)
     if aim_axis[0] == up_axis[0]:
         raise ValueError("The aim axis and the up axis must be different axes.")
     joints = _joints(joints)
@@ -188,11 +120,11 @@ def orient(joints, aim="x", up="y", world_up="y", children=True, zero_end=True):
         if child_joints:
             parent = cmds.listRelatives(joint, parent=True, fullPath=True)
             parent_rotation = oriented.get(cmds.ls(parent, uuid=True)[0]) if parent else None
-            fallback = _row(parent_rotation, up_axis[0]) * up_axis[1] if parent_rotation else None
-            world = _aim_matrix(
+            fallback = _orient.row(parent_rotation, up_axis[0]) * up_axis[1] if parent_rotation else None
+            world = _orient.aim_matrix(
                 _position(child_joints[0]) - _position(joint), aim_axis, up_axis, world_up_vector, fallback
             )
-            _edit_keeping_children(joint, lambda: _set_world_rotation(joint, world))
+            _edit_keeping_children(joint, lambda: _orient.set_world_rotation(joint, world))
             oriented[uuid] = world
         elif zero_end:
             _edit_keeping_children(joint, lambda: _zero(joint))
@@ -293,7 +225,7 @@ def insert_joints(joint, count, child=None, name=None):
 
     pattern = name or f"{short_name(joint)}_split_##"
     child_uuid = cmds.ls(child, uuid=True)[0]
-    child_world = _matrix(child)
+    child_world = _orient.matrix(child)
     start, end = _position(joint), _position(child)
     radius = cmds.getAttr(f"{joint}.radius")
     uuids, parent = [], joint
