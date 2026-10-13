@@ -735,6 +735,25 @@ class AssemblerWindow(ToolWindow):
         menu = QtWidgets.QMenu(self)
         menu.setToolTipsVisible(True)
         product = products.product_for(path) if path else None
+        # Run, Disable/Enable and Show Log first; then the item's own actions
+        # (Select N Objects, Republish, Mirror...); then Publish.
+        if steps:
+            label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
+            menu.addAction(label, lambda: self._run(steps))
+        if path and not is_file:
+            menu.addAction(f"Run '{os.path.basename(directory)}'", lambda: self._run_folder(directory))
+        if toggles:
+            enabled = [logic.is_enabled(p) for p in toggles]
+            if any(enabled):
+                menu.addAction("Disable", lambda: self._set_enabled(toggles, False))
+            if not all(enabled):
+                menu.addAction("Enable", lambda: self._set_enabled(toggles, True))
+        if product and product.runnable and is_file:
+            show_log = menu.addAction("Show Log", lambda: self._show_log(path))
+            if not runlog.exists(path):
+                show_log.setEnabled(False)
+                show_log.setText("Show Log (not run yet)")
+        menu.addSeparator()
         if product:
             for action in product.actions(path):
                 entry = menu.addAction(action.label, lambda a=action: self._do_and_refresh(a, path))
@@ -745,17 +764,7 @@ class AssemblerWindow(ToolWindow):
                 "Publishes every published item in this folder again from the objects in its file, "
                 "ignoring the selection, then publishes the folder."
             )
-        if steps:
-            label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
-            menu.addAction(label, lambda: self._run(steps))
-        if product and product.runnable and is_file:
-            show_log = menu.addAction("Show Log", lambda: self._show_log(path))
-            if not runlog.exists(path):
-                show_log.setEnabled(False)
-                show_log.setText("Show Log (not run yet)")
         if not is_file:
-            if path:
-                menu.addAction(f"Run '{os.path.basename(directory)}'", lambda: self._run_folder(directory))
             plan_menu = menu.addMenu("Build")
             plan_menu.setToolTipsVisible(True)
             # A folder's plan holds the folder itself; the whole tree's, just its contents.
@@ -766,12 +775,6 @@ class AssemblerWindow(ToolWindow):
                 "Without building anything, lists every node a Rig Module item needs (its parent, joints, "
                 "spaces...) that isn't in the scene and isn't made by an earlier item."
             )
-        if toggles:
-            enabled = [logic.is_enabled(p) for p in toggles]
-            if any(enabled):
-                menu.addAction("Disable", lambda: self._set_enabled(toggles, False))
-            if not all(enabled):
-                menu.addAction("Enable", lambda: self._set_enabled(toggles, True))
         selected = self.selected_paths()
         if versions.can_compare_items(selected):
             old, new = selected
