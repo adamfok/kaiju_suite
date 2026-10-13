@@ -736,7 +736,7 @@ class AssemblerWindow(ToolWindow):
         menu.setToolTipsVisible(True)
         product = products.product_for(path) if path else None
         # Run, Disable/Enable and Show Log first; then the item's own actions
-        # (Select Objects, Republish, Mirror...); then Publish.
+        # (Select N Objects, Republish, Mirror...); then Publish.
         if steps:
             label = "Run" if len(steps) == 1 else f"Run {len(steps)} Selected"
             menu.addAction(label, lambda: self._run(steps))

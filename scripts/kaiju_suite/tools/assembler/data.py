@@ -184,8 +184,13 @@ class DataProduct(Product):
     def actions(self, path):
         if not self.republishable(path):
             return []
+        # Counts the objects the file names, whether or not they're in the scene.
+        try:
+            label = f"Select {plural(len(self.nodes(read(path, self.kind))), 'Object')}"
+        except (OSError, ValueError, KeyError):
+            label = "Select Objects"
         return [
-            Action("Select Objects", lambda: self.select_objects(path)),
+            Action(label, lambda: self.select_objects(path)),
             Action(
                 "Republish",
                 lambda: self.republish(path),

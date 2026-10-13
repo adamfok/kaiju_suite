@@ -200,7 +200,7 @@ def test_an_empty_item_has_no_mirror(tmp_path):
 def test_mirror_keeps_republish(new_scene, tmp_path):
     path, _ = _publish(tmp_path, _left_arm(), name="L_arm")
     labels = [a.label for a in guides.PRODUCT.actions(path)]
-    assert {"Republish", "Select Objects", "Mirror"} <= set(labels)
+    assert labels[0].startswith("Select ") and {"Republish", "Mirror"} <= set(labels)
 
 
 @pytest.mark.parametrize("aim, up", [("x", "y"), ("-x", "z"), ("y", "-z")])

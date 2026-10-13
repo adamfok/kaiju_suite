@@ -20,7 +20,7 @@ from kaiju_suite.tools.assembler.products import (
 )
 
 REPUBLISH = "Republish"
-SELECT = "Select Objects"
+SELECT = "Select 1 Object"
 
 
 class _Tags(data.DataProduct):
@@ -70,7 +70,10 @@ def _publish(product, tmp_path, *selection, name="item"):
 
 
 def _action(product, path, label):
-    (action,) = [a for a in product.actions(path) if a.label == label]
+    if label == SELECT:  # its label counts the objects: "Select 2 Objects"
+        (action,) = [a for a in product.actions(path) if a.label.startswith("Select ")]
+    else:
+        (action,) = [a for a in product.actions(path) if a.label == label]
     return action
 
 
@@ -212,6 +215,16 @@ def test_select_objects_selects_whats_named_in_the_file(tags, new_scene, tmp_pat
     cmds.select("c")
     assert _action(tags[0], path, SELECT).fn() == "Selected 2 objects from item.tag"
     assert cmds.ls(selection=True) == ["a", "b"]
+
+
+def test_select_objects_label_counts_the_objects_in_the_file(tags, new_scene, tmp_path):
+    for name in ("a", "b", "c"):
+        cmds.createNode("transform", name=name)
+    one = _publish(tags[0], tmp_path, "a", name="one")
+    three = _publish(tags[0], tmp_path, "a", "b", "c", name="three")
+    cmds.delete("b")  # counts what the file names, not what's in the scene
+    assert [a.label for a in tags[0].actions(one)][0] == "Select 1 Object"
+    assert [a.label for a in tags[0].actions(three)][0] == "Select 3 Objects"
 
 
 def test_select_objects_reports_missing_and_ambiguous(tags, new_scene, tmp_path):
