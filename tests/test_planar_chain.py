@@ -180,3 +180,99 @@ def test_building_guides_again_reports_no_errors(new_scene, maya_errors):
     guides.build_guides("arm", 1)
     guides.build_guides("arm", 2)  # replaces the first guides
     assert maya_errors == []
+
+
+# -- a chain hanging under another chain's joint ---------------------------------
+
+LEG = [(1, 9, 0), (1, 5, 0.5), (1, 1, 0)]
+LEG_UP = (1, 5, 5)
+FOOT = [(1, 1, 0), (1, 0, 1.5), (1, 0, 3)]
+FOOT_UP = (1, 3, 1.5)
+
+
+def _leg_and_foot():
+    leg = guides.build_at("leg", LEG, LEG_UP)
+    ankle = guides.joints(leg)[-1]
+    foot = guides.build_at("foot", FOOT, FOOT_UP, parent=ankle)
+    return leg, foot
+
+
+def test_an_attached_chain_shares_its_start_guide_and_hangs_under_the_parent_joint(new_scene):
+    leg, foot = _leg_and_foot()
+    ankle = guides.joints(leg)[-1]
+
+    assert guides.guides(foot)["chain"][0] == guides.guides(leg)["chain"][-1]
+    assert not cmds.objExists("foot_start_guide")
+    joints = guides.joints(foot)
+    assert cmds.ls(joints) == ["foot_01_jnt", "foot_02_jnt"]
+    assert cmds.listRelatives(joints[0], parent=True, fullPath=True) == [ankle]
+    assert [_pos(j) for j in joints] == [[1.0, 0.0, 1.5], [1.0, 0.0, 3.0]]
+    assert guides.attached(ankle) == [foot]
+    assert guides.attached(guides.joints(leg)[0]) == []
+
+
+def test_an_attached_chains_joints_follow_both_chains_guides(new_scene):
+    leg, foot = _leg_and_foot()
+    ball, toe = guides.joints(foot)
+    cmds.xform(guides.guides(foot)["chain"][1], worldSpace=True, translation=(1, 0.5, 1.5))
+    assert _pos(ball) == [1.0, 0.5, 1.5]
+    cmds.xform(guides.guides(leg)["chain"][-1], worldSpace=True, translation=(1, 2, 0))  # the shared ankle
+    assert _pos(guides.joints(leg)[-1]) == [1.0, 2.0, 0.0]
+    assert _pos(toe) == [1.0, 0.0, 3.0]
+
+
+def test_the_shared_guide_belongs_to_the_chain_it_was_made_for(new_scene):
+    leg, foot = _leg_and_foot()
+    shared = guides.guides(leg)["chain"][-1]
+    assert guides.guide_group(shared) == leg
+    assert guides.guide_group(guides.guides(foot)["chain"][1]) == foot
+
+
+def test_an_attached_chains_layout_starts_on_the_shared_guide(new_scene):
+    _, foot = _leg_and_foot()
+    assert guides.layout(foot)["guides"] == [list(map(float, p)) for p in FOOT]
+
+
+def test_check_build_of_an_attached_chain_needs_no_start_guide_name(new_scene):
+    cmds.createNode("transform", name="foot_start_guide")
+    guides.check_build("foot", FOOT, FOOT_UP, attached=True)
+    with pytest.raises(ValueError, match="foot_start_guide"):
+        guides.check_build("foot", FOOT, FOOT_UP)
+    cmds.createNode("transform", name="foot_02_jnt")
+    with pytest.raises(ValueError, match="foot_02_jnt"):
+        guides.check_build("foot", FOOT, FOOT_UP, attached=True)
+
+
+def test_build_at_refuses_a_parent_that_isnt_a_guided_joint(new_scene):
+    cmds.select(clear=True)
+    loose = cmds.joint(name="loose_jnt")
+    with pytest.raises(ValueError, match="loose_jnt isn't a joint built from guides"):
+        guides.build_at("foot", FOOT, FOOT_UP, parent=loose)
+    assert not cmds.objExists("foot_guides_grp")
+
+
+def test_extracting_an_attached_chain_then_its_parent_keeps_every_joint_in_place(new_scene):
+    leg, foot = _leg_and_foot()
+    cmds.xform(guides.guides(foot)["chain"][1], worldSpace=True, translation=(1, 0.5, 1.5))
+    ankle = guides.joints(leg)[-1]
+
+    foot_joints = guides.delete_guides(foot)
+    assert cmds.objExists("leg_guides_grp")
+    assert guides.guides(leg)["chain"][-1]  # the shared guide stays with the leg
+    leg_joints = guides.delete_guides(leg)
+
+    assert [_pos(j) for j in leg_joints + foot_joints] == [
+        [1.0, 9.0, 0.0], [1.0, 5.0, 0.5], [1.0, 1.0, 0.0], [1.0, 0.5, 1.5], [1.0, 0.0, 3.0]
+    ]
+    assert cmds.listRelatives(foot_joints[0], parent=True, fullPath=True) == cmds.ls(ankle, long=True)
+    assert cmds.ls(type="locator") == []
+    assert not cmds.attributeQuery("kaijuGuideName", node=foot_joints[0], exists=True)
+
+
+def test_set_layout_moves_an_attached_chains_guides(new_scene):
+    _, foot = _leg_and_foot()
+    moved = [FOOT[0], (1, 0, 2), (1, 0, 4)]
+    assert guides.set_layout(foot, moved, FOOT_UP) == foot
+    assert guides.layout(foot)["guides"] == [list(map(float, p)) for p in moved]
+    with pytest.raises(ValueError, match="attached"):
+        guides.set_layout(foot, moved + [(1, 0, 5)], FOOT_UP)

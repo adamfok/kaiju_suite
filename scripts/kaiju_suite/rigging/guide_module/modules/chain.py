@@ -13,26 +13,16 @@ from maya import cmds
 from kaiju_suite.core.naming import mirrored_name
 from kaiju_suite.rigging.guide_module import planar_chain
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.rigging.guide_module.guide_module import GuideError, GuideModule, tag
+from kaiju_suite.rigging.guide_module.guide_module import (
+    GuideError,
+    GuideModule,
+    flip_x,
+    flipped_axis,
+    is_point,
+    tag,
+)
 
 _KEYS = ("name", "aim", "up", "guides", "up_guide")
-
-
-def _is_point(value):
-    return (
-        isinstance(value, (list, tuple))
-        and len(value) == 3
-        and all(isinstance(c, (int, float)) and not isinstance(c, bool) for c in value)
-    )
-
-
-def _flipped(axis):
-    return axis[1:] if axis.startswith("-") else f"-{axis}"
-
-
-def _flip_x(point):
-    # + 0.0 keeps 0 from turning into -0.0.
-    return [-point[0] + 0.0, point[1], point[2]]
 
 
 class ChainGuideModule(GuideModule):
@@ -57,7 +47,7 @@ class ChainGuideModule(GuideModule):
             return [f"The {self.name} layout is missing {', '.join(missing)}."]
         name = layout["name"]
         points = layout["guides"]
-        if not isinstance(points, list) or not all(_is_point(p) for p in points) or not _is_point(layout["up_guide"]):
+        if not isinstance(points, list) or not all(is_point(p) for p in points) or not is_point(layout["up_guide"]):
             return [f"{name}: guides and up_guide must be [x, y, z] positions."]
         if isinstance(name, str) and cmds.objExists(f"{name}_guides_grp"):
             return [f"Guides already in the scene: {name}. Delete them first."]
@@ -125,10 +115,10 @@ class ChainGuideModule(GuideModule):
         return {
             **layout,
             "name": mirrored_name(layout["name"]),
-            "aim": _flipped(layout["aim"]),
-            "up": _flipped(layout["up"]),
-            "guides": [_flip_x(p) for p in layout["guides"]],
-            "up_guide": _flip_x(layout["up_guide"]),
+            "aim": flipped_axis(layout["aim"]),
+            "up": flipped_axis(layout["up"]),
+            "guides": [flip_x(p) for p in layout["guides"]],
+            "up_guide": flip_x(layout["up_guide"]),
         }
 
 

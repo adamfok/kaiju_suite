@@ -270,3 +270,27 @@ def test_mirrored_joints_match_maya_behavior_mirror(new_scene, tmp_path):
     cmds.mirrorJoint(top, mirrorYZ=True, mirrorBehavior=True, searchReplace=("L_", "M_"))
     for i in range(1, 5):
         assert all(_close(a, b) for a, b in zip(_rows(f"R_arm_{i:02d}_jnt"), _rows(f"M_arm_{i:02d}_jnt"))), i
+
+
+# -- Leg Guide ------------------------------------------------------------------
+
+
+def test_new_leg_guide_item_runs_publishes_and_mirrors(new_scene, tmp_path):
+    leg = get_guide_module("leg")
+    path = _creator("Leg Guide").fn(str(tmp_path), "L_leg", None)
+    assert spec.read(path) == ("leg", leg.default_layout("L_leg"))
+    assert guides.PRODUCT.type_name(path) == "Leg Guide"
+
+    guides.PRODUCT.run(path)
+    group = "L_leg_guides_grp"
+    assert len(core_guides.joints(group)) == 3
+    cmds.xform(core_guides.guides(group)["chain"][1], worldSpace=True, translation=(1, 5, 1))
+    cmds.select(group)
+    versions.publish_action(path).fn()
+    assert spec.read(path)[1]["leg"][1] == [1.0, 5.0, 1.0]
+
+    _mirror_action(path).fn()
+    key, mirrored = spec.read(str(tmp_path / "R_leg.guide"))
+    assert key == "leg" and mirrored == leg.mirrored(spec.read(path)[1])
+    guides.PRODUCT.run(str(tmp_path / "R_leg.guide"))
+    assert cmds.objExists("R_leg_guides_grp")
