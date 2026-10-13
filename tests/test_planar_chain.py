@@ -156,3 +156,27 @@ def test_extract_problems_names_missing_guides(new_scene):
     cmds.delete(guides.guides(group)["up"])
     (problem,) = guides.extract_problems(group)
     assert "arm_guides_grp" in problem and "missing" in problem
+
+
+# -- deleting guides quietly -----------------------------------------------------
+
+
+@pytest.fixture
+def maya_errors():
+    """Maya's error and warning output while the test runs."""
+    found = []
+    kinds = (om.MCommandMessage.kError, om.MCommandMessage.kWarning)
+    callback = om.MCommandMessage.addCommandOutputCallback(lambda message, kind, *_: kind in kinds and found.append(message))
+    yield found
+    om.MMessage.removeCallback(callback)
+
+
+def test_delete_guides_reports_no_errors(new_scene, maya_errors):
+    guides.delete_guides(guides.build_at("arm", POSITIONS, UP))
+    assert maya_errors == []
+
+
+def test_building_guides_again_reports_no_errors(new_scene, maya_errors):
+    guides.build_guides("arm", 1)
+    guides.build_guides("arm", 2)  # replaces the first guides
+    assert maya_errors == []

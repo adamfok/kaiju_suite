@@ -110,3 +110,14 @@ def test_run_with_a_broken_chain_fails_and_changes_nothing(new_scene, tmp_path):
         logic.run_steps([path])
 
     assert cmds.objExists("leg_guides_grp")
+
+
+def test_run_succeeds_without_warnings(new_scene, tmp_path):
+    _chain("arm")
+    _leg()
+    path = _item(tmp_path)
+    statuses = []
+
+    logic.run_steps([path], on_status=lambda p, s: statuses.append(s))
+
+    assert statuses[-1] == logic.SUCCESS, _log(path)

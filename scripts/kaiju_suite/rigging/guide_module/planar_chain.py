@@ -554,7 +554,13 @@ def _check_name(name):
 
 
 def _remove(group):
-    cmds.delete(_connected(group, _NODES) + [group])
+    nodes = _connected(group, _NODES)
+    # While the guides go, the plane normal's inputs drop to zero; normalizing
+    # that makes Maya print "found a zero-length output vector" errors.
+    # Callers put the joints back where they were, so its value no longer matters.
+    for node in cmds.ls(nodes, type="vectorProduct"):
+        cmds.setAttr(f"{node}.normalizeOutput", False)
+    cmds.delete(nodes + [group])
 
 
 def _taken(name, count, owned=()):
