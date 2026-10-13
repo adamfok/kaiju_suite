@@ -72,11 +72,25 @@ class AnimationToolWindow(ToolWindow):
         switch_row.addWidget(button, 1)
         switch.addLayout(switch_row)
 
+        reset_box = QtWidgets.QGroupBox("Reset Controls")
+        reset = QtWidgets.QVBoxLayout(reset_box)
+        note = QtWidgets.QLabel(
+            "Puts the selected rig controls, or every one if nothing is selected, "
+            "back to the values they were built with."
+        )
+        note.setWordWrap(True)
+        reset.addWidget(note)
+        button = QtWidgets.QPushButton("Reset Controls")
+        button.setToolTip("Attributes locked or connected since the build are left alone.")
+        button.clicked.connect(self._reset_controls)
+        reset.addWidget(button)
+
         self.status = QtWidgets.QLabel()
         self.status.setWordWrap(True)
 
         self.layout.addWidget(mirror_box)
         self.layout.addWidget(switch_box)
+        self.layout.addWidget(reset_box)
         self.layout.addWidget(self.status)
         self.layout.addStretch()
 
@@ -119,3 +133,9 @@ class AnimationToolWindow(ToolWindow):
             _warn("Nothing selected is part of an IK/FK limb. Select its switch control.")
             return
         self._report("Switched IK/FK on", result)
+
+    def _reset_controls(self):
+        done, message = logic.reset_controls()
+        self.status.setText(message)
+        if not done:
+            _warn(message)

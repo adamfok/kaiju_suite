@@ -1,5 +1,5 @@
-"""Animation Tool: mirror and flip animation across sides, and switch IK/FK
-limbs without a pop. No Qt here.
+"""Animation Tool: mirror and flip animation across sides, switch IK/FK
+limbs without a pop, and reset rig controls. No Qt here.
 
 Sides and the mirroring math are shared with the Pose Tool, in
 :mod:`kaiju_suite.core.mirror`: opposites are found by name, a control with
@@ -25,6 +25,9 @@ other than their own keys are skipped and reported.
 
 :func:`switch_ik_fk` matches an IK/FK limb to its other side and switches to
 it, with the matching in :mod:`kaiju_suite.rigging.rig_module.ik_fk_match`.
+
+:func:`reset_controls` puts rig controls back to the values they were built
+with (see :mod:`kaiju_suite.rigging.rig_module.controls`).
 """
 
 import math
@@ -34,7 +37,7 @@ from maya import cmds
 
 from kaiju_suite.core import mirror as mirroring
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.rigging.rig_module import ik_fk_match
+from kaiju_suite.rigging.rig_module import controls, ik_fk_match
 
 Result = namedtuple("Result", "changed skipped")
 
@@ -234,3 +237,19 @@ def switch_ik_fk(nodes, key=False):
         else:
             ik_fk_match.match_ik_to_fk(switch, key=key)
     return Result(switches, skipped)
+
+
+def reset_controls():
+    """Reset the selected rig controls, or every one if nothing is selected,
+    as one undo step. Returns ``(controls reset, message)``; nothing was
+    reset if the list is empty, and the message says why."""
+    selection = cmds.ls(selection=True, long=True)
+    if selection:
+        done = controls.reset(selection)
+        if not done:
+            return [], "None of the selected nodes is a rig control."
+        return done, f"Reset {len(done)} control{'s' if len(done) != 1 else ''}."
+    done = controls.reset()
+    if not done:
+        return [], "The scene has no rig controls."
+    return done, f"Reset all {len(done)} control{'s' if len(done) != 1 else ''}."
