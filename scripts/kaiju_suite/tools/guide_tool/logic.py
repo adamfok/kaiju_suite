@@ -33,9 +33,18 @@ _CHAIN = "guideChain"  # start, middle and end guides, in order
 _UP = "guideUp"
 _JOINTS = "guideJoints"  # the joints built from the guides, top first
 _CURVES = "guideCurves"  # the display curves: through the chain, start to up
+_PREVIEWS = "guidePreviews"  # one transform per joint, placed as the joint will be
+_PLANE = "guidePlane"
+_NODES = "guideNodes"  # utility nodes of the preview network, deleted with the group
+# The previews' aim axis and the axis that lines up with the plane normal.
+_AIM = "previewAim"
+_THIRD = "previewThird"
 # Closer than this counts as the same spot.
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
+_DISC_COLOR = 18  # light blue
+# Turns a disc made around X to ring the aim axis, by the aim axis' index.
+_DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
 
 # -- helpers ------------------------------------------------------------------
@@ -119,6 +128,162 @@ def _display_curve(name, group, guides):
     return curve
 
 
+# -- live preview -------------------------------------------------------------
+# A node network does what build_joints does, live: it projects the middle
+# guides onto the plane and orients a preview transform per joint (aim at
+# the next joint, third axis along the plane normal) with aimMatrix nodes.
+
+
+def _util(group, node_type, name):
+    """A utility node of the preview network, linked to ``group`` so it's
+    deleted with it."""
+    node = cmds.createNode(node_type, name=name)
+    index = len(cmds.getAttr(f"{group}.{_NODES}", multiIndices=True) or [])
+    _link(node, group, f"{_NODES}[{index}]")
+    return node
+
+
+def _difference(group, name, a, b):
+    """The plug of ``a - b``, both vector plugs."""
+    node = _util(group, "plusMinusAverage", name)
+    cmds.setAttr(f"{node}.operation", 2)
+    cmds.connectAttr(a, f"{node}.input3D[0]")
+    cmds.connectAttr(b, f"{node}.input3D[1]")
+    return f"{node}.output3D"
+
+
+def _world_position(guide):
+    shape = cmds.listRelatives(guide, shapes=True, fullPath=True)[0]
+    return f"{shape}.worldPosition[0]"
+
+
+def _aligned(group, name, position, primary_axis, primary, secondary_axis, secondary):
+    """A matrix plug at ``position`` whose ``primary_axis`` points along the
+    ``primary`` vector and whose ``secondary_axis`` is as close as it can be
+    to ``secondary``. Axes are plugs or tuples."""
+    compose = _util(group, "composeMatrix", f"{name}_compose")
+    cmds.connectAttr(position, f"{compose}.inputTranslate")
+    aim = _util(group, "aimMatrix", f"{name}_aim")
+    cmds.connectAttr(f"{compose}.outputMatrix", f"{aim}.inputMatrix")
+    for prefix, axis, target in (("primary", primary_axis, primary), ("secondary", secondary_axis, secondary)):
+        cmds.setAttr(f"{aim}.{prefix}Mode", 2)  # align
+        if isinstance(axis, str):
+            cmds.connectAttr(axis, f"{aim}.{prefix}InputAxis")
+        else:
+            cmds.setAttr(f"{aim}.{prefix}InputAxis", *axis)
+        cmds.connectAttr(target, f"{aim}.{prefix}TargetVector")
+    return f"{aim}.outputMatrix"
+
+
+def _visual(node, color=None):
+    """Draw ``node`` as unselectable wireframe."""
+    cmds.setAttr(f"{node}.overrideEnabled", True)
+    cmds.setAttr(f"{node}.overrideDisplayType", 2)  # reference
+    cmds.setAttr(f"{node}.overrideShading", False)
+    if color is not None:
+        cmds.setAttr(f"{node}.overrideColor", color)
+
+
+def _placed(group, node, matrix):
+    """Put ``node`` under ``group``, placed in world space by ``matrix``."""
+    node = _long(cmds.parent(node, group)[0])
+    cmds.setAttr(f"{node}.inheritsTransform", False)
+    cmds.connectAttr(matrix, f"{node}.offsetParentMatrix")
+    return node
+
+
+def _disc(name, parent, radius):
+    circle = cmds.circle(normal=(1, 0, 0), radius=radius, constructionHistory=False)[0]
+    disc = cmds.planarSrf(circle, constructionHistory=False)[0]
+    cmds.delete(circle)
+    disc = cmds.rename(cmds.parent(disc, parent)[0], name)
+    disc = _long(f"{parent}|{disc}")
+    _visual(disc, _DISC_COLOR)
+    return disc
+
+
+def _preview_network(group, name, chain, up, size):
+    start, end = _world_position(chain[0]), _world_position(chain[-1])
+    span = _difference(group, f"{name}_span", end, start)
+    cross = _util(group, "vectorProduct", f"{name}_normal")
+    cmds.setAttr(f"{cross}.operation", 2)  # cross product
+    cmds.setAttr(f"{cross}.normalizeOutput", True)
+    cmds.connectAttr(span, f"{cross}.input1")
+    cmds.connectAttr(_difference(group, f"{name}_to_up", _world_position(up), start), f"{cross}.input2")
+    normal = f"{cross}.output"
+
+    points = [start]
+    for i, guide in enumerate(chain[1:-1], start=2):
+        position = _world_position(guide)
+        dot = _util(group, "vectorProduct", f"{name}_{i:02d}_height")
+        cmds.setAttr(f"{dot}.operation", 1)  # dot product
+        cmds.connectAttr(_difference(group, f"{name}_{i:02d}_from_start", position, start), f"{dot}.input1")
+        cmds.connectAttr(normal, f"{dot}.input2")
+        offset = _util(group, "multiplyDivide", f"{name}_{i:02d}_offset")
+        cmds.connectAttr(normal, f"{offset}.input1")
+        for letter in "XYZ":
+            cmds.connectAttr(f"{dot}.outputX", f"{offset}.input2{letter}")
+        points.append(_difference(group, f"{name}_{i:02d}_planar", position, f"{offset}.output"))
+    points.append(end)
+
+    segments = [
+        _difference(group, f"{name}_{i + 1:02d}_segment", b, a) for i, (a, b) in enumerate(zip(points, points[1:]))
+    ]
+    for i, point in enumerate(points):
+        label = f"{name}_{i + 1:02d}"
+        # The end joint lines up with its parent: it aims along the last segment.
+        matrix = _aligned(
+            group, label, point, f"{group}.{_AIM}", segments[min(i, len(segments) - 1)], f"{group}.{_THIRD}", normal
+        )
+        preview = _placed(group, cmds.createNode("transform", name=f"{label}_preview"), matrix)
+        cmds.setAttr(f"{preview}.displayLocalAxis", True)
+        _disc(f"{label}_disc", preview, size * 2)
+        _link(preview, group, f"{_PREVIEWS}[{i}]")
+
+    center = _util(group, "plusMinusAverage", f"{name}_center")
+    cmds.setAttr(f"{center}.operation", 3)  # average
+    cmds.connectAttr(start, f"{center}.input3D[0]")
+    cmds.connectAttr(end, f"{center}.input3D[1]")
+    matrix = _aligned(group, f"{name}_plane", f"{center}.output3D", (1, 0, 0), span, (0, 0, 1), normal)
+    surface = cmds.nurbsPlane(
+        name=f"{name}_plane", axis=(0, 0, 1), width=1, lengthRatio=1, patchesU=4, patchesV=2, constructionHistory=False
+    )[0]
+    surface = _placed(group, surface, matrix)
+    length = _util(group, "distanceBetween", f"{name}_length")
+    cmds.connectAttr(start, f"{length}.point1")
+    cmds.connectAttr(end, f"{length}.point2")
+    scale = _util(group, "multiplyDivide", f"{name}_plane_size")
+    cmds.setAttr(f"{scale}.input2", 1.2, 0.6, 1)
+    for letter in "XY":
+        cmds.connectAttr(f"{length}.distance", f"{scale}.input1{letter}")
+        cmds.connectAttr(f"{scale}.output{letter}", f"{surface}.scale{letter}")
+    _visual(surface)
+    _link(surface, group, _PLANE)
+
+
+def _apply_axes(group, aim, up):
+    """Point the previews' ``aim`` axis down the chain and their ``up`` axis
+    to the up guide's side, as build_joints does (``(index, sign)`` pairs)."""
+    direction, normal = om.MVector(1, 0, 0), om.MVector(0, 0, 1)
+    matrix = orient.aim_matrix(direction, aim, up, normal ^ direction)
+    third = 3 - aim[0] - up[0]
+    aim_vector, third_vector = [0, 0, 0], [0, 0, 0]
+    aim_vector[aim[0]] = aim[1]
+    third_vector[third] = 1 if orient.row(matrix, third) * normal > 0 else -1
+    cmds.setAttr(f"{group}.{_AIM}", *aim_vector)
+    cmds.setAttr(f"{group}.{_THIRD}", *third_vector)
+    for preview in _connected(group, _PREVIEWS):
+        for disc in cmds.listRelatives(preview, children=True, type="transform", fullPath=True) or []:
+            cmds.setAttr(f"{disc}.rotate", *_DISC_ROTATE[aim[0]])
+
+
+def _axes(aim, up):
+    aim_axis, up_axis = orient.axis(aim), orient.axis(up)
+    if aim_axis[0] == up_axis[0]:
+        raise ValueError("The aim axis and the up axis must be different axes.")
+    return aim_axis, up_axis
+
+
 # -- finding guides -----------------------------------------------------------
 
 
@@ -130,7 +295,8 @@ def guide_group(node):
         raise ValueError(f"{node!r} isn't in the scene.")
     path = found[0]
     linked = cmds.listConnections(f"{path}.message", source=False, destination=True) or []
-    for candidate in [path] + cmds.ls(linked, long=True) + (cmds.listRelatives(path, allParents=True, fullPath=True) or []):
+    parents = cmds.listRelatives(path, allParents=True, fullPath=True) or []
+    for candidate in [path] + cmds.ls(linked, long=True) + parents:
         if _is_group(candidate):
             return _long(candidate)
     raise ValueError(f"{short_name(path)} isn't a guide, a guide group or a joint built from guides.")
@@ -171,6 +337,18 @@ def display_curves(group):
     return tuple(_connected(guide_group(group), _CURVES))
 
 
+def previews(group):
+    """The preview transforms, one per joint, top first. Each sits and
+    turns as its joint will, shows its local axis and holds a disc."""
+    return _connected(guide_group(group), _PREVIEWS)
+
+
+def plane(group):
+    """The surface showing the plane the chain is built on."""
+    group = guide_group(group)
+    return _long(cmds.listConnections(f"{group}.{_PLANE}", source=True, destination=False)[0])
+
+
 def planar_positions(points, up):
     """``points`` (start, middle points, end) with each middle point moved
     straight onto the plane through the start, the end and ``up``. Raises
@@ -183,23 +361,29 @@ def planar_positions(points, up):
 
 
 @undoable
-def create_guides(name, count, start=(0, 0, 0), end=(10, 0, 0)):
+def create_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim="x", up="y"):
     """Make guides for a chain named ``name``: start and end guides at
     ``start`` and ``end``, ``count`` middle guides evenly between them, and
-    an up guide off to the side. Returns the guide group."""
+    an up guide off to the side, with a live preview of the joints (oriented
+    by ``aim`` and ``up``, see :func:`build_joints`) and of their plane.
+    Returns the guide group."""
     if not isinstance(name, str) or not NAME.match(name):
-        raise ValueError(f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit.")
+        raise ValueError(
+            f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit."
+        )
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise ValueError("The number of middle guides must be 0 or more.")
     start, end = om.MVector(start), om.MVector(end)
     span = end - start
     if span.length() < _TOLERANCE:
         raise ValueError("The start and end guides can't be on the same spot.")
+    axes = _axes(aim, up)
 
     chain_names = (
         [f"{name}_start_guide"] + [f"{name}_mid_{i:02d}_guide" for i in range(1, count + 1)] + [f"{name}_end_guide"]
     )
-    names = [f"{name}_guides_grp", f"{name}_up_guide", f"{name}_guide_crv", f"{name}_up_crv"] + chain_names
+    names = [f"{name}_guides_grp", f"{name}_up_guide", f"{name}_guide_crv", f"{name}_up_crv", f"{name}_plane"]
+    names += chain_names + [f"{name}_{i:02d}_{kind}" for i in range(1, count + 3) for kind in ("preview", "disc")]
     taken = [n for n in names if cmds.objExists(n)]
     if taken:
         raise ValueError(f"These names are already used, rename or delete them first: {', '.join(taken)}")
@@ -207,8 +391,14 @@ def create_guides(name, count, start=(0, 0, 0), end=(10, 0, 0)):
     group = _long(cmds.createNode("transform", name=f"{name}_guides_grp"))
     cmds.addAttr(group, longName=_TAG, dataType="string")
     cmds.setAttr(f"{group}.{_TAG}", name, type="string")
-    for attr, multi in ((_CHAIN, True), (_UP, False), (_JOINTS, True), (_CURVES, True)):
-        cmds.addAttr(group, longName=attr, attributeType="message", multi=multi)
+    for attr in (_CHAIN, _JOINTS, _CURVES, _PREVIEWS, _NODES):
+        cmds.addAttr(group, longName=attr, attributeType="message", multi=True)
+    for attr in (_UP, _PLANE):
+        cmds.addAttr(group, longName=attr, attributeType="message")
+    for attr in (_AIM, _THIRD):
+        cmds.addAttr(group, longName=attr, attributeType="double3")
+        for letter in "XYZ":
+            cmds.addAttr(group, longName=f"{attr}{letter}", attributeType="double", parent=attr)
 
     size = span.length() * 0.05
     chain = []
@@ -225,6 +415,8 @@ def create_guides(name, count, start=(0, 0, 0), end=(10, 0, 0)):
 
     _link(_display_curve(f"{name}_guide_crv", group, chain), group, f"{_CURVES}[0]")
     _link(_display_curve(f"{name}_up_crv", group, [chain[0], up]), group, f"{_CURVES}[1]")
+    _preview_network(group, name, chain, up, size)
+    _apply_axes(group, *axes)
     cmds.select(clear=True)
     return group
 
@@ -237,9 +429,7 @@ def build_joints(group, aim="x", up="y"):
     ``up`` towards the up guide's side, both ``"x"``, ``"-y"``...
     Returns the joints, top first."""
     group = guide_group(group)
-    aim_axis, up_axis = orient.axis(aim), orient.axis(up)
-    if aim_axis[0] == up_axis[0]:
-        raise ValueError("The aim axis and the up axis must be different axes.")
+    aim_axis, up_axis = _axes(aim, up)
     found = guides(group)
     positions, normal = _plane([_position(g) for g in found["chain"]], _position(found["up"]))
 
@@ -267,6 +457,7 @@ def build_joints(group, aim="x", up="y"):
             uuids.append(cmds.ls(joint, uuid=True)[0])
             parent = joint
 
+    _apply_axes(group, aim_axis, up_axis)
     last = len(uuids) - 1
     for i, uuid in enumerate(uuids):
         joint = _by_uuid(uuid)
@@ -283,6 +474,15 @@ def build_joints(group, aim="x", up="y"):
 
 
 @undoable
+def set_axes(group, aim="x", up="y"):
+    """Turn ``group``'s previews to show joints built with ``aim`` and
+    ``up`` (see :func:`build_joints`)."""
+    _apply_axes(guide_group(group), *_axes(aim, up))
+
+
+@undoable
 def delete_guides(group):
-    """Delete ``group`` and its guides. Joints built from them stay."""
-    cmds.delete(guide_group(group))
+    """Delete ``group``, its guides and their preview. Joints built from
+    them stay."""
+    group = guide_group(group)
+    cmds.delete(_connected(group, _NODES) + [group])

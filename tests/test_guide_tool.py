@@ -413,7 +413,149 @@ def test_building_again_with_a_different_guide_count_changes_nothing(new_scene):
     assert len(cmds.ls(type="joint")) == 2
 
 
+# -- live preview: a disc per joint, and the plane ----------------------------
+
+
+def _rows(node):
+    return [_axis(node, axis) for axis in ("x", "y", "z")]
+
+
+def _same_frame(a, b):
+    assert (_pos(a) - _pos(b)).length() < 1e-4, (a, b)
+    for row_a, row_b in zip(_rows(a), _rows(b)):
+        assert (row_a - row_b).length() < 1e-4, (a, b)
+
+
+def _planar(group):
+    found = logic.guides(group)
+    return logic.planar_positions([_pos(g) for g in found["chain"]], _pos(found["up"]))
+
+
+def test_previews_sit_where_the_joints_will_land(new_scene):
+    group = _bent_arm()
+
+    previews = logic.previews(group)
+
+    assert len(previews) == 5
+    for preview, position in zip(previews, _planar(group)):
+        assert (_pos(preview) - position).length() < 1e-4
+
+
+def test_previews_match_the_built_joints(new_scene):
+    group = _bent_arm()
+
+    joints = logic.build_joints(group)
+
+    for preview, joint in zip(logic.previews(group), joints):
+        _same_frame(preview, joint)
+
+
+def test_previews_follow_the_guides(new_scene):
+    group = _bent_arm()
+    previews = logic.previews(group)
+    found = logic.guides(group)
+
+    _move(found["chain"][2], 5, 6, 7)
+    _move(found["chain"][-1], 11, 3, -2)
+    _move(found["up"], 4, 2, 8)
+    cmds.move(1, 2, 3, group, relative=True)
+    joints = logic.build_joints(group)
+
+    for preview, joint in zip(previews, joints):
+        _same_frame(preview, joint)
+
+
+def test_previews_follow_the_axes(new_scene):
+    group = _bent_arm()
+
+    logic.set_axes(group, aim="-y", up="z")
+    other = logic.create_guides("copy", 3)
+    for source, target in zip(logic.guides(group)["chain"] + [logic.guides(group)["up"]],
+                              logic.guides(other)["chain"] + [logic.guides(other)["up"]]):
+        _move(target, *_pos(source))
+    joints = logic.build_joints(other, aim="-y", up="z")
+
+    for preview, joint in zip(logic.previews(group), joints):
+        _same_frame(preview, joint)
+
+
+def test_building_joints_sets_the_preview_axes(new_scene):
+    group = _bent_arm()
+
+    joints = logic.build_joints(group, aim="z", up="-x")
+
+    for preview, joint in zip(logic.previews(group), joints):
+        _same_frame(preview, joint)
+
+
+def test_set_axes_rejects_the_same_aim_and_up_axis(new_scene):
+    group = logic.create_guides("arm", 1)
+
+    with pytest.raises(ValueError):
+        logic.set_axes(group, aim="y", up="-y")
+
+
+def test_set_axes_is_one_undo_step(new_scene):
+    group = _bent_arm()
+    before = [_rows(p) for p in logic.previews(group)]
+
+    logic.set_axes(group, aim="z", up="x")
+    cmds.undo()
+
+    for preview, rows in zip(logic.previews(group), before):
+        for row, old in zip(_rows(preview), rows):
+            assert (row - old).length() < 1e-4
+
+
+def test_previews_show_their_local_axis_and_cannot_be_selected(new_scene):
+    group = logic.create_guides("arm", 1)
+
+    for preview in logic.previews(group):
+        assert cmds.getAttr(f"{preview}.displayLocalAxis")
+        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+        assert cmds.getAttr(f"{disc}.overrideEnabled")
+        assert cmds.getAttr(f"{disc}.overrideDisplayType") == 2  # reference
+        assert cmds.listRelatives(disc, shapes=True, type="nurbsSurface")
+
+
+@pytest.mark.parametrize("aim, up", [("x", "y"), ("-y", "z"), ("z", "x")])
+def test_preview_discs_ring_the_bone(new_scene, aim, up):
+    group = _bent_arm()
+    logic.set_axes(group, aim=aim, up=up)
+
+    for preview in logic.previews(group):
+        disc = cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+        # The disc is a circle around its local X.
+        assert abs(_axis(disc, "x") * _axis(preview, aim)) == pytest.approx(1.0, abs=1e-4)
+
+
+def test_plane_lies_on_the_guides_plane_and_follows_them(new_scene):
+    group = _bent_arm()
+    found = logic.guides(group)
+    _move(found["up"], 3, 4, 5)
+    _move(found["chain"][-1], 10, 2, -1)
+    start, end = _pos(found["chain"][0]), _pos(found["chain"][-1])
+
+    plane = logic.plane(group)
+
+    assert (_pos(plane) - (start + end) * 0.5).length() < 1e-4
+    assert (_axis(plane, "x") - (end - start).normalize()).length() < 1e-4
+    assert (_axis(plane, "z") - _normal(group)).length() < 1e-4
+    assert cmds.getAttr(f"{plane}.overrideDisplayType") == 2
+    assert cmds.listRelatives(plane, shapes=True, type="nurbsSurface")
+
+
 # -- delete_guides ------------------------------------------------------------
+
+
+def test_delete_guides_leaves_nothing_behind_but_the_joints(new_scene):
+    before = set(cmds.ls())
+    group = _bent_arm()
+    joints = logic.build_joints(group)
+
+    logic.delete_guides(group)
+
+    assert set(cmds.ls()) - before == {cmds.ls(j)[0] for j in joints}
 
 
 def test_delete_guides_keeps_the_joints(new_scene):

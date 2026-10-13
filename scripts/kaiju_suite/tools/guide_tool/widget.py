@@ -35,6 +35,7 @@ class GuideToolWindow(ToolWindow):
             combo.addItem(label, value)
         combo.setCurrentIndex(max(combo.findData(settings.get(SETTINGS_KEY, name, default)), 0))
         combo.currentIndexChanged.connect(lambda *_: settings.set(SETTINGS_KEY, name, combo.currentData()))
+        combo.currentIndexChanged.connect(self._preview_axes)
         return combo
 
     def _create_box(self):
@@ -51,7 +52,8 @@ class GuideToolWindow(ToolWindow):
         create = QtWidgets.QPushButton("Create Guides")
         create.setToolTip(
             "Make start, middle and end guides along X, and a yellow up guide to the side. "
-            "Guides can only be moved."
+            "Guides can only be moved. A disc and local axis show where each joint will land, "
+            "and a grid shows the chain's plane."
         )
         create.clicked.connect(self._create)
         grid.addWidget(QtWidgets.QLabel("Name"), 0, 0)
@@ -108,7 +110,13 @@ class GuideToolWindow(ToolWindow):
         return self._run(logic.find_group, selected())
 
     def _create(self):
-        group = self._run(logic.create_guides, self.name.text().strip(), self.count.value())
+        group = self._run(
+            logic.create_guides,
+            self.name.text().strip(),
+            self.count.value(),
+            aim=self.aim.currentData(),
+            up=self.up.currentData(),
+        )
         if group is not None:
             cmds.select(logic.guides(group)["chain"])
             self.status.setText(f"Created guides for {self.name.text().strip()}. Move them, then Build Joints.")
@@ -120,6 +128,17 @@ class GuideToolWindow(ToolWindow):
         done = self._run(logic.build_joints, group, aim=self.aim.currentData(), up=self.up.currentData())
         if done is not None:
             self.status.setText(f"Placed {len(done)} joints.")
+
+    def _preview_axes(self, *_):
+        """Turn the selected guides' preview to the chosen axes. Quiet when
+        no guides are selected, or while the two combos share an axis."""
+        if not hasattr(self, "up"):
+            return  # still building the window
+        try:
+            logic.set_axes(logic.find_group(selected()), aim=self.aim.currentData(), up=self.up.currentData())
+        except ValueError:
+            return
+        self.status.setText("Preview turned to the new axes.")
 
     def _select_guides(self):
         group = self._group()
