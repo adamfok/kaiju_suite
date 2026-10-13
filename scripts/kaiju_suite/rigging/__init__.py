@@ -1,10 +1,10 @@
-"""Rig modules: the algorithms that build parts of a rig from parameters.
+"""Rigging: what builds a rig, with no Qt.
 
-A rig module is any file in :mod:`kaiju_suite.rigging.rig_modules` that
-defines ``RIG_MODULE``, an instance of a
-:class:`~kaiju_suite.rigging.rig_module.RigModule` subclass. Adding one means
-adding a file there; the Assembler's Rig Module items and the Rig Module
-Editor find it by its ``key``.
+- :mod:`.rig_module`: rig modules, the algorithms that build parts of a rig
+  from parameters (one file each in ``rig_module/modules/``), and the pieces
+  they share.
+- :mod:`.guide_module`: guide modules, layouts of guides for parts of a rig
+  (one file each in ``guide_module/modules/``).
 
 This package imports only :mod:`kaiju_suite.core`: never ``ui`` or
 ``tools``, and no Qt.
@@ -43,31 +43,3 @@ def find_instances(package, attr, base, what):
         else:
             keys[instance.key] = instance
     return found
-
-
-def discover():
-    """Import every rig module file and return their rig modules, by name."""
-    from kaiju_suite.rigging import rig_modules
-    from kaiju_suite.rigging.rig_module import RigModule
-
-    return find_instances(rig_modules, "RIG_MODULE", RigModule, "rig module")
-
-
-_cache = None
-
-
-def all_rig_modules():
-    """Discovered rig modules, cached after the first call."""
-    global _cache
-    if _cache is None:
-        _cache = discover()
-    return _cache
-
-
-def get_rig_module(key):
-    """The rig module whose key is ``key``; raises :class:`LookupError` if none."""
-    for rig_module in all_rig_modules():
-        if rig_module.key == key:
-            return rig_module
-    known = ", ".join(m.key for m in all_rig_modules()) or "none"
-    raise LookupError(f"Unknown rig module {key!r} (known: {known}).")

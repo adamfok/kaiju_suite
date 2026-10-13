@@ -2,7 +2,7 @@ import os
 
 from maya import cmds
 
-from kaiju_suite.rigging import spec
+from kaiju_suite.rigging.rig_module import spec
 from kaiju_suite.tools.assembler import dryrun, logic
 
 

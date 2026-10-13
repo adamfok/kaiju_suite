@@ -1,8 +1,7 @@
 import pytest
 from maya import cmds
 
-from kaiju_suite import rigging
-from kaiju_suite.rigging import spec
+from kaiju_suite.rigging.rig_module import get_rig_module, spec
 from kaiju_suite.tools.rig_module_editor import logic
 
 
@@ -16,7 +15,7 @@ def ik_file(tmp_path):
 def test_load_gives_the_rig_module_and_complete_params(ik_file):
     rig_module, params = logic.load(ik_file)
 
-    assert rig_module is rigging.get_rig_module("simple_ik")
+    assert rig_module is get_rig_module("simple_ik")
     assert params["name"] == "L_arm"
     assert params["pole_distance"] == 5.0
 
@@ -51,7 +50,7 @@ def test_matches_file_is_false_for_an_unreadable_file(tmp_path):
     path = tmp_path / "bad.rig"
     path.write_text("not json", encoding="utf-8")
 
-    assert not logic.matches_file(str(path), rigging.get_rig_module("simple_ik"), rigging.get_rig_module("simple_ik").defaults())
+    assert not logic.matches_file(str(path), get_rig_module("simple_ik"), get_rig_module("simple_ik").defaults())
 
 
 def test_pick_selection_gives_the_selected_nodes_name(new_scene):

@@ -24,7 +24,7 @@ Destination attributes that are missing, locked or driven by a connection
 other than their own keys are skipped and reported.
 
 :func:`switch_ik_fk` matches an IK/FK limb to its other side and switches to
-it, with the matching in :mod:`kaiju_suite.rigging.ik_fk_match`.
+it, with the matching in :mod:`kaiju_suite.rigging.rig_module.ik_fk_match`.
 """
 
 import math
@@ -34,7 +34,7 @@ from maya import cmds
 
 from kaiju_suite.core import mirror as mirroring
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.rigging import ik_fk_match
+from kaiju_suite.rigging.rig_module import ik_fk_match
 
 Result = namedtuple("Result", "changed skipped")
 
@@ -219,7 +219,7 @@ def switch_ik_fk(nodes, key=False):
     any of its controls) to the other side, matched so it doesn't pop: from
     IK (``ikFk`` at 0.5 or more) to FK, otherwise from FK to IK. With
     ``key``, key the switch on this frame (see
-    :func:`~kaiju_suite.rigging.ik_fk_match.match_fk_to_ik`). Returns a
+    :func:`~kaiju_suite.rigging.rig_module.ik_fk_match.match_fk_to_ik`). Returns a
     :data:`Result` of the switch controls changed, and the nodes skipped."""
     switches, skipped = [], []
     for node in nodes:

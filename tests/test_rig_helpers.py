@@ -1,7 +1,7 @@
 import pytest
 from maya import cmds
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging.rig_module import helpers
 
 
 def _joint(name, parent=None, translate=(0, 0, 0)):

@@ -3,7 +3,7 @@
     {"kaiju": "guideModule", "format": 1, "data": {"guide_module": "chain", "layout": {...}}}
 
 Guide modules own their file format here, as rig modules do in
-:mod:`kaiju_suite.rigging.spec`, rather than in :mod:`kaiju_suite.datatypes`.
+:mod:`kaiju_suite.rigging.rig_module.spec`, rather than in :mod:`kaiju_suite.datatypes`.
 The functions below the file ones are the datatype interface the
 Assembler's Guide items use (``gather``, ``apply``, ``selection_problems``,
 ``describe``, ``nodes``): the payload is the file's ``data``.
@@ -15,9 +15,8 @@ from maya import cmds
 
 from kaiju_suite.core import datafile
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.rigging import guides
-from kaiju_suite.rigging.guides import planar_chain
-from kaiju_suite.rigging.guides.guide_module import tagged_key
+from kaiju_suite.rigging.guide_module import get_guide_module, planar_chain
+from kaiju_suite.rigging.guide_module.guide_module import tagged_key
 
 KIND = "guideModule"
 EXTENSION = ".guide"
@@ -55,7 +54,7 @@ def load(path):
     """``(guide_module, layout)`` for the file at ``path``. Raises
     :class:`LookupError` for a guide module this Kaiju Suite doesn't have."""
     key, layout = read(path)
-    return guides.get_guide_module(key), layout
+    return get_guide_module(key), layout
 
 
 # -- finding guides in the scene ------------------------------------------------
@@ -98,7 +97,7 @@ def find_group(nodes):
         raise ValueError(f"Select guides of one guide module, not {', '.join(short_name(g) for _, g in found)}.")
     key, group = found[0]
     try:
-        return guides.get_guide_module(key), group
+        return get_guide_module(key), group
     except LookupError as e:
         raise ValueError(f"{short_name(group)}: {e}") from None
 
@@ -108,7 +107,7 @@ def find_group(nodes):
 
 def _unpack(payload):
     """``(guide_module, layout)`` from a payload; raises ``LookupError``."""
-    return guides.get_guide_module(payload["guide_module"]), payload["layout"]
+    return get_guide_module(payload["guide_module"]), payload["layout"]
 
 
 def gather(nodes):

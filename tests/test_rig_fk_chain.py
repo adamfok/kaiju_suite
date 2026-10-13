@@ -2,7 +2,7 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite import rigging
+from kaiju_suite.rigging.rig_module import get_rig_module
 
 CONTROLS = ["L_finger_01_fk_ctrl", "L_finger_02_fk_ctrl", "L_finger_03_fk_ctrl", "L_finger_04_fk_ctrl"]
 
@@ -26,7 +26,7 @@ def finger(new_scene):
 
 
 def _params(**overrides):
-    params = rigging.get_rig_module("fk_chain").defaults()
+    params = get_rig_module("fk_chain").defaults()
     params.update(name="L_finger", start_joint="knuckle", end_joint="tip")
     params.update(overrides)
     return params
@@ -62,7 +62,7 @@ def _nodes():
 
 
 def test_fk_parameters_and_defaults():
-    rig_module = rigging.get_rig_module("fk_chain")
+    rig_module = get_rig_module("fk_chain")
 
     assert [p.key for p in rig_module.params] == [
         "name",
@@ -86,11 +86,11 @@ def test_fk_parameters_and_defaults():
 
 
 def test_valid_params_have_no_problems(finger):
-    assert rigging.get_rig_module("fk_chain").problems(_params()) == []
+    assert get_rig_module("fk_chain").problems(_params()) == []
 
 
 def test_a_two_joint_chain_is_enough(finger):
-    assert rigging.get_rig_module("fk_chain").problems(_params(start_joint="tip_base")) == []
+    assert get_rig_module("fk_chain").problems(_params(start_joint="tip_base")) == []
 
 
 @pytest.mark.parametrize(
@@ -115,7 +115,7 @@ def test_a_two_joint_chain_is_enough(finger):
 def test_problems(finger, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rigging.get_rig_module("fk_chain").problems(_params(**overrides))
+    problems = get_rig_module("fk_chain").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
@@ -124,7 +124,7 @@ def test_ambiguous_joint_name_is_a_problem(finger):
     cmds.group(empty=True, name="other")
     _joint("tip", "other")
 
-    problems = rigging.get_rig_module("fk_chain").problems(_params())
+    problems = get_rig_module("fk_chain").problems(_params())
 
     assert any("tip" in p and "Several" in p for p in problems), problems
 
@@ -134,15 +134,15 @@ def test_a_non_joint_in_the_chain_is_a_problem(new_scene):
     cmds.group(empty=True, name="between", parent="a")
     _joint("b", "between", translate=(5, 0, 0))
 
-    problems = rigging.get_rig_module("fk_chain").problems(_params(start_joint="a", end_joint="b"))
+    problems = get_rig_module("fk_chain").problems(_params(start_joint="a", end_joint="b"))
 
     assert any("between" in p for p in problems), problems
 
 
 def test_existing_rig_module_with_the_same_name_is_a_problem(finger):
-    rigging.get_rig_module("fk_chain").build(_params())
+    get_rig_module("fk_chain").build(_params())
 
-    problems = rigging.get_rig_module("fk_chain").problems(_params())
+    problems = get_rig_module("fk_chain").problems(_params())
 
     assert any("L_finger_fkChain_grp" in p for p in problems), problems
 
@@ -151,7 +151,7 @@ def test_existing_rig_module_with_the_same_name_is_a_problem(finger):
 
 
 def test_build_creates_nested_controls(finger):
-    created = rigging.get_rig_module("fk_chain").build(_params())
+    created = get_rig_module("fk_chain").build(_params())
 
     assert created == {"group": "L_finger_fkChain_grp", "controls": ", ".join(CONTROLS)}
     # The Assembler prints the values joined, so they must all be text.
@@ -169,7 +169,7 @@ def test_build_creates_nested_controls(finger):
 
 
 def test_end_control_off_leaves_the_end_joint_without_a_control(finger):
-    created = rigging.get_rig_module("fk_chain").build(_params(end_control=False))
+    created = get_rig_module("fk_chain").build(_params(end_control=False))
 
     assert created["controls"] == ", ".join(CONTROLS[:3])
     assert not cmds.objExists("L_finger_04_fk_ctrl")
@@ -178,14 +178,14 @@ def test_end_control_off_leaves_the_end_joint_without_a_control(finger):
 
 
 def test_two_joint_chain_without_end_control_still_gets_one_control(finger):
-    created = rigging.get_rig_module("fk_chain").build(_params(start_joint="tip_base", end_control=False))
+    created = get_rig_module("fk_chain").build(_params(start_joint="tip_base", end_control=False))
 
     assert created["controls"] == "L_finger_01_fk_ctrl"
     assert not cmds.objExists("L_finger_02_fk_ctrl")
 
 
 def test_each_control_sits_on_its_joint_matching_its_orientation(finger):
-    rigging.get_rig_module("fk_chain").build(_params())
+    get_rig_module("fk_chain").build(_params())
 
     for control, joint in zip(CONTROLS, finger):
         assert _close([_world(f"{control}_grp"), _world(control)], [_world(joint)] * 2)
@@ -198,7 +198,7 @@ def test_build_does_not_move_or_rotate_the_joints(finger):
     rotations = [_rotation(j) for j in finger]
     local = [cmds.getAttr(f"{j}.rotate")[0] for j in finger]
 
-    rigging.get_rig_module("fk_chain").build(_params())
+    get_rig_module("fk_chain").build(_params())
 
     assert _close(_positions(finger), before)
     assert all(_rotation(j).isEquivalent(r, 1e-4) for j, r in zip(finger, rotations))
@@ -206,7 +206,7 @@ def test_build_does_not_move_or_rotate_the_joints(finger):
 
 
 def test_rotating_the_first_control_carries_the_chain(finger):
-    rigging.get_rig_module("fk_chain").build(_params())
+    get_rig_module("fk_chain").build(_params())
     tip_before = _world("tip")
 
     cmds.rotate(0, 0, 40, CONTROLS[0], relative=True, objectSpace=True)
@@ -220,7 +220,7 @@ def test_rotating_the_first_control_carries_the_chain(finger):
 
 
 def test_rotating_a_middle_control_rotates_its_joint_only_from_there_down(finger):
-    rigging.get_rig_module("fk_chain").build(_params())
+    get_rig_module("fk_chain").build(_params())
     knuckle = _rotation("knuckle")
     middle_position = _world("middle")
     tip_before = _world("tip")
@@ -241,14 +241,14 @@ def _color(control):
 
 
 def test_color_goes_on_every_control(finger):
-    rigging.get_rig_module("fk_chain").build(_params(color=13))
+    get_rig_module("fk_chain").build(_params(color=13))
 
     for control in CONTROLS:
         assert _color(control) == {(True, 13)}, control
 
 
 def test_color_0_leaves_the_controls_maya_default_color(finger):
-    rigging.get_rig_module("fk_chain").build(_params(color=0))
+    get_rig_module("fk_chain").build(_params(color=0))
 
     for control in CONTROLS:
         assert _color(control) == {(False, 0)}, control
@@ -257,7 +257,7 @@ def test_color_0_leaves_the_controls_maya_default_color(finger):
 def test_build_goes_under_the_parent(finger):
     cmds.group(empty=True, name="rig_grp")
 
-    rigging.get_rig_module("fk_chain").build(_params(parent="rig_grp"))
+    get_rig_module("fk_chain").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("L_finger_fkChain_grp", parent=True) == ["rig_grp"]
 
@@ -268,10 +268,10 @@ def _shape_box(control):
 
 
 def test_control_size_scales_the_controls(finger):
-    rigging.get_rig_module("fk_chain").build(_params(name="small", control_size=1.0))
+    get_rig_module("fk_chain").build(_params(name="small", control_size=1.0))
     small = _shape_box("small_01_fk_ctrl")
     cmds.delete("small_fkChain_grp")
-    rigging.get_rig_module("fk_chain").build(_params(name="big", control_size=2.0))
+    get_rig_module("fk_chain").build(_params(name="big", control_size=2.0))
     big = _shape_box("big_01_fk_ctrl")
 
     big_size = max(big[i + 3] - big[i] for i in range(3))
@@ -282,7 +282,7 @@ def test_control_size_scales_the_controls(finger):
 def test_build_keeps_the_selection(finger):
     cmds.select("middle")
 
-    rigging.get_rig_module("fk_chain").build(_params())
+    get_rig_module("fk_chain").build(_params())
 
     assert cmds.ls(selection=True) == ["middle"]
 
@@ -292,7 +292,7 @@ def test_build_is_one_undo_step(finger):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rigging.get_rig_module("fk_chain").build(_params())
+    get_rig_module("fk_chain").build(_params())
     cmds.rotate(0, 0, 40, CONTROLS[0], relative=True)
     cmds.undo()
     cmds.undo()
@@ -305,6 +305,6 @@ def test_build_with_problems_creates_nothing(finger):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rigging.get_rig_module("fk_chain").build(_params(end_joint="nothing"))
+        get_rig_module("fk_chain").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before

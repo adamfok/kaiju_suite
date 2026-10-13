@@ -1,4 +1,4 @@
-"""Guide modules (kaiju_suite.rigging.guides): the registry, the
+"""Guide modules (kaiju_suite.rigging.guide_module): the registry, the
 GuideModule base class and the Chain guide module."""
 
 import ast
@@ -7,9 +7,9 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.rigging import guides
-from kaiju_suite.rigging.guides import planar_chain
-from kaiju_suite.rigging.guides.guide_module import GuideError, GuideModule
+from kaiju_suite.rigging import guide_module as guide_module_package
+from kaiju_suite.rigging.guide_module import all_guide_modules, get_guide_module, planar_chain
+from kaiju_suite.rigging.guide_module.guide_module import GuideError, GuideModule
 
 FORBIDDEN = ("kaiju_suite.tools", "kaiju_suite.ui", "kaiju_suite.datatypes", "PySide6", "PySide2", "shiboken")
 L_ARM = {
@@ -32,7 +32,7 @@ def _imports(path):
 
 
 def test_guides_never_import_qt_tools_ui_or_datatypes():
-    root = os.path.dirname(guides.__file__)
+    root = os.path.dirname(guide_module_package.__file__)
     files = [os.path.join(d, f) for d, _, names in os.walk(root) for f in names if f.endswith(".py")]
     assert len(files) >= 5
     bad = [
@@ -48,15 +48,15 @@ def test_guides_never_import_qt_tools_ui_or_datatypes():
 
 
 def test_chain_is_discovered():
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     assert chain.name == "Chain Guide"
-    assert chain in guides.all_guide_modules()
-    assert all(isinstance(m, GuideModule) for m in guides.all_guide_modules())
+    assert chain in all_guide_modules()
+    assert all(isinstance(m, GuideModule) for m in all_guide_modules())
 
 
 def test_get_rejects_an_unknown_guide_module():
     with pytest.raises(LookupError, match="Unknown guide module 'nope' \\(known: .*chain"):
-        guides.get_guide_module("nope")
+        get_guide_module("nope")
 
 
 # -- the base class -------------------------------------------------------------
@@ -113,7 +113,7 @@ def test_restore_refuses_the_guides_of_another_name(new_scene):
 
 
 def test_chain_default_layout_is_a_buildable_chain(new_scene):
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     layout = chain.default_layout("L_arm")
     assert layout["name"] == "L_arm" and (layout["aim"], layout["up"]) == ("x", "y")
     assert len(layout["guides"]) == 3
@@ -123,11 +123,11 @@ def test_chain_default_layout_is_a_buildable_chain(new_scene):
 
 
 def test_chain_default_layout_falls_back_to_chain_for_a_name_that_cant_name_nodes():
-    assert guides.get_guide_module("chain").default_layout("2 arms")["name"] == "chain"
+    assert get_guide_module("chain").default_layout("2 arms")["name"] == "chain"
 
 
 def test_chain_problems(new_scene):
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     assert chain.problems({"name": "a"}) == ["The Chain Guide layout is missing aim, up, guides, up_guide."]
     assert chain.problems(dict(L_ARM, guides="none")) == ["L_arm: guides and up_guide must be [x, y, z] positions."]
     in_line = dict(L_ARM, up_guide=[12, 8, -2])
@@ -140,7 +140,7 @@ def test_chain_problems(new_scene):
 
 def test_chain_layout_reads_any_planar_chain_group(new_scene):
     group = planar_chain.build_at("L_arm", L_ARM["guides"], L_ARM["up_guide"], aim="x", up="-z")
-    assert guides.get_guide_module("chain").layout(group) == {
+    assert get_guide_module("chain").layout(group) == {
         **L_ARM,
         "guides": [[2.0, 10.0, 0.0], [7.0, 9.0, -1.0]],
         "up_guide": [5.0, 10.0, -5.0],
@@ -148,7 +148,7 @@ def test_chain_layout_reads_any_planar_chain_group(new_scene):
 
 
 def test_chain_describe_nodes_and_fields():
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     assert chain.describe(L_ARM) == ["L_arm: 2 guides, aim x, up -z"]
     assert chain.nodes(L_ARM) == ["L_arm_guides_grp"]
     five = dict(L_ARM, guides=[[0, 0, 0]] * 5)
@@ -156,7 +156,7 @@ def test_chain_describe_nodes_and_fields():
 
 
 def test_chain_mirrored_flips_across_x_and_reverses_its_axes():
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     assert chain.mirrorable
     assert chain.mirrored(L_ARM) == {
         "name": "R_arm", "aim": "-x", "up": "z", "guides": [[-2, 10, 0], [-7, 9, -1]], "up_guide": [-5, 10, -5],
@@ -168,7 +168,7 @@ def test_chain_mirrored_flips_across_x_and_reverses_its_axes():
 
 
 def test_chain_rebuild_brings_the_joints_delete_guides_left_back_live(new_scene):
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     group = chain.build(L_ARM)
     joints = cmds.ls(planar_chain.joints(group), uuid=True)
     moved = planar_chain.delete_guides(group)
@@ -182,13 +182,13 @@ def test_chain_rebuild_brings_the_joints_delete_guides_left_back_live(new_scene)
 
 
 def test_chain_rebuild_without_leftovers_builds_the_layout(new_scene):
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     group = chain.rebuild(L_ARM)
     assert chain.layout(group)["guides"] == [[2.0, 10.0, 0.0], [7.0, 9.0, -1.0]]
 
 
 def test_chain_rebuild_is_one_undo_step(new_scene):
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     planar_chain.delete_guides(chain.build(L_ARM))
     cmds.undoInfo(state=True)
     cmds.flushUndo()
@@ -199,7 +199,7 @@ def test_chain_rebuild_is_one_undo_step(new_scene):
 
 
 def test_chain_restore_puts_the_guides_back_and_keeps_the_tag(new_scene):
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     group = chain.build(L_ARM)
     planar_chain.build_guides("L_arm", 3)  # another count, and an untagged group
     group = "L_arm_guides_grp"
@@ -212,7 +212,7 @@ def test_chain_restore_puts_the_guides_back_and_keeps_the_tag(new_scene):
 
 
 def test_chain_restore_is_one_undo_step(new_scene):
-    chain = guides.get_guide_module("chain")
+    chain = get_guide_module("chain")
     group = chain.build(L_ARM)
     found = planar_chain.guides(group)
     cmds.xform(found["chain"][0], worldSpace=True, translation=(1, 1, 1))

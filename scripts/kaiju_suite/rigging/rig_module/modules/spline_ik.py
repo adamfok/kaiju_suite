@@ -23,8 +23,8 @@ one, and the joints between blend. Both controls get ``color``.
 
 from maya import cmds
 
-from kaiju_suite.rigging import controls, helpers
-from kaiju_suite.rigging.rig_module import Param, RigModule
+from kaiju_suite.rigging.rig_module import controls, helpers
+from kaiju_suite.rigging.rig_module.rig_module import Param, RigModule
 
 # The handle's Forward Axis (dForwardAxis) for each local axis and sign, and
 # its Up Axis (dWorldUpAxis) for each positive axis.

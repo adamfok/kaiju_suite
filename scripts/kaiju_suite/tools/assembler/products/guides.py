@@ -1,7 +1,7 @@
 """Guide (.guide): a guide module's layout, saved as data and built again as
 live guides.
 
-The file format and the building are :mod:`kaiju_suite.rigging.guides`;
+The file format and the building are :mod:`kaiju_suite.rigging.guide_module`;
 this is the Assembler step. **New** lists one entry per guide module (e.g.
 ``Chain Guide``) and writes its default layout. The Type column shows the
 guide module's name. Run leaves the guides live, driving their joints, and
@@ -9,7 +9,7 @@ stops if they're already in the scene.
 
 Right-click **Mirror** writes the item for the other side (``L_arm`` ->
 ``R_arm``) right after it, with its layout mirrored by its guide module
-(see :meth:`~kaiju_suite.rigging.guides.guide_module.GuideModule.mirrored`),
+(see :meth:`~kaiju_suite.rigging.guide_module.guide_module.GuideModule.mirrored`),
 as that item's next version: run again, it updates the other side's item
 instead of adding one. It needs no scene.
 """
@@ -17,8 +17,7 @@ instead of adding one. It needs no scene.
 import os
 
 from kaiju_suite.core.naming import mirrored_name
-from kaiju_suite.rigging import guides
-from kaiju_suite.rigging.guides import spec
+from kaiju_suite.rigging.guide_module import all_guide_modules, get_guide_module, spec
 from kaiju_suite.tools.assembler import data, logic, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, is_empty, new_path
 
@@ -27,7 +26,7 @@ def create_guide_module(directory, name, guide_module_key):
     """Create a guide file for ``guide_module_key`` holding its default
     layout, named after the item."""
     path = new_path(directory, name, spec.EXTENSION)
-    default = guides.get_guide_module(guide_module_key).default_layout(os.path.splitext(os.path.basename(path))[0])
+    default = get_guide_module(guide_module_key).default_layout(os.path.splitext(os.path.basename(path))[0])
     return spec.write(path, guide_module_key, default)
 
 
@@ -90,7 +89,7 @@ class GuideProduct(data.DataProduct):
     def creators(self):
         return tuple(
             Creator(m.name, lambda directory, name, _ext, key=m.key: create_guide_module(directory, name, key))
-            for m in guides.all_guide_modules()
+            for m in all_guide_modules()
         )
 
     def type_name(self, path):

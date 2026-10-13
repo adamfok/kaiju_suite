@@ -303,14 +303,14 @@ def test_flip_is_one_undo_step(new_scene):
 
 @pytest.fixture
 def ik_fk_arm(new_scene):
-    from kaiju_suite import rigging
+    from kaiju_suite.rigging.rig_module import get_rig_module
 
     for name, parent, translate in (("shoulder", None, (0, 10, 0)), ("elbow", "shoulder", (5, 0, -1)), ("wrist", "elbow", (5, 0, 1))):
         node = cmds.createNode("joint", name=name, parent=parent, skipSelect=True)
         cmds.setAttr(f"{node}.translate", *translate)
-    params = rigging.get_rig_module("ik_fk").defaults()
+    params = get_rig_module("ik_fk").defaults()
     params.update(name="L_arm", start_joint="shoulder", end_joint="wrist")
-    rigging.get_rig_module("ik_fk").build(params)
+    get_rig_module("ik_fk").build(params)
     cmds.setAttr("L_arm_01_fk_ctrl.rotate", 10, 25, -40)
     cmds.setAttr("L_arm_02_fk_ctrl.rotate", 0, -35, 0)  # a bend in the chain's plane
 

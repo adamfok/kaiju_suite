@@ -1,4 +1,4 @@
-"""IK/FK matching: switching an IK/FK limb (see :mod:`.rig_modules.ik_fk`) to the
+"""IK/FK matching: switching an IK/FK limb (see :mod:`.modules.ik_fk`) to the
 other side without a pop. Imports only Maya, no Qt.
 
 The IK/FK rig module links its switch control to what matching needs, through
@@ -21,7 +21,7 @@ from collections import namedtuple
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.rigging import helpers
+from kaiju_suite.rigging.rig_module import helpers
 
 ATTR = "ikFk"
 FK_CONTROLS = "ikFkFkControls"
@@ -123,7 +123,7 @@ def _switching(switch, moved, value, key, match):
     """Run ``match()``, which moves the controls ``moved``, and set ``ikFk``
     to ``value``. With ``key``, key them and ``ikFk`` on the frame before (as
     they were) and on the current one (after), ``ikFk`` stepped, as
-    :func:`kaiju_suite.rigging.space_switch.switch` does."""
+    :func:`kaiju_suite.rigging.rig_module.space_switch.switch` does."""
     channels = _channels(moved)
     frame = cmds.currentTime(query=True)
     if key:

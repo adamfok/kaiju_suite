@@ -1,7 +1,7 @@
 from maya import cmds
 
 from kaiju_suite import registry
-from kaiju_suite.rigging import controls
+from kaiju_suite.rigging.rig_module import controls
 from kaiju_suite.tools.reset_controls import logic
 
 

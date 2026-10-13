@@ -13,10 +13,10 @@ paint weights or design control shapes; those stay with the rigger.
 ## 1. Why Kaiju already fits this well
 - **A build is plain files.** Each Rig Module item is a small JSON file
   (`{"kaiju": "rigModule", "format": 1, "data": {"module": "simple_ik", "params": {...}}}`, read and
-  written by `rigging/spec.py`). The order and the disabled items are in `.assembler.json` per folder
+  written by `rigging/rig_module/spec.py`). The order and the disabled items are in `.assembler.json` per folder
   (`tools/assembler/logic.py`). An AI only has to write text files, not drive Maya.
 - **Modules describe themselves.** Every module lists its parameters as `Param(key, label, kind, default,
-  choices, required, tooltip)` (`rigging/rig_module.py`). That is almost a ready-made instruction sheet for an AI.
+  choices, required, tooltip)` (`rigging/rig_module/rig_module.py`). That is almost a ready-made instruction sheet for an AI.
 - **Errors are written for people.** `RigModule.problems(params)` returns plain messages ("The chain is
   straight, so the pole vector has no side to go on"). An AI can read those and fix its own mistakes.
 - **No Qt in the logic.** `logic.run_steps`, `logic.run_folder` and `runlog` work headless, so an AI can

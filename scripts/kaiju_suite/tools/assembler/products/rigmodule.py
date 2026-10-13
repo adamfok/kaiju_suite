@@ -1,8 +1,8 @@
 """Rig Modules (.rig): parameters for a rig module, built by a build step.
 
 The file holds only which rig module it is and its parameters (see
-:mod:`kaiju_suite.rigging.spec`); the algorithm lives in
-:mod:`kaiju_suite.rigging.rig_modules`. **New** lists one entry per rig module and
+:mod:`kaiju_suite.rigging.rig_module.spec`); the algorithm lives in
+:mod:`kaiju_suite.rigging.rig_module.modules`. **New** lists one entry per rig module and
 writes its default parameters. The Type column shows the rig module's name
 (e.g. ``Simple IK``) rather than "Rig Module". Double-click opens the Rig
 Module Editor on the file to change them. **Run** builds the rig module from
@@ -20,9 +20,8 @@ import os
 
 from maya import cmds
 
-from kaiju_suite import rigging
-from kaiju_suite.rigging import spec
-from kaiju_suite.rigging.rig_module import mirrored_name
+from kaiju_suite.rigging.rig_module import all_rig_modules, get_rig_module, spec
+from kaiju_suite.rigging.rig_module.rig_module import mirrored_name
 from kaiju_suite.tools.assembler import logic, versions
 from kaiju_suite.tools.assembler.products import Action, Creator, Panel, Product, new_path
 
@@ -32,7 +31,7 @@ EXTENSION = ".rig"
 def create_rig_module(directory, name, rig_module_key):
     """Create a parameter file for ``module_key`` holding its defaults."""
     path = new_path(directory, name, EXTENSION)
-    return spec.write(path, rig_module_key, rigging.get_rig_module(rig_module_key).defaults())
+    return spec.write(path, rig_module_key, get_rig_module(rig_module_key).defaults())
 
 
 def _value_text(value):
@@ -63,7 +62,7 @@ def _mirror_plan(path):
     target = mirror_path(path)
     if os.path.exists(target):
         try:
-            other = rigging.get_rig_module(spec.read(target)[0])
+            other = get_rig_module(spec.read(target)[0])
         except (OSError, ValueError, LookupError):
             other = None
         if other is not rig_module:
@@ -129,14 +128,14 @@ class RigModuleProduct(Product):
     def creators(self):
         return tuple(
             Creator(rig_module.name, lambda directory, name, _ext, key=rig_module.key: create_rig_module(directory, name, key))
-            for rig_module in rigging.all_rig_modules()
+            for rig_module in all_rig_modules()
         )
 
     def type_name(self, path):
         """The module's name, e.g. ``Simple IK``; ``Rig Module`` if the file
         can't be read or names a rig module this Kaiju Suite doesn't have."""
         try:
-            return rigging.get_rig_module(spec.read(path)[0]).name
+            return get_rig_module(spec.read(path)[0]).name
         except (OSError, ValueError, LookupError):
             return self.name
 
@@ -177,9 +176,9 @@ class RigModuleProduct(Product):
     def plan_problems(self, item):
         key, params = item.get("module"), item.get("params", {})
         try:
-            rig_module = rigging.get_rig_module(key)
+            rig_module = get_rig_module(key)
         except LookupError:
-            return [f"no rig module {key!r}; use one of {', '.join(m.key for m in rigging.all_rig_modules())}"]
+            return [f"no rig module {key!r}; use one of {', '.join(m.key for m in all_rig_modules())}"]
         if not isinstance(params, dict):
             return [f"params must be an object of parameter values, not {params!r}"]
         return rig_module.value_problems(params)

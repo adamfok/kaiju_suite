@@ -51,7 +51,7 @@ class DataProduct(Product):
     Subclasses set ``name``, ``order`` and ``datatype``: the module that
     gathers, applies and describes the data, usually one in
     :mod:`kaiju_suite.datatypes` (Guide's is
-    :mod:`kaiju_suite.rigging.guides.spec`); ``kind`` and ``extension``
+    :mod:`kaiju_suite.rigging.guide_module.spec`); ``kind`` and ``extension``
     come from it. The rest (New, Run,
     Publish, versions, the double-click panel, right-click **Republish** and
     **Select Objects**) comes from here.

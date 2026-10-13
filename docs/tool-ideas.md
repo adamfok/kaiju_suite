@@ -16,7 +16,7 @@ and an Assembler double-click entry point, so they're the cheapest place to add 
 The ideas below are what riggers reach for daily in comparable toolkits (mGear, AdvancedSkeleton,
 ngSkinTools, Red9, comet scripts).
 
-Reusable pieces in the repo: `rigging/helpers.py` (`circle`, `box`, `diamond`, `set_color`, `chain`,
+Reusable pieces in the repo: `rigging/rig_module/helpers.py` (`circle`, `box`, `diamond`, `set_color`, `chain`,
 `pole_position`, `kept_selection`), `core/naming.py` (`expand_pattern`, `opposite_name`),
 `core/nodes.py` (`unique_name`), `core/curves.py`, `core/colors.py`, `core/selection.py`,
 `core/settings.py`, `core/datafile.py`, `core/undo.py` (`@undoable`).
