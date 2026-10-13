@@ -49,7 +49,7 @@ def with_json(monkeypatch):
 def test_discover_finds_every_product_in_order():
     found = products.discover()
     assert [p.name for p in found] == [
-        "Script", "Folder", "Import Scene", "Joints", "Mesh", "Curves", "SkinCluster",
+        "Script", "Folder", "Import Scene", "New Scene", "Joints", "Mesh", "Curves", "SkinCluster",
         "DeltaMush", "BlendShapes", "Deformers", "Wrap", "Pose Correctives", "Material", "Pose", "Animation",
         "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers", "ControlShape", "Separator",
         "Rig Module", "QC", "Export Scene",
@@ -172,7 +172,7 @@ def _menu_labels():
 
 def test_new_menu_groups_products_with_dividers():
     assert _menu_labels() == [
-        "Script", "Import Scene",
+        "Script", "Import Scene", "New Scene",
         None,
         "Mesh", "Material", "Joints", "ControlShape", "Curves",
         None,
@@ -188,9 +188,9 @@ def test_new_menu_groups_products_with_dividers():
     assert folder.PRODUCT.creators[0].choices is None
 
 
-def test_script_and_scene_share_a_group_with_no_divider_between():
+def test_script_and_scenes_share_a_group_with_no_divider_between():
     labels = _menu_labels()
-    assert labels[:3] == ["Script", "Import Scene", None]
+    assert labels[:4] == ["Script", "Import Scene", "New Scene", None]
 
 
 def test_new_menu_is_labelled_new():

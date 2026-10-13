@@ -508,6 +508,9 @@ class AssemblerWindow(ToolWindow):
             icon = self._icon(product.icon) if product else None
             if icon:
                 item.setIcon(0, icon)
+            if product and product.row_color:
+                for column in range(item.columnCount()):
+                    item.setBackground(column, QtGui.QColor(*product.row_color))
             disabled = not entry.enabled and product and product.can_disable
             if disabled:
                 font = item.font(0)
@@ -1026,9 +1029,11 @@ class AssemblerWindow(ToolWindow):
         if creator.choices:
             _NameDialog(self, title, creator.choices, create).exec()
             return
-        name, ok = QtWidgets.QInputDialog.getText(self, title, "Name:")
-        if not ok or not name:
-            return
+        name = creator.fixed_name
+        if not name:
+            name, ok = QtWidgets.QInputDialog.getText(self, title, "Name:")
+            if not ok or not name:
+                return
         try:
             create(name, None)
         except Exception as e:

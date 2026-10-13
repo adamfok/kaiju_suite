@@ -82,14 +82,16 @@ class Creator:
     """An "Add..." entry. ``fn(directory, name, ext)`` returns the new path.
 
     ``choices`` is a list of ``(label, ext)`` buttons, or ``None`` to ask
-    for a name only (``ext`` is then ``None``). ``open_after`` opens the new
-    item with :meth:`Product.open` once it's created.
+    for a name only (``ext`` is then ``None``). ``fixed_name`` creates the
+    item with that name straight away, without asking. ``open_after`` opens
+    the new item with :meth:`Product.open` once it's created.
     """
 
     label: str
     fn: object
     choices: list = None
     open_after: bool = False
+    fixed_name: str = None
 
 
 class Product:
@@ -108,6 +110,7 @@ class Product:
     versioned = False  # gets Publish and the Versions window (see ..versions)
     utility = None  # name of the Kaiju tool double-click opens, e.g. "Mesh Tool"
     columns_text = None  # fixed text for the Version and Type columns, e.g. a separator's "====="
+    row_color = None  # background of its rows as (r, g, b) 0-255, e.g. dark grey for folders
     creators = ()
 
     @property
