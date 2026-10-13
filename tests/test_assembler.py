@@ -628,6 +628,29 @@ def test_create_item_without_a_position_goes_last(tmp_path):
     assert _names(logic.scan(root))[-1] == "End.sep"
 
 
+def test_default_name_is_the_creators_type(tmp_path):
+    (creator,) = separator.PRODUCT.creators
+
+    assert logic.default_name(creator, str(tmp_path)) == "Separator"
+
+
+def test_default_name_skips_names_already_in_the_folder(tmp_path):
+    (creator,) = separator.PRODUCT.creators
+    _touch(tmp_path / "separator.sep")
+    (tmp_path / "Separator_2").mkdir()
+
+    assert logic.default_name(creator, str(tmp_path)) == "Separator_3"
+
+
+def test_default_name_can_be_used_to_create_the_item(tmp_path):
+    (creator,) = folder.PRODUCT.creators
+    (tmp_path / "Folder").mkdir()
+
+    path = logic.create_item(creator, str(tmp_path), logic.default_name(creator, str(tmp_path)), None)
+
+    assert os.path.basename(path) == "Folder_2"
+
+
 def test_paste_copies_into_another_folder_at_index(tmp_path):
     root = _order_fixture(tmp_path)
     _touch(tmp_path / "a.py", "print('a')")

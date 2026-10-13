@@ -330,6 +330,18 @@ def create_item(creator, directory, name, ext, index=None):
     return path
 
 
+def default_name(creator, directory):
+    """The name a new item from ``creator`` starts with: its type (the
+    creator's label), with ``_2``, ``_3``... if an item in ``directory``
+    already has that name, whatever its extension."""
+    taken = {os.path.splitext(n)[0].lower() for n in os.listdir(directory)}
+    taken |= {n.lower() for n in os.listdir(directory)}
+    name, n = creator.label, 2
+    while name.lower() in taken:
+        name, n = f"{creator.label}_{n}", n + 1
+    return name
+
+
 def paste_paths(paths, directory, index):
     """Copy ``paths`` into ``directory`` and put the copies at ``index``.
 

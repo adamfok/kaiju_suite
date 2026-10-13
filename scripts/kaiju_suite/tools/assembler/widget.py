@@ -135,7 +135,7 @@ class _NameDialog(QtWidgets.QDialog):
     ``on_create(name, ext)`` may raise; the dialog then warns and stays open.
     """
 
-    def __init__(self, parent, title, choices, on_create):
+    def __init__(self, parent, title, choices, on_create, name=""):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setFixedWidth(300)
@@ -144,7 +144,9 @@ class _NameDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout(self)
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("Name:"))
-        self.name = QtWidgets.QLineEdit()
+        self.name = QtWidgets.QLineEdit(name)
+        # Selected, so typing replaces it.
+        self.name.selectAll()
         row.addWidget(self.name)
         layout.addLayout(row)
 
@@ -1027,11 +1029,13 @@ class AssemblerWindow(ToolWindow):
                 _notify(f"Added {os.path.basename(path)}")
 
         if creator.choices:
-            _NameDialog(self, title, creator.choices, create).exec()
+            _NameDialog(self, title, creator.choices, create, logic.default_name(creator, directory)).exec()
             return
         name = creator.fixed_name
         if not name:
-            name, ok = QtWidgets.QInputDialog.getText(self, title, "Name:")
+            name, ok = QtWidgets.QInputDialog.getText(
+                self, title, "Name:", text=logic.default_name(creator, directory)
+            )
             if not ok or not name:
                 return
         try:
