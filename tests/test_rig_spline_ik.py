@@ -29,7 +29,7 @@ def user_curve(spine):
 
 
 def _params(**overrides):
-    params = rigging.get("spline_ik").defaults()
+    params = rigging.get_rig_module("spline_ik").defaults()
     params.update(name="body", start_joint="hips", end_joint="chest")
     params.update(overrides)
     return params
@@ -63,9 +63,9 @@ def _close(a, b, tolerance=1e-3):
 
 
 def test_spline_parameters_and_defaults():
-    module = rigging.get("spline_ik")
+    rig_module = rigging.get_rig_module("spline_ik")
 
-    assert [p.key for p in module.params] == [
+    assert [p.key for p in rig_module.params] == [
         "name",
         "start_joint",
         "end_joint",
@@ -74,18 +74,18 @@ def test_spline_parameters_and_defaults():
         "color",
         "parent",
     ]
-    assert module.defaults()["name"] == "spine"
-    assert module.defaults()["curve"] == ""
-    assert module.defaults()["color"] == 17
-    assert module.name == "Spline IK"
+    assert rig_module.defaults()["name"] == "spine"
+    assert rig_module.defaults()["curve"] == ""
+    assert rig_module.defaults()["color"] == 17
+    assert rig_module.name == "Spline IK"
 
 
 def test_valid_params_have_no_problems(spine):
-    assert rigging.get("spline_ik").problems(_params()) == []
+    assert rigging.get_rig_module("spline_ik").problems(_params()) == []
 
 
 def test_valid_params_with_a_curve_have_no_problems(user_curve):
-    assert rigging.get("spline_ik").problems(_params(curve="my_crv")) == []
+    assert rigging.get_rig_module("spline_ik").problems(_params(curve="my_crv")) == []
 
 
 @pytest.mark.parametrize(
@@ -110,7 +110,7 @@ def test_valid_params_with_a_curve_have_no_problems(user_curve):
 def test_problems(spine, overrides, expected):
     cmds.spaceLocator(name="loc")
 
-    problems = rigging.get("spline_ik").problems(_params(**overrides))
+    problems = rigging.get_rig_module("spline_ik").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
@@ -119,7 +119,7 @@ def test_ambiguous_joint_name_is_a_problem(spine):
     cmds.group(empty=True, name="other")
     _joint("chest", "other")
 
-    problems = rigging.get("spline_ik").problems(_params())
+    problems = rigging.get_rig_module("spline_ik").problems(_params())
 
     assert any("chest" in p and "Several" in p for p in problems), problems
 
@@ -129,15 +129,15 @@ def test_ambiguous_curve_name_is_a_problem(user_curve):
     cmds.parent(cmds.curve(degree=1, point=[(0, 0, 0), (1, 0, 0)]), "other")
     cmds.rename("other|curve1", "my_crv")
 
-    problems = rigging.get("spline_ik").problems(_params(curve="my_crv"))
+    problems = rigging.get_rig_module("spline_ik").problems(_params(curve="my_crv"))
 
     assert any("my_crv" in p and "Several" in p for p in problems), problems
 
 
-def test_existing_module_with_the_same_name_is_a_problem(spine):
-    rigging.get("spline_ik").build(_params())
+def test_existing_rig_module_with_the_same_name_is_a_problem(spine):
+    rigging.get_rig_module("spline_ik").build(_params())
 
-    problems = rigging.get("spline_ik").problems(_params())
+    problems = rigging.get_rig_module("spline_ik").problems(_params())
 
     assert any("body_splineIk_grp" in p for p in problems), problems
 
@@ -148,7 +148,7 @@ def test_existing_module_with_the_same_name_is_a_problem(spine):
 def test_build_creates_curve_handle_and_controls(spine):
     before = _positions(spine)
 
-    created = rigging.get("spline_ik").build(_params())
+    created = rigging.get_rig_module("spline_ik").build(_params())
 
     assert created == {
         "group": "body_splineIk_grp",
@@ -181,13 +181,13 @@ def test_build_creates_curve_handle_and_controls(spine):
 
 
 def test_controls_sit_on_the_start_and_end_joints(spine):
-    rigging.get("spline_ik").build(_params())
+    rigging.get_rig_module("spline_ik").build(_params())
 
     assert _close([_world("body_hip_ctrl"), _world("body_chest_ctrl")], [_world("hips"), _world("chest")])
 
 
 def test_build_with_a_curve_uses_a_copy_and_keeps_the_users_curve(user_curve):
-    rigging.get("spline_ik").build(_params(curve="my_crv"))
+    rigging.get_rig_module("spline_ik").build(_params(curve="my_crv"))
 
     assert cmds.ls(cmds.ikHandle("body_ikHandle", query=True, curve=True)) == ["body_splineIk_crvShape"]
     assert cmds.objExists("my_crv")
@@ -197,7 +197,7 @@ def test_build_with_a_curve_uses_a_copy_and_keeps_the_users_curve(user_curve):
 
 
 def test_moving_the_chest_control_moves_the_end_joint(spine):
-    rigging.get("spline_ik").build(_params())
+    rigging.get_rig_module("spline_ik").build(_params())
     before = _world("chest")
 
     cmds.move(0, 0, 2, "body_chest_ctrl", relative=True)
@@ -206,7 +206,7 @@ def test_moving_the_chest_control_moves_the_end_joint(spine):
 
 
 def test_rotating_the_chest_control_twists_the_upper_joints(spine):
-    rigging.get("spline_ik").build(_params())
+    rigging.get_rig_module("spline_ik").build(_params())
     hips, upper = _axis("hips", 2), _axis("spine3", 2)
 
     cmds.rotate(0, 90, 0, "body_chest_ctrl", relative=True, objectSpace=True)
@@ -222,14 +222,14 @@ def _color(control):
 
 
 def test_color_goes_on_both_controls(spine):
-    rigging.get("spline_ik").build(_params(color=13))
+    rigging.get_rig_module("spline_ik").build(_params(color=13))
 
     assert _color("body_hip_ctrl") == {(True, 13)}
     assert _color("body_chest_ctrl") == {(True, 13)}
 
 
 def test_color_0_leaves_the_controls_maya_default_color(spine):
-    rigging.get("spline_ik").build(_params(color=0))
+    rigging.get_rig_module("spline_ik").build(_params(color=0))
 
     assert _color("body_hip_ctrl") == {(False, 0)}
     assert _color("body_chest_ctrl") == {(False, 0)}
@@ -238,7 +238,7 @@ def test_color_0_leaves_the_controls_maya_default_color(spine):
 def test_build_goes_under_the_parent(spine):
     cmds.group(empty=True, name="rig_grp")
 
-    rigging.get("spline_ik").build(_params(parent="rig_grp"))
+    rigging.get_rig_module("spline_ik").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("body_splineIk_grp", parent=True) == ["rig_grp"]
 
@@ -248,7 +248,7 @@ def test_build_is_one_undo_step(spine):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rigging.get("spline_ik").build(_params())
+    rigging.get_rig_module("spline_ik").build(_params())
     cmds.move(0, 0, 2, "body_chest_ctrl", relative=True)
     cmds.undo()
     cmds.undo()
@@ -261,6 +261,6 @@ def test_build_with_problems_creates_nothing(spine):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rigging.get("spline_ik").build(_params(end_joint="nothing"))
+        rigging.get_rig_module("spline_ik").build(_params(end_joint="nothing"))
 
     assert _nodes() == nodes_before

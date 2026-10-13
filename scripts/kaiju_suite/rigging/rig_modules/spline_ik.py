@@ -24,7 +24,7 @@ one, and the joints between blend. Both controls get ``color``.
 from maya import cmds
 
 from kaiju_suite.rigging import controls, helpers
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 # The handle's Forward Axis (dForwardAxis) for each local axis and sign, and
 # its Up Axis (dWorldUpAxis) for each positive axis.
@@ -77,7 +77,7 @@ def _control(name, joint, size, normal, parent):
     return helpers.short(control), helpers.short(driver)
 
 
-class SplineIkModule(RigModule):
+class SplineIkRigModule(RigModule):
     key = "spline_ik"
     name = "Spline IK"
     params = (
@@ -87,7 +87,7 @@ class SplineIkModule(RigModule):
         Param("curve", "Curve", "node", "", tooltip="A NURBS curve for the chain to follow; blank makes one through the joints."),
         Param("control_size", "Control size", "float", 1.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the controls; 0 keeps Maya's default."),
-        Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
+        Param("parent", "Parent", "node", "", tooltip="Where the rig module's group goes; blank for the world."),
     )
 
     def check(self, params):
@@ -168,9 +168,9 @@ class SplineIkModule(RigModule):
 
             for node in (hip, chest):
                 helpers.set_color(node, params["color"])
-            members = controls.module_set_name(group)
-            controls.add(hip, module_set=members)
-            controls.add(chest, parent=hip, module_set=members)
+            members = controls.rig_module_set_name(group)
+            controls.add(hip, rig_module_set=members)
+            controls.add(chest, parent=hip, rig_module_set=members)
 
         return {
             "group": helpers.short(group),
@@ -181,4 +181,4 @@ class SplineIkModule(RigModule):
         }
 
 
-MODULE = SplineIkModule()
+RIG_MODULE = SplineIkRigModule()

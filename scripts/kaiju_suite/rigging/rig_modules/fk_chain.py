@@ -20,10 +20,10 @@ child. The chain needs at least 2 joints. Every control gets ``color``.
 from maya import cmds
 
 from kaiju_suite.rigging import controls, helpers
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 
-class FkChainModule(RigModule):
+class FkChainRigModule(RigModule):
     key = "fk_chain"
     name = "FK Chain"
     params = (
@@ -33,7 +33,7 @@ class FkChainModule(RigModule):
         Param("end_control", "End control", "bool", True, tooltip="Give the end joint a control too; turn off when it's just a tip."),
         Param("control_size", "Control size", "float", 1.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the controls; 0 keeps Maya's default."),
-        Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
+        Param("parent", "Parent", "node", "", tooltip="Where the rig module's group goes; blank for the world."),
     )
 
     def check(self, params):
@@ -67,7 +67,7 @@ class FkChainModule(RigModule):
         with helpers.kept_selection():
             group = helpers.group(f"{name}_fkChain_grp", params["parent"].strip())
             above = group
-            members = controls.module_set_name(group)
+            members = controls.rig_module_set_name(group)
             for number, joint in enumerate(joints, start=1):
                 control_name = f"{name}_{number:02d}_fk_ctrl"
                 control_group = helpers.group(f"{control_name}_grp", above)
@@ -76,7 +76,7 @@ class FkChainModule(RigModule):
                 # Keeps the offset, so a tiny mismatch can't snap the joint.
                 cmds.parentConstraint(control, joint, maintainOffset=True, name=f"{control_name}_parentConstraint")
                 helpers.set_color(control, params["color"])
-                controls.add(control, parent=made[-1] if made else None, module_set=members)
+                controls.add(control, parent=made[-1] if made else None, rig_module_set=members)
                 made.append(control)
                 above = control
 
@@ -87,4 +87,4 @@ class FkChainModule(RigModule):
         }
 
 
-MODULE = FkChainModule()
+RIG_MODULE = FkChainRigModule()

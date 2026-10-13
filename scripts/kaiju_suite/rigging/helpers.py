@@ -13,13 +13,13 @@ NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # -- checks -----------------------------------------------------------------
 
 
-def name_problems(name, group, module_name):
-    """Problems with ``name`` as the prefix of a module's nodes, whose top
-    group would be ``group``; ``module_name`` says which kind of module."""
+def name_problems(name, group, rig_module_name):
+    """Problems with ``name`` as the prefix of a rig module's nodes, whose top
+    group would be ``group``; ``module_name`` says which kind of rig module."""
     if not NAME.match(name):
         return [f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit."]
     if cmds.objExists(group):
-        return [f"{group} already exists: another {module_name} is named {name}. Pick another name."]
+        return [f"{group} already exists: another {rig_module_name} is named {name}. Pick another name."]
     return []
 
 

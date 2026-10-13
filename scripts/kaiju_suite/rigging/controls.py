@@ -8,7 +8,7 @@ all of them. Imports only Maya, no Qt.
   parent is the control it's given (Maya's parallel evaluation also treats
   tagged controls better);
 - puts it in ``controls_set``, one set for every rig in the scene, and in
-  its module's set if given (see :func:`module_set_name`), so the controls
+  its rig module's set if given (see :func:`module_set_name`), so the controls
   of one arm can be selected together;
 - stores its keyable values as built, as JSON in a ``kaijuDefaults`` string
   attribute, so :func:`reset` can put it back.
@@ -27,7 +27,7 @@ SET = "controls_set"
 DEFAULTS = "kaijuDefaults"
 
 
-def add(control, parent=None, module_set=None):
+def add(control, parent=None, rig_module_set=None):
     """Make ``control`` a rig control, its pickwalk parent the control
     ``parent`` if given, also in the set ``module_set`` (made if missing) if
     given. Adding it again keeps the defaults already stored and adds those
@@ -39,21 +39,21 @@ def add(control, parent=None, module_set=None):
         cmds.controller(control, parent, parent=True)
     _set(SET, create=True)
     cmds.sets(control, add=SET)
-    if module_set:
-        cmds.sets(control, add=_set(module_set, create=True))
+    if rig_module_set:
+        cmds.sets(control, add=_set(rig_module_set, create=True))
     _store_defaults(control)
     return control
 
 
-def module_set_name(group):
-    """The name of the set of a module's controls, from the module's top
+def rig_module_set_name(group):
+    """The name of the set of a rig module's controls, from the rig module's top
     group: ``L_arm_ik_grp`` gives ``L_arm_ik_controls_set``."""
     base = group[: -len("_grp")] if group.endswith("_grp") else group
     return f"{base}_controls_set"
 
 
-def module_sets(control):
-    """The module sets ``control`` is in (every controls set but the rig-wide one)."""
+def rig_module_sets(control):
+    """The rig module sets ``control`` is in (every controls set but the rig-wide one)."""
     found = cmds.listSets(object=control) or []
     return sorted(s for s in found if s != SET and s.endswith("_controls_set"))
 

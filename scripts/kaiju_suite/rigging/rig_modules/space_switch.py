@@ -24,7 +24,7 @@ from maya import cmds
 
 from kaiju_suite.rigging import controls, helpers
 from kaiju_suite.rigging import space_switch
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 
 def _long(name):
@@ -35,7 +35,7 @@ def _is_at_or_below(node, ancestor):
     return node == ancestor or node.startswith(ancestor + "|")
 
 
-class SpaceSwitchModule(RigModule):
+class SpaceSwitchRigModule(RigModule):
     key = "space_switch"
     name = "Space Switch"
     params = (
@@ -150,4 +150,4 @@ class SpaceSwitchModule(RigModule):
         }
 
 
-MODULE = SpaceSwitchModule()
+RIG_MODULE = SpaceSwitchRigModule()

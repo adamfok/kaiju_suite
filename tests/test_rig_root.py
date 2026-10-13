@@ -6,7 +6,7 @@ from kaiju_suite import rigging
 
 
 def _params(**overrides):
-    params = rigging.get("root").defaults()
+    params = rigging.get_rig_module("root").defaults()
     params.update(overrides)
     return params
 
@@ -38,19 +38,19 @@ def _close(a, b, tolerance=1e-3):
 
 
 def test_root_parameters_and_defaults():
-    module = rigging.get("root")
+    rig_module = rigging.get_rig_module("root")
 
-    assert [p.key for p in module.params] == ["name", "control_size", "color", "parent"]
-    assert module.defaults() == {"name": "main", "control_size": 10.0, "color": 17, "parent": ""}
-    assert module.name == "Root"
+    assert [p.key for p in rig_module.params] == ["name", "control_size", "color", "parent"]
+    assert rig_module.defaults() == {"name": "main", "control_size": 10.0, "color": 17, "parent": ""}
+    assert rig_module.name == "Root"
 
 
 def test_root_needs_no_joints():
-    assert not [p for p in rigging.get("root").params if "joint" in p.key]
+    assert not [p for p in rigging.get_rig_module("root").params if "joint" in p.key]
 
 
 def test_valid_params_have_no_problems(new_scene):
-    assert rigging.get("root").problems(_params()) == []
+    assert rigging.get_rig_module("root").problems(_params()) == []
 
 
 @pytest.mark.parametrize(
@@ -65,15 +65,15 @@ def test_valid_params_have_no_problems(new_scene):
     ],
 )
 def test_problems(new_scene, overrides, expected):
-    problems = rigging.get("root").problems(_params(**overrides))
+    problems = rigging.get_rig_module("root").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
 
-def test_existing_module_with_the_same_name_is_a_problem(new_scene):
-    rigging.get("root").build(_params())
+def test_existing_rig_module_with_the_same_name_is_a_problem(new_scene):
+    rigging.get_rig_module("root").build(_params())
 
-    problems = rigging.get("root").problems(_params())
+    problems = rigging.get_rig_module("root").problems(_params())
 
     assert any("main_root_grp" in p for p in problems), problems
 
@@ -82,7 +82,7 @@ def test_existing_module_with_the_same_name_is_a_problem(new_scene):
 
 
 def test_build_creates_group_and_controls(new_scene):
-    created = rigging.get("root").build(_params())
+    created = rigging.get_rig_module("root").build(_params())
 
     assert created == {"group": "main_root_grp", "control": "main_root_ctrl", "offset": "main_offset_ctrl"}
     assert all(isinstance(value, str) for value in created.values())
@@ -94,7 +94,7 @@ def test_build_creates_group_and_controls(new_scene):
 
 
 def test_controls_sit_flat_at_the_origin(new_scene):
-    rigging.get("root").build(_params())
+    rigging.get_rig_module("root").build(_params())
 
     origin = om.MVector(0, 0, 0)
     for control in ("main_root_grp", "main_root_ctrl", "main_offset_ctrl"):
@@ -107,14 +107,14 @@ def test_controls_sit_flat_at_the_origin(new_scene):
 
 
 def test_offset_control_is_smaller_than_the_root_control(new_scene):
-    rigging.get("root").build(_params())
+    rigging.get_rig_module("root").build(_params())
 
     assert 0 < _width("main_offset_ctrl") < _width("main_root_ctrl")
 
 
 def test_control_size_scales_the_controls(new_scene):
-    rigging.get("root").build(_params(name="small", control_size=5.0))
-    rigging.get("root").build(_params(name="big", control_size=10.0))
+    rigging.get_rig_module("root").build(_params(name="small", control_size=5.0))
+    rigging.get_rig_module("root").build(_params(name="big", control_size=10.0))
 
     assert abs(_width("big_root_ctrl") - 2 * _width("small_root_ctrl")) < 1e-3
     assert abs(_width("big_offset_ctrl") - 2 * _width("small_offset_ctrl")) < 1e-3
@@ -122,7 +122,7 @@ def test_control_size_scales_the_controls(new_scene):
 
 
 def test_global_scale_scales_the_root_control_uniformly(new_scene):
-    rigging.get("root").build(_params())
+    rigging.get_rig_module("root").build(_params())
     control = "main_root_ctrl"
 
     assert cmds.getAttr(f"{control}.globalScale") == 1.0
@@ -138,14 +138,14 @@ def test_global_scale_scales_the_root_control_uniformly(new_scene):
 
 
 def test_global_scale_cannot_reach_zero(new_scene):
-    rigging.get("root").build(_params())
+    rigging.get_rig_module("root").build(_params())
 
     with pytest.raises(RuntimeError):
         cmds.setAttr("main_root_ctrl.globalScale", 0)
 
 
 def test_things_under_the_offset_control_follow_the_root_control(new_scene):
-    created = rigging.get("root").build(_params())
+    created = rigging.get_rig_module("root").build(_params())
     cmds.spaceLocator(name="loc")
     cmds.move(1, 0, 0, "loc")
     cmds.parent("loc", created["offset"])
@@ -163,14 +163,14 @@ def _color(control):
 
 
 def test_color_goes_on_both_controls(new_scene):
-    rigging.get("root").build(_params(color=13))
+    rigging.get_rig_module("root").build(_params(color=13))
 
     assert _color("main_root_ctrl") == {(True, 13)}
     assert _color("main_offset_ctrl") == {(True, 13)}
 
 
 def test_color_0_leaves_the_controls_maya_default_color(new_scene):
-    rigging.get("root").build(_params(color=0))
+    rigging.get_rig_module("root").build(_params(color=0))
 
     assert _color("main_root_ctrl") == {(False, 0)}
     assert _color("main_offset_ctrl") == {(False, 0)}
@@ -179,7 +179,7 @@ def test_color_0_leaves_the_controls_maya_default_color(new_scene):
 def test_build_goes_under_the_parent(new_scene):
     cmds.group(empty=True, name="rig_grp")
 
-    rigging.get("root").build(_params(parent="rig_grp"))
+    rigging.get_rig_module("root").build(_params(parent="rig_grp"))
 
     assert cmds.listRelatives("main_root_grp", parent=True) == ["rig_grp"]
 
@@ -188,7 +188,7 @@ def test_build_keeps_the_selection(new_scene):
     cmds.spaceLocator(name="loc")
     cmds.select("loc")
 
-    rigging.get("root").build(_params())
+    rigging.get_rig_module("root").build(_params())
 
     assert cmds.ls(selection=True) == ["loc"]
 
@@ -197,7 +197,7 @@ def test_build_is_one_undo_step(new_scene):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rigging.get("root").build(_params())
+    rigging.get_rig_module("root").build(_params())
     cmds.setAttr("main_root_ctrl.globalScale", 3)
     cmds.undo()
     cmds.undo()
@@ -209,6 +209,6 @@ def test_build_with_problems_creates_nothing(new_scene):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rigging.get("root").build(_params(parent="nothing"))
+        rigging.get_rig_module("root").build(_params(parent="nothing"))
 
     assert _nodes() == nodes_before

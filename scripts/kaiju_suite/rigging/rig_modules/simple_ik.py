@@ -19,10 +19,10 @@ the chain needs at least 3 joints. Both controls get ``color``.
 from maya import cmds
 
 from kaiju_suite.rigging import controls, helpers
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 
-class SimpleIkModule(RigModule):
+class SimpleIkRigModule(RigModule):
     key = "simple_ik"
     name = "Simple IK"
     params = (
@@ -32,7 +32,7 @@ class SimpleIkModule(RigModule):
         Param("pole_distance", "Pole distance", "float", 5.0, tooltip="How far the pole vector control sits from the middle joint."),
         Param("control_size", "Control size", "float", 1.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the controls; 0 keeps Maya's default."),
-        Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
+        Param("parent", "Parent", "node", "", tooltip="Where the rig module's group goes; blank for the world."),
     )
 
     def check(self, params):
@@ -95,9 +95,9 @@ class SimpleIkModule(RigModule):
 
             for node in (control, pole_control):
                 helpers.set_color(node, params["color"])
-            members = controls.module_set_name(group)
-            controls.add(control, module_set=members)
-            controls.add(pole_control, parent=control, module_set=members)
+            members = controls.rig_module_set_name(group)
+            controls.add(control, rig_module_set=members)
+            controls.add(pole_control, parent=control, rig_module_set=members)
 
         return {
             "group": helpers.short(group),
@@ -107,4 +107,4 @@ class SimpleIkModule(RigModule):
         }
 
 
-MODULE = SimpleIkModule()
+RIG_MODULE = SimpleIkRigModule()

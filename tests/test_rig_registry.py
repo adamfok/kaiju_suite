@@ -6,7 +6,7 @@ import pytest
 from kaiju_suite import rigging
 from kaiju_suite.core import datafile
 from kaiju_suite.rigging import spec
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 
 class _Box(RigModule):
@@ -25,13 +25,13 @@ class _Box(RigModule):
 
 
 def test_simple_ik_is_discovered():
-    assert rigging.get("simple_ik").name == "Simple IK"
-    assert "simple_ik" in [module.key for module in rigging.all_modules()]
+    assert rigging.get_rig_module("simple_ik").name == "Simple IK"
+    assert "simple_ik" in [rig_module.key for rig_module in rigging.all_rig_modules()]
 
 
-def test_get_rejects_an_unknown_module():
+def test_get_rejects_an_unknown_rig_module():
     with pytest.raises(LookupError) as info:
-        rigging.get("nope")
+        rigging.get_rig_module("nope")
     assert "nope" in str(info.value)
 
 
@@ -57,7 +57,7 @@ def test_rig_package_imports_no_qt_tools_or_ui():
                 assert banned not in source, f"{file_name} mentions {banned}"
 
 
-# -- the module base class -------------------------------------------------
+# -- the rig module base class -------------------------------------------------
 
 
 def test_defaults_come_from_the_params():
@@ -119,9 +119,9 @@ def test_load_completes_the_params_with_defaults(tmp_path):
     path = str(tmp_path / "L_arm.rig")
     spec.write(path, "simple_ik", {"name": "L_arm"})
 
-    module, params = spec.load(path)
+    rig_module, params = spec.load(path)
 
-    assert module is rigging.get("simple_ik")
+    assert rig_module is rigging.get_rig_module("simple_ik")
     assert params["name"] == "L_arm"
     assert params["pole_distance"] == 5.0
 
@@ -139,7 +139,7 @@ def test_read_rejects_a_malformed_spec(tmp_path, payload):
     assert "bad.rig" in str(info.value)
 
 
-def test_load_rejects_an_unknown_module(tmp_path):
+def test_load_rejects_an_unknown_rig_module(tmp_path):
     path = str(tmp_path / "x.rig")
     spec.write(path, "nope", {})
 

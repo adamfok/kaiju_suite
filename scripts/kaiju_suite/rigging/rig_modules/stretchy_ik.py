@@ -30,7 +30,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite.rigging import controls, helpers
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 
 def _translate_problems(joints):
@@ -64,7 +64,7 @@ def _node(node_type, name):
     return cmds.createNode(node_type, name=name, skipSelect=True)
 
 
-class StretchyIkModule(RigModule):
+class StretchyIkRigModule(RigModule):
     key = "stretchy_ik"
     name = "Stretchy IK"
     params = (
@@ -74,7 +74,7 @@ class StretchyIkModule(RigModule):
         Param("pole_distance", "Pole distance", "float", 5.0, tooltip="How far the pole vector control sits from the middle joint."),
         Param("control_size", "Control size", "float", 1.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the controls; 0 keeps Maya's default."),
-        Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
+        Param("parent", "Parent", "node", "", tooltip="Where the rig module's group goes; blank for the world."),
     )
 
     def check(self, params):
@@ -182,9 +182,9 @@ class StretchyIkModule(RigModule):
 
             for node in (control, pole_control):
                 helpers.set_color(node, params["color"])
-            members = controls.module_set_name(group)
-            controls.add(control, module_set=members)
-            controls.add(pole_control, parent=control, module_set=members)
+            members = controls.rig_module_set_name(group)
+            controls.add(control, rig_module_set=members)
+            controls.add(pole_control, parent=control, rig_module_set=members)
 
         return {
             "group": helpers.short(group),
@@ -195,4 +195,4 @@ class StretchyIkModule(RigModule):
         }
 
 
-MODULE = StretchyIkModule()
+RIG_MODULE = StretchyIkRigModule()

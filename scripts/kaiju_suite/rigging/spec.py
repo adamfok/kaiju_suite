@@ -11,9 +11,9 @@ from kaiju_suite.core import datafile
 KIND = "rigModule"
 
 
-def write(path, module_key, params):
-    """Write a parameter file for the module keyed ``module_key``."""
-    return datafile.write(path, KIND, {"module": module_key, "params": params})
+def write(path, rig_module_key, params):
+    """Write a parameter file for the rig module keyed ``module_key``."""
+    return datafile.write(path, KIND, {"module": rig_module_key, "params": params})
 
 
 def read(path):
@@ -35,8 +35,8 @@ def read(path):
 
 def load(path):
     """``(module, params)`` for ``path``: the :class:`RigModule` it names, and
-    its parameters completed with that module's defaults. Raises
-    :class:`LookupError` for a module this Kaiju Suite doesn't have."""
+    its parameters completed with that rig module's defaults. Raises
+    :class:`LookupError` for a rig module this Kaiju Suite doesn't have."""
     key, params = read(path)
-    module = rigging.get(key)
-    return module, module.complete(params)
+    rig_module = rigging.get_rig_module(key)
+    return rig_module, rig_module.complete(params)

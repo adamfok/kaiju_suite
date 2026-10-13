@@ -6,7 +6,7 @@ from kaiju_suite.rigging import space_switch
 
 
 def _params(**overrides):
-    params = rigging.get("space_switch").defaults()
+    params = rigging.get_rig_module("space_switch").defaults()
     params.update(
         {
             "control": "hand_ctrl",
@@ -73,11 +73,11 @@ def test_spaces_problems(text, expected):
 
 
 def test_space_switch_parameters():
-    module = rigging.get("space_switch")
+    rig_module = rigging.get_rig_module("space_switch")
 
-    assert module.name == "Space Switch"
-    assert [p.key for p in module.params] == ["control", "driven", "spaces", "default_space"]
-    assert {p.key: p.kind for p in module.params} == {
+    assert rig_module.name == "Space Switch"
+    assert [p.key for p in rig_module.params] == ["control", "driven", "spaces", "default_space"]
+    assert {p.key: p.kind for p in rig_module.params} == {
         "control": "node",
         "driven": "node",
         "spaces": "string",
@@ -88,7 +88,7 @@ def test_space_switch_parameters():
 def test_valid_params_have_no_problems(new_scene):
     _scene()
 
-    assert rigging.get("space_switch").problems(_params()) == []
+    assert rigging.get_rig_module("space_switch").problems(_params()) == []
 
 
 @pytest.mark.parametrize(
@@ -109,16 +109,16 @@ def test_valid_params_have_no_problems(new_scene):
 def test_problems(new_scene, overrides, expected):
     _scene()
 
-    problems = rigging.get("space_switch").problems(_params(**overrides))
+    problems = rigging.get_rig_module("space_switch").problems(_params(**overrides))
 
     assert any(expected in p for p in problems), problems
 
 
 def test_a_control_that_already_has_a_space_is_a_problem(new_scene):
     _scene()
-    rigging.get("space_switch").build(_params())
+    rigging.get_rig_module("space_switch").build(_params())
 
-    problems = rigging.get("space_switch").problems(_params())
+    problems = rigging.get_rig_module("space_switch").problems(_params())
 
     assert any("space" in p and "hand_ctrl" in p for p in problems), problems
 
@@ -127,7 +127,7 @@ def test_a_driven_group_with_connected_channels_is_a_problem(new_scene):
     _scene()
     cmds.connectAttr("chest_ctrl.translateX", "hand_ctrl_grp.translateY")
 
-    problems = rigging.get("space_switch").problems(_params())
+    problems = rigging.get_rig_module("space_switch").problems(_params())
 
     assert any("hand_ctrl_grp" in p for p in problems), problems
 
@@ -138,7 +138,7 @@ def test_a_driven_group_with_connected_channels_is_a_problem(new_scene):
 def test_build_adds_a_space_enum_and_a_parent_constraint(new_scene):
     _scene()
 
-    created = rigging.get("space_switch").build(_params())
+    created = rigging.get_rig_module("space_switch").build(_params())
 
     assert created["control"] == "hand_ctrl"
     assert created["driven"] == "hand_ctrl_grp"
@@ -155,14 +155,14 @@ def test_build_does_not_move_the_control(new_scene):
     _scene()
     before = _world("hand_ctrl")
 
-    rigging.get("space_switch").build(_params())
+    rigging.get_rig_module("space_switch").build(_params())
 
     assert _world("hand_ctrl") == pytest.approx(before, abs=1e-4)
 
 
 def test_default_space_is_the_first_unless_set(new_scene):
     _scene()
-    rigging.get("space_switch").build(_params(default_space="chest"))
+    rigging.get_rig_module("space_switch").build(_params(default_space="chest"))
 
     assert cmds.getAttr("hand_ctrl.space") == 1
     assert cmds.addAttr("hand_ctrl.space", query=True, defaultValue=True) == 1
@@ -170,7 +170,7 @@ def test_default_space_is_the_first_unless_set(new_scene):
 
 def test_the_enum_drives_the_constraint_weights(new_scene):
     _scene()
-    created = rigging.get("space_switch").build(_params())
+    created = rigging.get_rig_module("space_switch").build(_params())
     constraint = created["constraint"]
     aliases = cmds.parentConstraint(constraint, query=True, weightAliasList=True)
 
@@ -182,7 +182,7 @@ def test_the_enum_drives_the_constraint_weights(new_scene):
 
 def test_the_control_follows_its_current_space(new_scene):
     _scene()
-    rigging.get("space_switch").build(_params())
+    rigging.get_rig_module("space_switch").build(_params())
     cmds.setAttr("hand_ctrl.space", 1)  # chest
     before = cmds.xform("hand_ctrl", query=True, worldSpace=True, translation=True)
 
@@ -199,7 +199,7 @@ def test_blank_driven_inserts_a_group_above_the_control(new_scene):
     _scene()
     before = _world("hand_ctrl")
 
-    created = rigging.get("space_switch").build(_params(driven=""))
+    created = rigging.get_rig_module("space_switch").build(_params(driven=""))
 
     assert created["driven"] == "hand_ctrl_space_grp"
     assert cmds.listRelatives("hand_ctrl", parent=True) == ["hand_ctrl_space_grp"]
@@ -212,7 +212,7 @@ def test_build_keeps_the_selection(new_scene):
     _scene()
     cmds.select("head_ctrl")
 
-    rigging.get("space_switch").build(_params(driven=""))
+    rigging.get_rig_module("space_switch").build(_params(driven=""))
 
     assert cmds.ls(selection=True) == ["head_ctrl"]
 
@@ -222,7 +222,7 @@ def test_build_is_one_undo_step(new_scene):
     cmds.undoInfo(state=True)
     nodes_before = _nodes()
 
-    rigging.get("space_switch").build(_params(driven=""))
+    rigging.get_rig_module("space_switch").build(_params(driven=""))
     cmds.undo()
 
     assert _nodes() == nodes_before
@@ -235,7 +235,7 @@ def test_build_with_problems_creates_nothing(new_scene):
     nodes_before = _nodes()
 
     with pytest.raises(ValueError):
-        rigging.get("space_switch").build(_params(spaces="world=nothing"))
+        rigging.get_rig_module("space_switch").build(_params(spaces="world=nothing"))
 
     assert _nodes() == nodes_before
 
@@ -245,7 +245,7 @@ def test_build_with_problems_creates_nothing(new_scene):
 
 def test_switch_keeps_the_world_transform(new_scene):
     _scene()
-    rigging.get("space_switch").build(_params())
+    rigging.get_rig_module("space_switch").build(_params())
     cmds.move(0, 5, 0, "chest_ctrl", relative=True)  # so spaces disagree
     cmds.rotate(0, 45, 0, "head_ctrl", relative=True)
     before = _world("hand_ctrl")
@@ -258,7 +258,7 @@ def test_switch_keeps_the_world_transform(new_scene):
 
 def test_switch_takes_an_index(new_scene):
     _scene()
-    rigging.get("space_switch").build(_params())
+    rigging.get_rig_module("space_switch").build(_params())
 
     space_switch.switch("hand_ctrl", 1)
 
@@ -267,7 +267,7 @@ def test_switch_takes_an_index(new_scene):
 
 def test_switch_rejects_an_unknown_space(new_scene):
     _scene()
-    rigging.get("space_switch").build(_params())
+    rigging.get_rig_module("space_switch").build(_params())
 
     with pytest.raises(ValueError):
         space_switch.switch("hand_ctrl", "moon")

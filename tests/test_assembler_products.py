@@ -180,7 +180,7 @@ def test_new_menu_groups_products_with_dividers():
         None,
         "Pose", "Animation", "Set Driven Keys", "Constraints", "Connections", "Attributes", "Sets & Layers",
         None,
-        *(module.name for module in rigging.all_modules()),
+        *(rig_module.name for rig_module in rigging.all_rig_modules()),
         None,
         "QC", "Export Scene",
     ]
