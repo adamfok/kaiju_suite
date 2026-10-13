@@ -67,7 +67,9 @@ class GuideToolWindow(ToolWindow):
                 "Build Guides",
                 "Make guides named after Name, with a joint chain that follows them live: start, middle and end "
                 "guides along X, and a yellow up guide to the side. Guides can only be moved. If guides with this "
-                "name exist, their start, end and up guides stay and the middle guides are reset to this number.",
+                "name exist, their start, end and up guides stay and the middle guides are reset to this number. "
+                "With a joint selected that follows no guides (e.g. after Delete Guides), build guides on its "
+                "chain instead, and the same joints follow them again.",
                 self._build,
             ),
             (
@@ -117,9 +119,14 @@ class GuideToolWindow(ToolWindow):
 
     def _build(self):
         name = self.name.text().strip()
-        group = self._run(
-            logic.build_guides, name, self.count.value(), aim=self.aim.currentData(), up=self.up.currentData()
-        )
+        axes = {"aim": self.aim.currentData(), "up": self.up.currentData()}
+        joint = logic.free_joint(selected())
+        if joint is not None:
+            group = self._run(logic.guides_from_joints, joint, name=name, **axes)
+            if group is not None:
+                self.status.setText(f"Built guides from the joints of {cmds.ls(group)[0]}; they follow them again.")
+            return
+        group = self._run(logic.build_guides, name, self.count.value(), **axes)
         if group is not None:
             cmds.select(logic.guides(group)["chain"][1:-1] or logic.guides(group)["chain"])
             self.status.setText(f"Built guides for {name} with {self.count.value()} middle guides. Move them around.")

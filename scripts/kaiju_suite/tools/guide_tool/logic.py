@@ -45,6 +45,11 @@ _THIRD = "previewThird"
 _AXES_TEXT = "previewAxes"
 # A joint's channels, locked while the guides drive it.
 _MOVES = ("tx", "ty", "tz", "rx", "ry", "rz")
+# Left on the top joint when the guides are deleted, to build them again:
+# the chain's name, its axes ("x y") and where the up guide was.
+_NOTE_NAME = "kaijuGuideName"
+_NOTE_AXES = "kaijuGuideAxes"
+_NOTE_UP = "kaijuGuideUp"
 # Closer than this counts as the same spot.
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
@@ -497,6 +502,7 @@ def _extract(group):
     linked = joints(group)
     uuids = cmds.ls(linked, uuid=True)
     worlds = [om.MMatrix(cmds.xform(j, query=True, worldSpace=True, matrix=True)) for j in linked]
+    note = (cmds.getAttr(f"{group}.{_TAG}"), cmds.getAttr(f"{group}.{_AXES_TEXT}") or "x y", _position(found["up"]))
     # One delete takes the drivers too, so the joints keep their last value.
     _remove(group)
     for uuid in uuids:
@@ -508,7 +514,33 @@ def _extract(group):
         joint = _by_uuid(uuid)
         cmds.xform(joint, worldSpace=True, translation=(world[12], world[13], world[14]))
         orient.set_world_rotation(joint, world)
+    if uuids:
+        _leave_note(_by_uuid(uuids[0]), *note)
     return [_by_uuid(uuid) for uuid in uuids]
+
+
+def _leave_note(joint, name, axes, up):
+    for attr, kind in ((_NOTE_NAME, "string"), (_NOTE_AXES, "string")):
+        if not cmds.attributeQuery(attr, node=joint, exists=True):
+            cmds.addAttr(joint, longName=attr, dataType=kind)
+    if not cmds.attributeQuery(_NOTE_UP, node=joint, exists=True):
+        cmds.addAttr(joint, longName=_NOTE_UP, attributeType="double3")
+        for letter in "XYZ":
+            cmds.addAttr(joint, longName=f"{_NOTE_UP}{letter}", attributeType="double", parent=_NOTE_UP)
+    cmds.setAttr(f"{joint}.{_NOTE_NAME}", name, type="string")
+    cmds.setAttr(f"{joint}.{_NOTE_AXES}", axes, type="string")
+    cmds.setAttr(f"{joint}.{_NOTE_UP}", up.x, up.y, up.z)
+
+
+def _note(joint, attr):
+    return cmds.getAttr(f"{joint}.{attr}") if cmds.attributeQuery(attr, node=joint, exists=True) else None
+
+
+def _check_name(name):
+    if not isinstance(name, str) or not NAME.match(name):
+        raise ValueError(
+            f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit."
+        )
 
 
 def _remove(group):
@@ -528,10 +560,7 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     stay unless given. Their joints stay too, unless the number of joints
     changes: then the old joints are replaced by new ones.
     Returns the guide group."""
-    if not isinstance(name, str) or not NAME.match(name):
-        raise ValueError(
-            f"Name {name!r} can't be used in node names: use letters, digits and _, not starting with a digit."
-        )
+    _check_name(name)
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise ValueError("The number of middle guides must be 0 or more.")
     old = f"{name}_guides_grp"
@@ -569,6 +598,87 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     if old:
         cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
     _live_joints(group, name, keep)
+    return group
+
+
+def free_joint(nodes):
+    """The first joint among ``nodes`` (e.g. the selection) that doesn't
+    follow guides, or ``None``: one to build guides from."""
+    for joint in cmds.ls(nodes, type="joint", long=True) if nodes else []:
+        linked = cmds.listConnections(f"{joint}.message", source=False, destination=True) or []
+        if not any(_is_group(n) for n in cmds.ls(linked, long=True)):
+            return joint
+    return None
+
+
+def _chain_from(joint):
+    """The joint chain ``joint`` is in: from the joint above it holding a
+    note left by Delete Guides (or ``joint`` itself) down its first child
+    joints."""
+    top, node = joint, joint
+    while node:
+        if cmds.attributeQuery(_NOTE_NAME, node=node, exists=True):
+            top = node
+            break
+        parent = cmds.listRelatives(node, parent=True, type="joint", fullPath=True)
+        node = parent[0] if parent else None
+    chain = [top]
+    while True:
+        children = cmds.listRelatives(chain[-1], children=True, type="joint", fullPath=True)
+        if not children:
+            return chain
+        chain.append(children[0])
+
+
+@undoable
+def guides_from_joints(joint, name=None, aim=None, up=None):
+    """Build guides for the joint chain ``joint`` is in, e.g. one extracted
+    by :func:`delete_guides`, and make those same joints follow them live
+    again: one guide on each joint, and the up guide where it was. A chain
+    the Guide Tool didn't make takes ``name`` and the ``aim`` and ``up``
+    axes (default +X, +Y), and gets its up guide to the side its top joint's
+    up axis points to. Returns the guide group."""
+    found = cmds.ls(joint, long=True, type="joint") if joint else []
+    if not found:
+        raise ValueError(f"{joint!r} isn't a joint.")
+    chain = _chain_from(found[0])
+    if len(chain) < 2:
+        raise ValueError(f"{short_name(chain[0])} has no child joint: select a joint chain of 2 joints or more.")
+    for node in chain:
+        linked = cmds.listConnections(f"{node}.message", source=False, destination=True) or []
+        if any(_is_group(n) for n in cmds.ls(linked, long=True)):
+            raise ValueError(f"{short_name(chain[0])}'s chain already follows guides.")
+    if cmds.listRelatives(chain[0], parent=True):
+        raise ValueError(
+            f"{short_name(chain[0])} must be at the world root while guides drive it; unparent it first."
+        )
+    top = chain[0]
+    name = _note(top, _NOTE_NAME) or name
+    _check_name(name)
+    noted = (_note(top, _NOTE_AXES) or "").split()
+    aim, up = (noted if len(noted) == 2 else (aim or "x", up or "y"))
+    axes = _axes(aim, up)
+
+    positions = [_position(node) for node in chain]
+    start, end = positions[0], positions[-1]
+    if cmds.attributeQuery(_NOTE_UP, node=top, exists=True):
+        up_position = om.MVector(cmds.getAttr(f"{top}.{_NOTE_UP}")[0])
+    else:
+        side = orient.row(om.MMatrix(cmds.xform(top, query=True, worldSpace=True, matrix=True)), axes[1][0])
+        up_position = (start + end) * 0.5 + side.normalize() * (axes[1][1] * (end - start).length() * 0.5)
+    _plane(positions, up_position)  # raises if it can't be built
+    count = len(chain) - 2
+    owned = set(cmds.ls(chain, long=True))
+    taken = [n for n in _names(name, count) if set(cmds.ls(n, long=True)) - owned]
+    if taken:
+        raise ValueError(f"These names are already used, rename or delete them first: {', '.join(taken)}")
+
+    uuids = cmds.ls(chain, uuid=True)
+    group = _create_guides(name, count, start, end, axes)
+    for guide, position in zip(guides(group)["chain"], positions):
+        cmds.xform(guide, worldSpace=True, translation=(position.x, position.y, position.z))
+    cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
+    _live_joints(group, name, uuids)
     return group
 
 

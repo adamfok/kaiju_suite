@@ -732,6 +732,112 @@ def test_delete_guides_is_one_undo_step(new_scene):
         _same_frame(joint, preview)
 
 
+# -- guides from joints, e.g. after Delete Guides ------------------------------
+
+
+def test_guides_from_extracted_joints_bring_the_same_joints_back_live(new_scene):
+    group = _bent_arm(aim="z", up="-x")
+    found = logic.guides(group)
+    up = _pos(found["up"])
+    joints = logic.delete_guides(group)
+    uuids = [_uuid(j) for j in joints]
+    cmds.rename(joints[1], "elbow_jnt")
+    before = _frames(cmds.ls(uuids, long=True))
+
+    group = logic.guides_from_joints(cmds.ls(uuids[2], long=True)[0])
+
+    assert cmds.ls(group)[0] == "arm_guides_grp"
+    linked = logic.joints(group)
+    assert [_uuid(j) for j in linked] == uuids
+    _same_frames(before, _frames(linked))
+    found = logic.guides(group)
+    for guide, joint in zip(found["chain"], linked):
+        assert (_pos(guide) - _pos(joint)).length() < 1e-4
+    assert (_pos(found["up"]) - up).length() < 1e-4
+    # Live again, with the axes it had.
+    _move(found["chain"][1], 3, 2, 0)
+    for joint, preview in zip(linked, logic.previews(group)):
+        _same_frame(joint, preview)
+    assert (_axis(linked[0], "z") - (_pos(linked[1]) - _pos(linked[0])).normalize()).length() < 1e-4
+
+
+def test_guides_from_joints_round_trip(new_scene):
+    joints = logic.delete_guides(_bent_arm())
+    before = _frames(joints)
+
+    for _ in range(2):
+        joints = logic.delete_guides(logic.guides_from_joints(joints[0]))
+
+    _same_frames(before, _frames(joints))
+
+
+def test_guides_from_a_chain_the_tool_did_not_make(new_scene):
+    cmds.select(clear=True)
+    made = [cmds.joint(position=p) for p in ((0, 0, 0), (4, 1, 0), (8, 0, 0))]
+    cmds.joint(made[0], edit=True, orientJoint="xyz", secondaryAxisOrient="yup", children=True, zeroScaleOrient=True)
+    positions = [_pos(j) for j in made]
+
+    group = logic.guides_from_joints(made[0], name="leg", aim="x", up="y")
+
+    assert cmds.ls(group)[0] == "leg_guides_grp"
+    linked = logic.joints(group)
+    assert [_uuid(j) for j in linked] == [_uuid(j) for j in made]
+    for joint, position in zip(linked, positions):
+        assert (_pos(joint) - position).length() < 1e-4
+    up = _pos(logic.guides(group)["up"])
+    assert up.y > 0.5  # off to the joints' up (+Y) side
+
+
+def test_free_joint_picks_a_selected_joint_that_follows_no_guides(new_scene):
+    group = logic.build_guides("arm", 1)
+    cube = cmds.polyCube()[0]
+    cmds.select(clear=True)
+    loose = cmds.joint()
+
+    assert logic.free_joint([cube, logic.joints(group)[0], loose]) == cmds.ls(loose, long=True)[0]
+    assert logic.free_joint([cube, logic.joints(group)[0], logic.guides(group)["up"]]) is None
+    assert logic.free_joint([]) is None
+
+
+def test_guides_from_joints_refuses_joints_that_follow_guides(new_scene):
+    group = logic.build_guides("arm", 1)
+
+    with pytest.raises(ValueError, match="already"):
+        logic.guides_from_joints(logic.joints(group)[0])
+
+
+def test_guides_from_joints_refuses_a_single_joint(new_scene):
+    cmds.select(clear=True)
+    joint = cmds.joint()
+
+    with pytest.raises(ValueError, match="chain"):
+        logic.guides_from_joints(joint, name="arm")
+
+
+def test_guides_from_joints_refuses_a_taken_name_and_changes_nothing(new_scene):
+    joints = logic.delete_guides(logic.build_guides("arm", 1))
+    cmds.createNode("transform", name="arm_up_guide")
+    before = set(cmds.ls())
+
+    with pytest.raises(ValueError, match="arm_up_guide"):
+        logic.guides_from_joints(joints[0])
+
+    assert set(cmds.ls()) == before
+
+
+def test_guides_from_joints_is_one_undo_step(new_scene):
+    joints = logic.delete_guides(_bent_arm())
+    before = set(cmds.ls())
+    frames = _frames(joints)
+
+    logic.guides_from_joints(joints[0])
+    cmds.undo()
+
+    assert set(cmds.ls()) == before
+    _same_frames(frames, _frames(joints))
+    assert not cmds.getAttr(f"{joints[0]}.tx", lock=True)
+
+
 # -- menu -----------------------------------------------------------------------
 
 
