@@ -17,7 +17,7 @@ Both controls get ``color``.
 from maya import cmds
 
 from kaiju_suite.rigging import controls, helpers
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 UP = (0, 1, 0)
 OFFSET_SIZE = 0.8  # the offset control's size, relative to the root control's
@@ -32,7 +32,7 @@ def _add_global_scale(control):
         cmds.setAttr(f"{control}.scale{axis}", lock=True, keyable=False, channelBox=False)
 
 
-class RootModule(RigModule):
+class RootRigModule(RigModule):
     key = "root"
     name = "Root"
     mirrorable = False  # there's one root, in the middle
@@ -40,7 +40,7 @@ class RootModule(RigModule):
         Param("name", "Name", "string", "main", required=True, tooltip="Prefix of every node it creates, e.g. main."),
         Param("control_size", "Control size", "float", 10.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the controls; 0 keeps Maya's default."),
-        Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
+        Param("parent", "Parent", "node", "", tooltip="Where the rig module's group goes; blank for the world."),
     )
 
     def check(self, params):
@@ -67,9 +67,9 @@ class RootModule(RigModule):
 
             for node in (control, offset):
                 helpers.set_color(node, params["color"])
-            members = controls.module_set_name(group)
-            controls.add(control, module_set=members)
-            controls.add(offset, parent=control, module_set=members)
+            members = controls.rig_module_set_name(group)
+            controls.add(control, rig_module_set=members)
+            controls.add(offset, parent=control, rig_module_set=members)
 
         return {
             "group": helpers.short(group),
@@ -78,4 +78,4 @@ class RootModule(RigModule):
         }
 
 
-MODULE = RootModule()
+RIG_MODULE = RootRigModule()

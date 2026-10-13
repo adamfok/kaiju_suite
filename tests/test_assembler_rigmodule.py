@@ -29,9 +29,9 @@ def _creator(label):
 def _item(tmp_path, **params):
     """A new Simple IK item, L_arm.rig, with ``params`` changed."""
     path = _creator("Simple IK").fn(str(tmp_path), "L_arm", None)
-    module_key, saved = spec.read(path)
+    rig_module_key, saved = spec.read(path)
     saved.update(params)
-    spec.write(path, module_key, saved)
+    spec.write(path, rig_module_key, saved)
     return path
 
 
@@ -43,7 +43,7 @@ def test_rig_items_are_rig_module_files(tmp_path):
     assert rigmodule.PRODUCT.name == "Rig Module"
 
 
-def test_type_column_shows_the_module_not_rig_module(tmp_path):
+def test_type_column_shows_the_rig_module_name_not_rig_module(tmp_path):
     spec.write(str(tmp_path / "L_arm.rig"), "simple_ik", {})
 
     (entry,) = logic.scan(str(tmp_path))
@@ -60,7 +60,7 @@ def test_type_column_falls_back_to_rig_module_for_an_unreadable_file(tmp_path, c
     assert entry.type_label == "Rig Module"
 
 
-def test_type_column_falls_back_to_rig_module_for_an_unknown_module(tmp_path):
+def test_type_column_falls_back_to_rig_module_for_an_unknown_key(tmp_path):
     spec.write(str(tmp_path / "L_arm.rig"), "nope", {})
 
     (entry,) = logic.scan(str(tmp_path))
@@ -68,7 +68,7 @@ def test_type_column_falls_back_to_rig_module_for_an_unknown_module(tmp_path):
     assert entry.type_label == "Rig Module"
 
 
-def test_publish_message_and_run_log_name_the_module(arm, tmp_path):
+def test_publish_message_and_run_log_name_the_rig_module(arm, tmp_path):
     path = _item(tmp_path, start_joint="shoulder", end_joint="wrist")
 
     message = versions.publish_action(path).fn()
@@ -88,15 +88,15 @@ def test_rig_module_is_runnable_versioned_and_opens_the_editor():
 def test_new_menu_lists_each_rig_module(tmp_path):
     labels = [c.label for p, c in filter(None, products.new_menu()) if p is rigmodule.PRODUCT]
 
-    assert labels == [m.name for m in rigging.all_modules()]
+    assert labels == [m.name for m in rigging.all_rig_modules()]
     assert "Simple IK" in labels
 
 
-def test_new_item_holds_the_module_defaults(tmp_path):
+def test_new_item_holds_the_rig_module_defaults(tmp_path):
     path = _creator("Simple IK").fn(str(tmp_path), "L_arm", None)
 
     assert os.path.basename(path) == "L_arm.rig"
-    assert spec.read(path) == ("simple_ik", rigging.get("simple_ik").defaults())
+    assert spec.read(path) == ("simple_ik", rigging.get_rig_module("simple_ik").defaults())
 
 
 def test_new_item_refuses_a_taken_name(tmp_path):
@@ -106,7 +106,7 @@ def test_new_item_refuses_a_taken_name(tmp_path):
         _creator("Simple IK").fn(str(tmp_path), "L_arm", None)
 
 
-def test_run_builds_the_module_from_the_file(arm, tmp_path):
+def test_run_builds_the_rig_module_from_the_file(arm, tmp_path):
     path = _item(tmp_path, name="L_arm", start_joint="shoulder", end_joint="wrist")
 
     message = rigmodule.PRODUCT.run(path)
@@ -135,7 +135,7 @@ def test_run_with_bad_params_stops_and_names_the_problem(arm, tmp_path):
     assert set(cmds.ls()) == before
 
 
-def test_run_with_an_unknown_module_says_so(new_scene, tmp_path):
+def test_run_with_an_unknown_rig_module_says_so(new_scene, tmp_path):
     path = str(tmp_path / "x.rig")
     spec.write(path, "nope", {})
 
@@ -160,7 +160,7 @@ def test_publish_needs_no_selection(new_scene, tmp_path):
     assert versions.publish_problems(path) == []
 
 
-def test_info_shows_the_module_and_its_parameters(tmp_path):
+def test_info_shows_the_rig_module_and_its_parameters(tmp_path):
     path = _item(tmp_path, name="L_arm", start_joint="shoulder", end_joint="wrist")
 
     info = rigmodule.PRODUCT.panel(path).info
@@ -304,8 +304,8 @@ def test_root_has_no_mirror(tmp_path):
     path = _creator("Root").fn(str(tmp_path), "main", None)
 
     assert _mirror_action(path) is None
-    assert rigging.get("root").mirrorable is False
-    assert all(m.mirrorable for m in rigging.all_modules() if m.key != "root")
+    assert rigging.get_rig_module("root").mirrorable is False
+    assert all(m.mirrorable for m in rigging.all_rig_modules() if m.key != "root")
 
 
 def test_mirror_stops_and_names_missing_opposite_joints(arm, tmp_path):

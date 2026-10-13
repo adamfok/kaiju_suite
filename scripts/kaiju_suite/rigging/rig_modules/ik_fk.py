@@ -38,7 +38,7 @@ switch without a pop (see :mod:`kaiju_suite.rigging.ik_fk_match`).
 from maya import cmds
 
 from kaiju_suite.rigging import controls, helpers, ik_fk_match
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 
 def _copy_chain(chain, name, side, parent):
@@ -65,7 +65,7 @@ def _visibility(switch, group, operation, value, name):
     cmds.connectAttr(f"{condition}.outColorR", f"{group}.visibility")
 
 
-class IkFkModule(RigModule):
+class IkFkRigModule(RigModule):
     key = "ik_fk"
     name = "IK/FK"
     params = (
@@ -75,7 +75,7 @@ class IkFkModule(RigModule):
         Param("pole_distance", "Pole distance", "float", 5.0, tooltip="How far the pole vector control sits from the middle joint."),
         Param("control_size", "Control size", "float", 1.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the controls; 0 keeps Maya's default."),
-        Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
+        Param("parent", "Parent", "node", "", tooltip="Where the rig module's group goes; blank for the world."),
     )
 
     def check(self, params):
@@ -196,12 +196,12 @@ class IkFkModule(RigModule):
             for node in made:
                 helpers.set_color(node, params["color"])
             # Pickwalk: the switch, then the IK controls and the FK chain below it.
-            members = controls.module_set_name(group)
-            controls.add(switch, module_set=members)
-            controls.add(ik_control, parent=switch, module_set=members)
-            controls.add(pole_control, parent=ik_control, module_set=members)
+            members = controls.rig_module_set_name(group)
+            controls.add(switch, rig_module_set=members)
+            controls.add(ik_control, parent=switch, rig_module_set=members)
+            controls.add(pole_control, parent=ik_control, rig_module_set=members)
             for i, fk_control in enumerate(fk_controls):
-                controls.add(fk_control, parent=fk_controls[i - 1] if i else switch, module_set=members)
+                controls.add(fk_control, parent=fk_controls[i - 1] if i else switch, rig_module_set=members)
 
         return {
             "group": helpers.short(group),
@@ -213,4 +213,4 @@ class IkFkModule(RigModule):
         }
 
 
-MODULE = IkFkModule()
+RIG_MODULE = IkFkRigModule()

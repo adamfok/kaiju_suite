@@ -24,7 +24,7 @@ class RigModuleEditorWindow(ToolWindow):
 
     def build_ui(self):
         self.path = None
-        self.module = None
+        self.rig_module = None
         self._loaded = {}  # params as last loaded or saved; unknown ones kept
         self._fields = {}  # param key -> (get, set)
 
@@ -69,13 +69,13 @@ class RigModuleEditorWindow(ToolWindow):
 
     def _load(self, path):
         try:
-            module, params = logic.load(path)
+            rig_module, params = logic.load(path)
         except (OSError, ValueError, LookupError) as e:
             _warn(str(e))
             return
         if self._watcher.files():
             self._watcher.removePaths(self._watcher.files())
-        self.path, self.module, self._loaded = path, module, dict(params)
+        self.path, self.rig_module, self._loaded = path, rig_module, dict(params)
         self._watcher.addPath(path)
         self._build_form()
         self._set_values(params)
@@ -103,7 +103,7 @@ class RigModuleEditorWindow(ToolWindow):
         while self.form.rowCount():
             self.form.removeRow(0)
         self._fields = {}
-        for param in self.module.params:
+        for param in self.rig_module.params:
             widget, get, set_ = self._field(param)
             widget.setToolTip(param.tooltip)
             label = f"{param.label} *" if param.required else param.label
@@ -185,18 +185,18 @@ class RigModuleEditorWindow(ToolWindow):
         return values
 
     def _dirty(self):
-        return self.module is not None and self._values() != self._loaded
+        return self.rig_module is not None and self._values() != self._loaded
 
     def _on_edited(self, *_):
         self._update_status()
 
     def _update_status(self):
-        if self.module is None:
+        if self.rig_module is None:
             return
         name = os.path.basename(self.path)
         marker = "  (unsaved)" if self._dirty() else ""
-        self.header.setText(f"<b>{name}</b> — {self.module.name}{marker}")
-        problems = logic.problems(self.module, self._values())
+        self.header.setText(f"<b>{name}</b> — {self.rig_module.name}{marker}")
+        problems = logic.problems(self.rig_module, self._values())
         if problems:
             self.problems.setText("Won't build yet:\n" + "\n".join(f"• {p}" for p in problems))
             self.problems.setStyleSheet("color: #e0a040;")
@@ -209,7 +209,7 @@ class RigModuleEditorWindow(ToolWindow):
     def _save(self):
         values = self._values()
         try:
-            logic.save(self.path, self.module, values)
+            logic.save(self.path, self.rig_module, values)
         except OSError as e:
             _warn(f"Couldn't save {os.path.basename(self.path)}: {e}")
             return False
@@ -232,7 +232,7 @@ class RigModuleEditorWindow(ToolWindow):
             return
         if path not in self._watcher.files():
             self._watcher.addPath(path)
-        if logic.matches_file(path, self.module, self._values()):
+        if logic.matches_file(path, self.rig_module, self._values()):
             return  # our own save, or nothing that matters changed
         if self._dirty():
             Button = QtWidgets.QMessageBox.StandardButton

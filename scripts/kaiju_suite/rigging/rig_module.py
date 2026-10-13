@@ -52,7 +52,7 @@ class RigModule:
 
     def complete(self, params):
         """``params`` with missing ones set to their defaults. Unknown ones are
-        kept, so a file written by a newer module loses nothing."""
+        kept, so a file written by a newer rig module loses nothing."""
         merged = self.defaults()
         merged.update(params)
         return merged
@@ -97,13 +97,13 @@ class RigModule:
         return refs
 
     def mirrored(self, params):
-        """``(params, unsided)``: ``params`` for the same module on the other
+        """``(params, unsided)``: ``params`` for the same rig module on the other
         side, and the keys of the node parameters left as they were.
 
         Every text and node parameter gets its side swapped. ``name`` always
         changes (see :func:`mirrored_name`), so the two sides' nodes never
         clash; other ones with no side stay, so the copy points at the same
-        nodes until edited. Nothing else changes: the modules line controls
+        nodes until edited. Nothing else changes: the rig modules line controls
         up with the joints, so a behavior-mirrored skeleton gives
         behavior-mirrored controls.
         """
@@ -136,7 +136,7 @@ class RigModule:
     # -- for subclasses ------------------------------------------------------
 
     def check(self, params):
-        """Module-specific problems, as messages. Called only once every
+        """Problems specific to this rig module, as messages. Called only once every
         value has the right type, with complete ``params``."""
         return []
 

@@ -61,7 +61,7 @@ def test_add_stores_the_keyable_values_as_built(new_scene):
 
 
 def test_adding_again_keeps_the_stored_defaults_and_adds_new_attributes(new_scene):
-    """E.g. Space Switch adds its enum to a control a module already made."""
+    """E.g. Space Switch adds its enum to a control a rig module already made."""
     control = _circle("a_ctrl")
     controls.add(control)
     cmds.setAttr(f"{control}.translateX", 4)  # posed after the build
@@ -102,21 +102,21 @@ def test_controls_of_several_rigs_share_one_set(new_scene):
     assert _short(controls.all_controls()) == ["a_ctrl", "b_ctrl"]
 
 
-def test_add_puts_the_control_in_its_module_set_too(new_scene):
-    a = controls.add(_circle("a_ctrl"), module_set="L_arm_ik_controls_set")
-    controls.add(_circle("b_ctrl"), module_set="L_arm_ik_controls_set")
+def test_add_puts_the_control_in_its_rig_module_set_too(new_scene):
+    a = controls.add(_circle("a_ctrl"), rig_module_set="L_arm_ik_controls_set")
+    controls.add(_circle("b_ctrl"), rig_module_set="L_arm_ik_controls_set")
     controls.add(_circle("c_ctrl"))
 
     assert cmds.nodeType("L_arm_ik_controls_set") == "objectSet"
     assert _short(cmds.sets("L_arm_ik_controls_set", query=True)) == ["a_ctrl", "b_ctrl"]
-    # The module set sits beside the rig-wide one, not in it.
+    # The rig module set sits beside the rig-wide one, not in it.
     assert _short(controls.all_controls()) == ["a_ctrl", "b_ctrl", "c_ctrl"]
-    assert controls.module_sets(a) == ["L_arm_ik_controls_set"]
+    assert controls.rig_module_sets(a) == ["L_arm_ik_controls_set"]
 
 
-def test_module_set_name_follows_the_module_group():
-    assert controls.module_set_name("L_arm_ik_grp") == "L_arm_ik_controls_set"
-    assert controls.module_set_name("odd") == "odd_controls_set"
+def test_rig_module_set_name_follows_the_rig_module_group():
+    assert controls.rig_module_set_name("L_arm_ik_grp") == "L_arm_ik_controls_set"
+    assert controls.rig_module_set_name("odd") == "odd_controls_set"
 
 
 # -- reset --------------------------------------------------------------------
@@ -205,7 +205,7 @@ PICKWALK = {
 }
 
 
-MODULE_SETS = {
+RIG_MODULE_SETS = {
     "root": "main_root_controls_set",
     "single_fk": "L_elbow_fk_controls_set",
     "fk_chain": "L_finger_fkChain_controls_set",
@@ -216,33 +216,33 @@ MODULE_SETS = {
 }
 
 
-@pytest.mark.parametrize("key", sorted(MODULE_SETS))
-def test_every_module_makes_a_set_of_its_controls(new_scene, key):
+@pytest.mark.parametrize("key", sorted(RIG_MODULE_SETS))
+def test_every_rig_module_makes_a_set_of_its_controls(new_scene, key):
     params, expected = CASES[key]()
 
-    rigging.get(key).build(params)
+    rigging.get_rig_module(key).build(params)
 
-    assert _short(cmds.sets(MODULE_SETS[key], query=True)) == sorted(expected)
+    assert _short(cmds.sets(RIG_MODULE_SETS[key], query=True)) == sorted(expected)
 
 
-def test_space_switch_makes_no_module_set(new_scene):
+def test_space_switch_makes_no_rig_module_set(new_scene):
     params, _ = CASES["space_switch"]()
     before = set(cmds.ls(type="objectSet"))
 
-    rigging.get("space_switch").build(params)
+    rigging.get_rig_module("space_switch").build(params)
 
     assert set(cmds.ls(type="objectSet")) - before == {controls.SET}
 
 
 def test_every_rig_module_has_a_case():
-    assert sorted(CASES) == sorted(m.key for m in rigging.all_modules())
+    assert sorted(CASES) == sorted(m.key for m in rigging.all_rig_modules())
 
 
 @pytest.mark.parametrize("key", sorted(CASES))
-def test_every_module_makes_its_controls_rig_controls(new_scene, key):
+def test_every_rig_module_makes_its_controls_rig_controls(new_scene, key):
     params, expected = CASES[key]()
 
-    rigging.get(key).build(params)
+    rigging.get_rig_module(key).build(params)
 
     assert _short(controls.all_controls()) == sorted(expected)
     for control in expected:
@@ -255,7 +255,7 @@ def test_every_module_makes_its_controls_rig_controls(new_scene, key):
 
 def test_space_switch_stores_its_enum_at_the_default_space(new_scene):
     params, _ = CASES["space_switch"]()
-    rigging.get("space_switch").build(dict(params, default_space="chest"))
+    rigging.get_rig_module("space_switch").build(dict(params, default_space="chest"))
 
     assert controls.defaults("hand_ctrl")["space"] == 1
 
@@ -268,9 +268,9 @@ def test_space_switch_stores_its_enum_at_the_default_space(new_scene):
         ("ik_fk", "L_arm_switch_ctrl", "ikFk", 0),
     ],
 )
-def test_module_attributes_reset_to_their_defaults(new_scene, key, control, attr, default):
+def test_rig_module_attributes_reset_to_their_defaults(new_scene, key, control, attr, default):
     params, expected = CASES[key]()
-    rigging.get(key).build(params)
+    rigging.get_rig_module(key).build(params)
     cmds.setAttr(f"{control}.{attr}", 0.5)
     posed = expected[-1]  # e.g. an FK control: the switch's own rotation is locked
     cmds.setAttr(f"{posed}.rotateX", 30)
@@ -281,12 +281,12 @@ def test_module_attributes_reset_to_their_defaults(new_scene, key, control, attr
     assert cmds.getAttr(f"{posed}.rotateX") == 0
 
 
-def test_undoing_a_module_build_removes_its_controls(new_scene):
+def test_undoing_a_rig_module_build_removes_its_controls(new_scene):
     params, _ = CASES["simple_ik"]()
     cmds.undoInfo(state=True)
     cmds.flushUndo()
 
-    rigging.get("simple_ik").build(params)
+    rigging.get_rig_module("simple_ik").build(params)
     cmds.undo()
 
     assert controls.all_controls() == []

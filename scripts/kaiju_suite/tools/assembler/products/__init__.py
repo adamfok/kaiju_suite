@@ -120,7 +120,7 @@ class Product:
 
     def type_name(self, path):
         """What kind of item ``path`` is, for the Type column, publish messages
-        and run logs. ``name`` unless overridden (Rig Modules name their module)."""
+        and run logs. ``name`` unless overridden (Rig Modules name their rig module)."""
         return self.name
 
     def claims(self, path):

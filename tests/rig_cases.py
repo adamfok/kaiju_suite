@@ -1,5 +1,5 @@
 """A scene and parameters to build each rig module with, for tests that go
-over every module (see test_rig_controls.py and test_rig_outputs.py).
+over every rig module (see test_rig_controls.py and test_rig_outputs.py).
 
 ``CASES[key]()`` makes the scene in an empty scene and returns
 ``(params, controls)``: complete parameters, and the controls the build
@@ -25,7 +25,7 @@ def _arm():
 
 
 def _params(key, **values):
-    params = rigging.get(key).defaults()
+    params = rigging.get_rig_module(key).defaults()
     params.update(values)
     return params
 

@@ -1,7 +1,7 @@
-"""IK/FK matching: switching an IK/FK limb (see :mod:`.modules.ik_fk`) to the
+"""IK/FK matching: switching an IK/FK limb (see :mod:`.rig_modules.ik_fk`) to the
 other side without a pop. Imports only Maya, no Qt.
 
-The IK/FK module links its switch control to what matching needs, through
+The IK/FK rig module links its switch control to what matching needs, through
 message attributes on the switch, so matching works from the switch alone
 in an animation scene (references and namespaces keep the links):
 

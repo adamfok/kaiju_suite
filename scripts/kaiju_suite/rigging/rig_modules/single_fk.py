@@ -15,10 +15,10 @@ joint. The control gets ``color``.
 from maya import cmds
 
 from kaiju_suite.rigging import controls, helpers
-from kaiju_suite.rigging.module import Param, RigModule
+from kaiju_suite.rigging.rig_module import Param, RigModule
 
 
-class SingleFkModule(RigModule):
+class SingleFkRigModule(RigModule):
     key = "single_fk"
     name = "Single FK"
     params = (
@@ -26,7 +26,7 @@ class SingleFkModule(RigModule):
         Param("joint", "Joint", "node", "", required=True, tooltip="The joint the control drives."),
         Param("control_size", "Control size", "float", 1.0),
         Param("color", "Color", "color", 17, tooltip="Maya index color of the control; 0 keeps Maya's default."),
-        Param("parent", "Parent", "node", "", tooltip="Where the module's group goes; blank for the world."),
+        Param("parent", "Parent", "node", "", tooltip="Where the rig module's group goes; blank for the world."),
     )
 
     def check(self, params):
@@ -55,8 +55,8 @@ class SingleFkModule(RigModule):
             cmds.parentConstraint(control, joint, maintainOffset=True, name=f"{name}_fk_parentConstraint")
 
             helpers.set_color(control, params["color"])
-            members = controls.module_set_name(group)
-            controls.add(control, module_set=members)
+            members = controls.rig_module_set_name(group)
+            controls.add(control, rig_module_set=members)
 
         return {
             "group": helpers.short(group),
@@ -65,4 +65,4 @@ class SingleFkModule(RigModule):
         }
 
 
-MODULE = SingleFkModule()
+RIG_MODULE = SingleFkRigModule()
