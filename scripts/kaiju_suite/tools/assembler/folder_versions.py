@@ -166,6 +166,7 @@ def _apply(directory, items, prefix, remade):
         if "items" in item:
             _bring_back_folder(path)
             _apply(path, item["items"], rel + "/", remade)
+            _settle_base(path)
         else:
             _restore_item(path, item, rel, remade)
     logic.set_layout(
@@ -173,6 +174,20 @@ def _apply(directory, items, prefix, remade):
         [item["name"] for item in items],
         [item["name"] for item in items if not item.get("enabled", True)],
     )
+
+
+def _settle_base(folder):
+    """Set a subfolder a restore just rebuilt to the version of it that it now
+    matches: its base if that still does, else the newest that does. With
+    none matching, it keeps its base and shows a ``*``."""
+    base = versions.base_version(folder)
+    if base is None:
+        return
+    now = _now(folder)
+    found = [base] + [v for v in versions.list_versions(folder) if v.number != base.number]
+    match = next((v for v in found if plan_of(v) == now), None)
+    if match is not None and match.number != base.number:
+        versions.set_base(folder, match.number)
 
 
 def _stash_path(path):
