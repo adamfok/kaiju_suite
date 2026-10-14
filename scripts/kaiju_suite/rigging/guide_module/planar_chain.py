@@ -791,6 +791,12 @@ def set_axes(group, aim="x", up="y"):
     _apply_axes(guide_group(group), *_axes(aim, up))
 
 
+def check_axes(aim, up):
+    """Raise ``ValueError`` if ``aim`` and ``up`` can't turn a chain (see
+    :func:`set_axes`). Changes nothing."""
+    _axes(aim, up)
+
+
 def delete_guides(group):
     """Delete ``group``, its guides and their preview, and extract their
     joints: they stay where they are, cut loose, with plain translate and

@@ -56,21 +56,20 @@ class GuideModuleEditorWindow(ToolWindow):
         self.layout.addWidget(guides_box)
 
         self.form_box = QtWidgets.QGroupBox("Layout")
-        form = QtWidgets.QFormLayout(self.form_box)
+        self.form = form = QtWidgets.QFormLayout(self.form_box)
         self.name_label = QtWidgets.QLabel()
-        self.name_label.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
+        self.name_label.setToolTip("The guides' name: their guides and joints are named after it (<name>_01_jnt...).")
         self.count = QtWidgets.QSpinBox(minimum=0, maximum=100, keyboardTracking=False)
         self.count.setToolTip(
             "How many guides go between the start and end guides.\n"
             "Changing it makes the middle guides again, evenly between start and end."
         )
         self.count.valueChanged.connect(self._on_count)
-        self.aim = self._combo("The axis that points at the next joint.")
-        self.up = self._combo("The axis that points towards the up guide's side, in the chain's plane.")
         form.addRow("Name", self.name_label)
         form.addRow("# Mid", self.count)
-        form.addRow("Aim", self.aim)
-        form.addRow("Up", self.up)
+        # One Aim and Up row pair per part of the guide module (see logic.fields):
+        # [(part, label, aim combo, up combo)], made again when the parts change.
+        self._axis_rows = []
         self.form_box.setVisible(False)
         self.layout.addWidget(self.form_box)
 
@@ -113,13 +112,34 @@ class GuideModuleEditorWindow(ToolWindow):
         self._timer.timeout.connect(self._refresh)
         self._refresh()
 
-    def _combo(self, tip):
+    def _combo(self, part, tip):
         combo = QtWidgets.QComboBox()
         combo.setToolTip(tip)
         for label, value in _SIGNED:
             combo.addItem(label, value)
-        combo.currentIndexChanged.connect(self._on_axes)
+        combo.currentIndexChanged.connect(lambda *_: self._on_axes(part))
         return combo
+
+    def _set_axis_rows(self, axes):
+        """Make the Aim and Up rows for ``axes`` (see logic.fields), unless
+        the form already has them."""
+        if [(a, b) for a, b, _, _ in self._axis_rows] == [(e["part"], e["label"]) for e in axes]:
+            return
+        for _, _, aim, up in self._axis_rows:
+            self.form.removeRow(aim)
+            self.form.removeRow(up)
+        self._axis_rows = []
+        for entry in axes:
+            part, label = entry["part"], entry["label"]
+            whose = f"of the {label.lower()}'s joints " if label else ""
+            aim = self._combo(part, f"The axis {whose}that points at the next joint.")
+            up = self._combo(
+                part, f"The axis {whose}that points towards the up guide's side, in the {label.lower() or 'chain'}'s plane."
+            )
+            prefix = f"{label} " if label else ""
+            self.form.addRow(f"{prefix}Aim", aim)
+            self.form.addRow(f"{prefix}Up", up)
+            self._axis_rows.append((part, label, aim, up))
 
     def _button(self, name, tip, action, icon=None):
         button = QtWidgets.QPushButton(name)
@@ -236,15 +256,21 @@ class GuideModuleEditorWindow(ToolWindow):
         if shown is None:
             return
         self.name_label.setText(shown["name"])
-        if not self.count.hasFocus():  # don't overwrite a number being typed
+        has_count = "count" in shown
+        self.form.setRowVisible(self.count, has_count)
+        if has_count and not self.count.hasFocus():  # don't overwrite a number being typed
             self.count.blockSignals(True)
             self.count.setValue(shown["count"])
             self.count.blockSignals(False)
-        for key, combo in (("aim", self.aim), ("up", self.up)):
-            combo.blockSignals(True)  # filling in mustn't turn the guides
-            combo.setCurrentIndex(max(combo.findData(shown[key]), 0))
-            combo.blockSignals(False)
-        for field in (self.count, self.aim, self.up):
+        self._set_axis_rows(shown["axes"])
+        combos = []
+        for (_, _, aim, up), entry in zip(self._axis_rows, shown["axes"]):
+            for key, combo in (("aim", aim), ("up", up)):
+                combo.blockSignals(True)  # filling in mustn't turn the guides
+                combo.setCurrentIndex(max(combo.findData(entry[key]), 0))
+                combo.blockSignals(False)
+                combos.append(combo)
+        for field in [self.count] + combos:
             field.setEnabled(editable)
 
     # -- editing ------------------------------------------------------------
@@ -259,14 +285,15 @@ class GuideModuleEditorWindow(ToolWindow):
             _warn(str(e))
             self._refresh()
 
-    def _on_axes(self, *_):
-        """Turn the guides to the chosen axes. Quiet while the two combos
-        share an axis."""
+    def _on_axes(self, part):
+        """Turn ``part``'s joints to its chosen axes. Quiet while its two
+        combos share an axis."""
         group = self._group()
         if group is None:
             return
+        aim, up = next((a, u) for p, _, a, u in self._axis_rows if p == part)
         try:
-            logic.set_axes(group, aim=self.aim.currentData(), up=self.up.currentData())
+            logic.set_guide_axes(self.guide_module, group, part, aim.currentData(), up.currentData())
         except ValueError:
             return
         self._refresh()

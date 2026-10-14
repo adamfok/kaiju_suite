@@ -97,13 +97,16 @@ class ChainGuideModule(GuideModule):
 
     def fields(self, layout):
         """What the Guide Module Editor shows for ``layout``: ``{"name",
-        "count"`` (middle guides) ``, "aim", "up"}``."""
+        "count"`` (middle guides) ``, "axes"}``, with one part, the chain,
+        whose Aim and Up rows have no label in front."""
         return {
             "name": layout["name"],
             "count": len(layout["guides"]) - 2,
-            "aim": layout["aim"],
-            "up": layout["up"],
+            "axes": [{"part": "chain", "label": "", "aim": layout["aim"], "up": layout["up"]}],
         }
+
+    def set_axes(self, group, part, aim, up):
+        planar_chain.set_axes(group, aim, up)
 
     def mirrored(self, layout):
         """``layout`` for the other side: the chain renamed with

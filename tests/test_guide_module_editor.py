@@ -839,7 +839,9 @@ def test_load_refuses_an_unknown_guide_module(tmp_path):
 
 def test_fields_show_a_chain_files_name_middles_and_axes(tmp_path):
     guide_module, layout = logic.load(_chain_file(tmp_path))
-    assert logic.fields(guide_module, layout) == {"name": "L_arm", "count": 1, "aim": "x", "up": "y"}
+    assert logic.fields(guide_module, layout) == {
+        "name": "L_arm", "count": 1, "axes": [{"part": "chain", "label": "", "aim": "x", "up": "y"}]
+    }
 
 
 # -- tracking the file's guides in the scene ---------------------------------------
@@ -961,3 +963,43 @@ def test_set_count_remakes_the_middles_as_one_undo_step(new_scene, tmp_path):
     assert cmds.getAttr(f"{group}.kaijuGuideModule") == "chain"
     cmds.undo()
     assert guide_module.layout("L_arm_guides_grp") == layout
+
+
+# -- the axes of each part of a guide module ---------------------------------------
+
+
+def test_set_guide_axes_turns_a_chain(new_scene):
+    chain = get_guide_module("chain")
+    group = chain.build(chain.default_layout("arm"))
+    logic.set_guide_axes(chain, group, "chain", "-y", "z")
+    assert (chain.layout(group)["aim"], chain.layout(group)["up"]) == ("-y", "z")
+
+
+def test_set_guide_axes_turns_only_the_legs_foot(new_scene):
+    leg = get_guide_module("leg")
+    group = leg.build(leg.default_layout("L_leg"))
+    logic.set_guide_axes(leg, group, "foot", "z", "-x")
+    layout = leg.layout(group)
+    assert (layout["aim"], layout["up"], layout["foot_aim"], layout["foot_up_axis"]) == ("x", "y", "z", "-x")
+    assert logic.fields(leg, layout) == {
+        "name": "L_leg",
+        "axes": [
+            {"part": "leg", "label": "Leg", "aim": "x", "up": "y"},
+            {"part": "foot", "label": "Foot", "aim": "z", "up": "-x"},
+        ],
+    }
+
+
+def test_set_guide_axes_is_one_undo_step(new_scene):
+    leg = get_guide_module("leg")
+    group = leg.build(leg.default_layout("L_leg"))
+    logic.set_guide_axes(leg, group, "leg", "-x", "-y")
+    cmds.undo()
+    assert (leg.layout(group)["aim"], leg.layout(group)["up"]) == ("x", "y")
+
+
+def test_set_guide_axes_refuses_the_same_axis_twice(new_scene):
+    leg = get_guide_module("leg")
+    group = leg.build(leg.default_layout("L_leg"))
+    with pytest.raises(ValueError, match="different axes"):
+        logic.set_guide_axes(leg, group, "foot", "y", "-y")

@@ -7,10 +7,13 @@ while the knee splays. With it come the reverse foot's pivots, **heel**,
 **inner** and **outer**: move-only locators, not joints, that a foot rig
 module finds by name (``<name>_heel_pivot``...).
 
-Its part of a leg layout, positions in world space::
+Its part of a leg layout: positions in world space, and the foot chain's
+own aim and up axes (a layout without them takes the leg's ``aim`` and
+``up``)::
 
     {"foot": [ball, toe], "foot_up": [x, y, z],
-     "heel": [x, y, z], "inner": [x, y, z], "outer": [x, y, z]}
+     "heel": [x, y, z], "inner": [x, y, z], "outer": [x, y, z],
+     "foot_aim": "x", "foot_up_axis": "y"}
 
 ``leg`` is always the guide group of the leg chain the foot hangs under
 the end of. Like :mod:`.planar_chain`, nothing here opens an undo chunk.
@@ -20,10 +23,11 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite.rigging.guide_module import planar_chain
-from kaiju_suite.rigging.guide_module.guide_module import flip_x
+from kaiju_suite.rigging.guide_module.guide_module import flip_x, flipped_axis
 
 PIVOTS = ("heel", "inner", "outer")
-KEYS = ("foot", "foot_up") + PIVOTS
+KEYS = ("foot", "foot_up") + PIVOTS  # required; the axes below aren't
+AXES = ("foot_aim", "foot_up_axis")
 # On the foot chain's guide group: message links to the pivots, in PIVOTS order.
 _PIVOTS = "footPivots"
 _PIVOT_COLOR = 13  # red
@@ -38,12 +42,18 @@ def pivot_names(name):
     return [f"{name}_{pivot}_pivot" for pivot in PIVOTS]
 
 
-def problems(name, ankle, layout, aim, up):
+def axes(layout):
+    """``(aim, up)`` of the foot chain in ``layout``: its own, else the leg's."""
+    return layout.get("foot_aim", layout["aim"]), layout.get("foot_up_axis", layout["up"])
+
+
+def problems(name, ankle, layout):
     """Why the foot in ``layout`` can't be built under an ankle at
     ``ankle`` in the current scene, as messages. Its positions must already
     be ``[x, y, z]`` lists."""
     if len(layout["foot"]) != 2:
         return [f"{name}: foot needs 2 guides (ball, toe)."]
+    aim, up = axes(layout)
     try:
         planar_chain.check_build(chain_name(name), [ankle] + layout["foot"], layout["foot_up"], aim, up, attached=True)
     except ValueError as e:
@@ -59,17 +69,18 @@ def check(layout, ankle):
     back with the ankle at ``ankle``. Changes nothing."""
     if len(layout["foot"]) != 2:
         raise ValueError("foot needs 2 guides (ball, toe).")
+    planar_chain.check_axes(*axes(layout))
     planar_chain.planar_positions([ankle] + layout["foot"], layout["foot_up"])
 
 
-def build(leg, name, layout, aim, up):
+def build(leg, name, layout):
     """Build the foot of ``layout`` (checked) under the end joint of the
     ``leg`` chain, and its pivots. Returns the foot's guide group."""
     ankle = planar_chain.joints(leg)[-1]
     start = planar_chain.guides(leg)["chain"][-1]
     ankle_position = cmds.xform(start, query=True, worldSpace=True, translation=True)
     group = planar_chain.build_at(
-        chain_name(name), [ankle_position] + layout["foot"], layout["foot_up"], aim, up, parent=ankle
+        chain_name(name), [ankle_position] + layout["foot"], layout["foot_up"], *axes(layout), parent=ankle
     )
     cmds.addAttr(group, longName=_PIVOTS, attributeType="message", multi=True)
     size = (om.MVector(layout["foot"][-1]) - om.MVector(ankle_position)).length() * 0.05
@@ -116,24 +127,35 @@ def layout(leg):
         "foot": chain["guides"][1:],
         "foot_up": chain["up_guide"],
         **{key: _rounded(pivot) for key, pivot in pivots(leg).items()},
+        "foot_aim": chain["aim"],
+        "foot_up_axis": chain["up"],
     }
 
 
-def reset(leg, layout, aim, up):
-    """Put the foot's guides and pivots back as ``layout`` has them (see
-    :func:`check`)."""
+def set_axes(leg, aim, up):
+    """Turn the foot's joints: ``aim`` points at the next joint and ``up``
+    towards the foot's up guide."""
+    planar_chain.set_axes(group(leg), aim, up)
+
+
+def reset(leg, layout):
+    """Put the foot's guides, pivots and axes back as ``layout`` has them
+    (see :func:`check`)."""
     foot = group(leg)
     ankle = planar_chain.layout(leg)["guides"][-1]
     found = pivots(leg)
-    planar_chain.set_layout(foot, [ankle] + layout["foot"], layout["foot_up"], aim, up)
+    planar_chain.set_layout(foot, [ankle] + layout["foot"], layout["foot_up"], *axes(layout))
     for key, pivot in found.items():
         cmds.xform(pivot, worldSpace=True, translation=layout[key])
 
 
 def mirrored(layout):
-    """The foot's part of ``layout`` mirrored across X. Inner stays inner:
-    it's still the pivot nearer the middle."""
+    """The foot's part of ``layout`` mirrored across X, its axes reversed.
+    Inner stays inner: it's still the pivot nearer the middle."""
+    aim, up = axes(layout)
     return {
         "foot": [flip_x(p) for p in layout["foot"]],
         **{key: flip_x(layout[key]) for key in ("foot_up",) + PIVOTS},
+        "foot_aim": flipped_axis(aim),
+        "foot_up_axis": flipped_axis(up),
     }

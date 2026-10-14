@@ -195,7 +195,9 @@ def test_chain_describe_nodes_and_fields():
     assert chain.describe(L_ARM) == ["L_arm: 2 guides, aim x, up -z"]
     assert chain.nodes(L_ARM) == ["L_arm_guides_grp"]
     five = dict(L_ARM, guides=[[0, 0, 0]] * 5)
-    assert chain.fields(five) == {"name": "L_arm", "count": 3, "aim": "x", "up": "-z"}
+    assert chain.fields(five) == {
+        "name": "L_arm", "count": 3, "axes": [{"part": "chain", "label": "", "aim": "x", "up": "-z"}]
+    }
 
 
 def test_chain_mirrored_flips_across_x_and_reverses_its_axes():
