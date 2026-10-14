@@ -1,3 +1,4 @@
+import functools
 import os
 import subprocess
 import sys
@@ -8,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.tools.scripter import items, logic, script_editor, versions
+from kaiju_suite.ui import status_icons
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -25,14 +27,20 @@ DISABLED_COLOR = QtGui.QColor(115, 115, 115)
 # Version column when the item isn't at its newest version.
 OLD_VERSION_COLOR = QtGui.QColor(235, 150, 50)
 FAILED_COLOR = QtGui.QColor(225, 85, 85)
+RAN_COLOR = QtGui.QColor(110, 190, 110)
+PAUSED_COLOR = QtGui.QColor(232, 197, 71)
 ROW_COLORS = {
     logic.FOLDER: QtGui.QColor(60, 60, 60),
     logic.SEPARATOR: QtGui.QColor(60, 60, 60),
-    logic.BREAKPOINT: QtGui.QColor(110, 40, 40),
+    logic.BREAKPOINT: QtGui.QColor(80, 28, 28),
 }
-STATUS_TEXT = {logic.RAN: "✓", logic.FAILED: "✗", logic.PAUSED: "⏸"}
+STATUS_ICONS = {
+    logic.RAN: (status_icons.check, RAN_COLOR),
+    logic.FAILED: (status_icons.cross, FAILED_COLOR),
+    logic.PAUSED: (status_icons.pause, PAUSED_COLOR),
+}
 STATUS_TIPS = {logic.RAN: "Ran", logic.PAUSED: "Paused here. Right-click > Continue to run the rest."}
-ICONS = {logic.FOLDER: "SP_DirIcon", logic.SCRIPT: "SP_FileIcon"}
+ICONS = {logic.FOLDER: "SP_DirIcon"}
 # The right-click New menu, in order.
 NEW_KINDS = (
     logic.SCRIPT,
@@ -53,6 +61,15 @@ IMPORT_FILTER = (
 EXPORT_FILTER = "Maya ASCII (*.ma);;Maya Binary (*.mb);;FBX (*.fbx);;OBJ (*.obj)"
 # How many names the delete confirmation lists before "...and N more".
 MAX_LISTED = 10
+
+
+@functools.cache
+def status_icon(status):
+    """The status column's icon for a run ``status``; an empty icon for none."""
+    if status not in STATUS_ICONS:
+        return QtGui.QIcon()
+    draw, color = STATUS_ICONS[status]
+    return draw(color)
 
 
 def _warn(message):
@@ -314,7 +331,7 @@ class ScripterWindow(ToolWindow):
 
     def _show_status(self, item):
         status, message = self.runner.status(item.data(0, PATH_ROLE))
-        item.setText(STATUS, STATUS_TEXT.get(status, ""))
+        item.setIcon(STATUS, status_icon(status))
         item.setToolTip(STATUS, message or STATUS_TIPS.get(status, ""))
         if status == logic.FAILED:
             item.setForeground(0, FAILED_COLOR)
