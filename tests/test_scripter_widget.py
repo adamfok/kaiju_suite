@@ -311,3 +311,95 @@ def test_type_column_choice_is_remembered(header_probe):
 def test_hiding_type_keeps_its_saved_width(header_probe):
     assert header_probe["saved_widths_while_hidden"] == "60,140"
     assert header_probe["width_after_reopen"] == 140
+
+
+# Selecting an item gives its folder a grey background, so you can tell where
+# it lives; the grey moves with the selection.
+_PARENT_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtGui, QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import widget
+
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+
+palette = QtGui.QPalette()
+palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(43, 43, 43))
+tree = widget._Tree(None)
+tree.setPalette(palette)
+
+
+def build():
+    tree.clear()
+    names = {}
+    names["rig"] = QtWidgets.QTreeWidgetItem(tree, ["rig"])
+    names["arm.py"] = QtWidgets.QTreeWidgetItem(names["rig"], ["arm.py"])
+    names["body"] = QtWidgets.QTreeWidgetItem(tree, ["body"])
+    names["legs"] = QtWidgets.QTreeWidgetItem(names["body"], ["legs"])
+    names["leg.py"] = QtWidgets.QTreeWidgetItem(names["legs"], ["leg.py"])
+    names["top.py"] = QtWidgets.QTreeWidgetItem(tree, ["top.py"])
+    return names
+
+
+def grey(names):
+    return sorted(n for n, item in names.items() if item.background(0).style() != widget.QtCore.Qt.BrushStyle.NoBrush)
+
+
+def select(names, *picked):
+    tree.clearSelection()
+    for name in picked:
+        names[name].setSelected(True)
+    return grey(names)
+
+
+names = build()
+out = {
+    "arm": select(names, "arm.py"),
+    "leg": select(names, "leg.py"),
+    "both": select(names, "arm.py", "leg.py"),
+    "folder": select(names, "legs"),
+    "top": select(names, "top.py"),
+    "none": select(names),
+}
+select(names, "arm.py")
+out["color"] = names["rig"].background(widget.NAME).color().getRgb()[:3]
+out["all_columns"] = all(names["rig"].background(c) == names["rig"].background(0) for c in range(tree.columnCount()))
+# The tree is rebuilt from disk after most actions: selecting in the new tree still works.
+names = build()
+out["after_rebuild"] = select(names, "leg.py")
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def parent_probe():
+    done = subprocess.run([sys.executable, "-c", _PARENT_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_selecting_an_item_greys_its_folder(parent_probe):
+    assert parent_probe["arm"] == ["rig"]
+    assert parent_probe["leg"] == ["legs"]  # only its own folder, not the ones above
+
+
+def test_each_selected_items_folder_is_grey(parent_probe):
+    assert parent_probe["both"] == ["legs", "rig"]
+    assert parent_probe["folder"] == ["body"]
+
+
+def test_no_folder_is_grey_for_top_level_or_no_selection(parent_probe):
+    assert parent_probe["top"] == []
+    assert parent_probe["none"] == []
+
+
+def test_folder_grey_is_lighter_than_the_tree_across_the_row(parent_probe):
+    assert min(parent_probe["color"]) > 43
+    assert parent_probe["all_columns"]
+
+
+def test_folder_grey_works_after_the_tree_is_rebuilt(parent_probe):
+    assert parent_probe["after_rebuild"] == ["legs"]
