@@ -403,3 +403,45 @@ def test_folder_grey_is_lighter_than_the_tree_across_the_row(parent_probe):
 
 def test_folder_grey_works_after_the_tree_is_rebuilt(parent_probe):
     assert parent_probe["after_rebuild"] == ["legs"]
+
+
+_FOLDER_BOX_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import widget
+
+long_path = "D:/" + "/".join(["a_very_long_folder_name"] * 12)
+box = widget.folder_box()
+empty = box.minimumSizeHint().width()
+box.addItems(["D:/short", long_path])
+box.setEditText(long_path)
+box.show()
+box.showPopup()
+app.processEvents()
+print(json.dumps({
+    "empty": empty,
+    "filled": box.minimumSizeHint().width(),
+    "hint": box.sizeHint().width(),
+    "popup": box.view().minimumWidth(),
+    "text": box.fontMetrics().horizontalAdvance(long_path),
+}))
+"""
+
+
+@pytest.fixture(scope="module")
+def folder_box_probe():
+    done = subprocess.run([sys.executable, "-c", _FOLDER_BOX_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_long_folder_path_does_not_widen_the_path_box(folder_box_probe):
+    assert folder_box_probe["filled"] == folder_box_probe["empty"]
+    assert folder_box_probe["hint"] < folder_box_probe["text"]
+
+
+def test_path_box_dropdown_is_wide_enough_for_full_paths(folder_box_probe):
+    assert folder_box_probe["popup"] >= folder_box_probe["text"]
