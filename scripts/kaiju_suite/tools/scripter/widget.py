@@ -14,10 +14,11 @@ log = get_logger(__name__)
 
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
 
-# Columns: Name, Version, Type (fills what's left) and the last run's status.
+# Columns: Name (fills what's left), Version, Type and the last run's status.
 NAME, VERSION, TYPE, STATUS = range(4)
-# Starting widths of the Name and Version columns, until the user drags them.
-DEFAULT_WIDTHS = (220, 60)
+# The columns the user can drag wider or narrower, and their starting widths.
+SIZED = (VERSION, TYPE)
+DEFAULT_WIDTHS = (60, 90)
 STATUS_WIDTH = 28
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
@@ -61,11 +62,11 @@ class _Tree(QtWidgets.QTreeWidget):
         header = self.header()
         header.setSectionsMovable(False)
         header.setStretchLastSection(False)
-        # Name and Version widths are adjustable and remembered; Type fills the rest.
-        for column, width in zip((NAME, VERSION), self._saved_widths()):
+        # Name fills the rest; Version and Type widths are adjustable and remembered.
+        header.setSectionResizeMode(NAME, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        for column, width in zip(SIZED, self._saved_widths()):
             header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.Interactive)
             self.setColumnWidth(column, width)
-        header.setSectionResizeMode(TYPE, QtWidgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(STATUS, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.setColumnWidth(STATUS, STATUS_WIDTH)
         header.sectionResized.connect(self._remember_widths)
@@ -77,7 +78,7 @@ class _Tree(QtWidgets.QTreeWidget):
 
     @staticmethod
     def _saved_widths():
-        saved = settings.get(logic.SETTINGS_KEY, "column_widths", "")
+        saved = settings.get(logic.SETTINGS_KEY, "version_type_widths", "")
         try:
             widths = [int(w) for w in saved.split(",")]
         except (AttributeError, ValueError):
@@ -85,9 +86,9 @@ class _Tree(QtWidgets.QTreeWidget):
         return widths if len(widths) == len(DEFAULT_WIDTHS) else DEFAULT_WIDTHS
 
     def _remember_widths(self, column, _old, _new):
-        if column in (NAME, VERSION):
-            widths = ",".join(str(self.columnWidth(c)) for c in (NAME, VERSION))
-            settings.set(logic.SETTINGS_KEY, "column_widths", widths)
+        if column in SIZED:
+            widths = ",".join(str(self.columnWidth(c)) for c in SIZED)
+            settings.set(logic.SETTINGS_KEY, "version_type_widths", widths)
 
     def dropEvent(self, event):
         # Don't call super: the tree is rebuilt from disk instead.
