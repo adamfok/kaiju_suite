@@ -5,6 +5,7 @@ import sys
 from maya import cmds
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.tools.scripter import logic, script_editor, versions
 from kaiju_suite.ui.base_window import ToolWindow
@@ -12,6 +13,12 @@ from kaiju_suite.ui.base_window import ToolWindow
 log = get_logger(__name__)
 
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
+
+# Columns: Name, Version, Type (fills what's left) and the last run's status.
+NAME, VERSION, TYPE, STATUS = range(4)
+# Starting widths of the Name and Version columns, until the user drags them.
+DEFAULT_WIDTHS = (220, 60)
+STATUS_WIDTH = 28
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
 # Version column when the item isn't at its newest version.
@@ -50,18 +57,37 @@ class _Tree(QtWidgets.QTreeWidget):
     def __init__(self, window):
         super().__init__()
         self.owner = window
-        self.setHeaderLabels(["Name", "Version", ""])
+        self.setHeaderLabels(["Name", "Version", "Type", ""])
         header = self.header()
+        header.setSectionsMovable(False)
         header.setStretchLastSection(False)
-        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        for column, width in ((1, 60), (2, 28)):
-            header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        # Name and Version widths are adjustable and remembered; Type fills the rest.
+        for column, width in zip((NAME, VERSION), self._saved_widths()):
+            header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.Interactive)
             self.setColumnWidth(column, width)
+        header.setSectionResizeMode(TYPE, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(STATUS, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        self.setColumnWidth(STATUS, STATUS_WIDTH)
+        header.sectionResized.connect(self._remember_widths)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+
+    @staticmethod
+    def _saved_widths():
+        saved = settings.get(logic.SETTINGS_KEY, "column_widths", "")
+        try:
+            widths = [int(w) for w in saved.split(",")]
+        except (AttributeError, ValueError):
+            return DEFAULT_WIDTHS
+        return widths if len(widths) == len(DEFAULT_WIDTHS) else DEFAULT_WIDTHS
+
+    def _remember_widths(self, column, _old, _new):
+        if column in (NAME, VERSION):
+            widths = ",".join(str(self.columnWidth(c)) for c in (NAME, VERSION))
+            settings.set(logic.SETTINGS_KEY, "column_widths", widths)
 
     def dropEvent(self, event):
         # Don't call super: the tree is rebuilt from disk instead.
@@ -206,14 +232,17 @@ class ScripterWindow(ToolWindow):
 
     def _add_entries(self, parent, entries, inside_disabled=False):
         for entry in entries:
-            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, "", ""])
+            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, "", entry.type_label, ""])
+            if entry.kind == logic.SEPARATOR:
+                item.setText(VERSION, logic.SEPARATOR_TEXT)
+            item.setToolTip(TYPE, entry.name)
             item.setData(0, PATH_ROLE, entry.path)
             icon = ICONS.get(entry.kind)
             if icon:
                 item.setIcon(0, self.style().standardIcon(getattr(QtWidgets.QStyle.StandardPixmap, icon)))
             color = ROW_COLORS.get(entry.kind)
             if color:
-                for column in range(3):
+                for column in range(item.columnCount()):
                     item.setBackground(column, color)
             if not entry.is_dir:
                 item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsDropEnabled)
@@ -238,17 +267,17 @@ class ScripterWindow(ToolWindow):
         if not versions.is_versioned(path):
             return
         text = versions.label(path)
-        item.setText(1, text)
+        item.setText(VERSION, text)
         tips = []
         if not text:
             tips.append("Not published yet")
         latest = versions.is_latest(path)
-        item.setData(1, QtCore.Qt.ItemDataRole.ForegroundRole, None if latest else OLD_VERSION_COLOR)
+        item.setData(VERSION, QtCore.Qt.ItemDataRole.ForegroundRole, None if latest else OLD_VERSION_COLOR)
         if not latest:
             tips.append("Not the newest version")
         if text.endswith("*"):
             tips.append("Has changes not published yet")
-        item.setToolTip(1, "\n".join(tips))
+        item.setToolTip(VERSION, "\n".join(tips))
 
     def _on_file_changed(self, path):
         # Editors may still be writing, or save by replacing the file (which
@@ -266,8 +295,8 @@ class ScripterWindow(ToolWindow):
 
     def _show_status(self, item):
         status, message = self.runner.status(item.data(0, PATH_ROLE))
-        item.setText(2, STATUS_TEXT.get(status, ""))
-        item.setToolTip(2, message or STATUS_TIPS.get(status, ""))
+        item.setText(STATUS, STATUS_TEXT.get(status, ""))
+        item.setToolTip(STATUS, message or STATUS_TIPS.get(status, ""))
         if status == logic.FAILED:
             item.setForeground(0, FAILED_COLOR)
             item.setToolTip(0, message)

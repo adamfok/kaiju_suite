@@ -38,6 +38,8 @@ SEPARATOR = "Separator"
 BREAKPOINT = "Breakpoint"
 
 EXTENSIONS = {SCRIPT: ".py", SEPARATOR: ".sep", BREAKPOINT: ".brk"}
+# A separator's Version and Type columns, so it reads as a divider.
+SEPARATOR_TEXT = "====="
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 
@@ -64,6 +66,15 @@ class Entry:
     def label(self):
         """Name shown in the tree: files lose their extension."""
         return self.name if self.is_dir else os.path.splitext(self.name)[0]
+
+    @property
+    def type_label(self):
+        """The Type column: the kind, blank for folders, a rule for separators."""
+        if self.kind == FOLDER:
+            return ""
+        if self.kind == SEPARATOR:
+            return SEPARATOR_TEXT
+        return self.kind
 
 
 def scan(root):

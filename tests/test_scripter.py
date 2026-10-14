@@ -394,3 +394,13 @@ def test_the_tool_is_registered_without_loading_qt():
     tool = registry.find("Scripter")
     assert tool is not None and callable(tool["launch"])
     assert "kaiju_suite.tools.scripter.widget" not in sys.modules
+
+
+def test_type_column_text(tmp_path):
+    logic.create_item(logic.SCRIPT, str(tmp_path), "a")
+    logic.create_item(logic.FOLDER, str(tmp_path), "b")
+    logic.create_item(logic.SEPARATOR, str(tmp_path), "c")
+    logic.create_item(logic.BREAKPOINT, str(tmp_path), "d")
+    labels = [e.type_label for e in logic.scan(str(tmp_path))]
+    assert labels == ["Script", "", logic.SEPARATOR_TEXT, "Breakpoint"]
+    assert logic.SEPARATOR_TEXT == "====="
