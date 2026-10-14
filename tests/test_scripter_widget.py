@@ -1,4 +1,4 @@
-"""Scripter's status column icons, row colors and folder double-click.
+"""Scripter's item and status column icons, row colors and folder double-click.
 
 maya.standalone runs a Qt application without widgets, so the widget module
 is loaded off-screen in a separate mayapy process that doesn't start Maya."""
@@ -39,6 +39,14 @@ out["failed_color"] = widget.FAILED_COLOR.getRgb()[:3]
 out["breakpoint_row"] = widget.ROW_COLORS[logic.BREAKPOINT].getRgb()[:3]
 out["has_status_text"] = hasattr(widget, "STATUS_TEXT")
 out["kinds_with_icons"] = sorted(widget.ICONS)
+out["icon_files"] = sorted(widget.ICONS.values())
+out["new_kinds"] = sorted(widget.NEW_KINDS)
+out["kind_icons"] = {}
+for kind in widget.NEW_KINDS:
+    icon = widget.kind_icon(kind)
+    image = icon.pixmap(16, 16).toImage()
+    drawn = sum(1 for y in range(image.height()) for x in range(image.width()) if QtGui.QColor.fromRgba(image.pixel(x, y)).alpha() > 0)
+    out["kind_icons"][kind] = {"null": icon.isNull(), "drawn": drawn}
 print(json.dumps(out))
 """
 
@@ -78,8 +86,25 @@ def test_breakpoint_rows_are_a_dark_red(probe):
     assert red > 2 * green and red > 2 * blue
 
 
-def test_only_folders_have_an_icon(probe):
-    assert probe["kinds_with_icons"] == ["Folder"]
+def test_every_item_kind_has_an_icon(probe):
+    assert probe["kinds_with_icons"] == probe["new_kinds"]
+
+
+def test_item_icons_draw_something(probe):
+    for kind, icon in probe["kind_icons"].items():
+        assert not icon["null"], kind
+        assert icon["drawn"] > 10, kind
+
+
+def test_item_icons_ship_as_svg(probe):
+    import xml.etree.ElementTree as ET
+
+    from kaiju_suite.ui import icons
+
+    for name in probe["icon_files"]:
+        path = icons.path(name)
+        assert os.path.isfile(path), path
+        assert ET.parse(path).getroot().tag == "{http://www.w3.org/2000/svg}svg"
 
 
 # Double-clicking a folder opens it in the file browser (there's no right-click

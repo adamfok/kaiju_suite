@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.tools.scripter import items, logic, script_editor, versions, vscode
-from kaiju_suite.ui import status_icons
+from kaiju_suite.ui import icons, status_icons
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -42,7 +42,18 @@ STATUS_ICONS = {
     logic.PAUSED: (status_icons.pause, PAUSED_COLOR),
 }
 STATUS_TIPS = {logic.RAN: "Ran", logic.PAUSED: "Paused here. Right-click > Continue to run the rest."}
-ICONS = {logic.FOLDER: "SP_DirIcon"}
+# Each item kind's icon in the module's icons/ folder.
+ICONS = {
+    logic.SCRIPT: "scripter_script.svg",
+    logic.FOLDER: "scripter_folder.svg",
+    logic.SEPARATOR: "scripter_separator.svg",
+    logic.BREAKPOINT: "scripter_breakpoint.svg",
+    logic.IMPORT_FILE: "scripter_import_file.svg",
+    logic.EXPORT_FILE: "scripter_export_file.svg",
+    logic.JOINTS: "scripter_joints.svg",
+    logic.SKIN: "scripter_skin.svg",
+    logic.MESH: "scripter_mesh.svg",
+}
 # The right-click New menu, in order.
 NEW_KINDS = (
     logic.SCRIPT,
@@ -72,6 +83,14 @@ def status_icon(status):
         return QtGui.QIcon()
     draw, color = STATUS_ICONS[status]
     return draw(color)
+
+
+@functools.cache
+def kind_icon(kind):
+    """The name column's icon for an item ``kind``; an empty icon for none."""
+    if kind not in ICONS:
+        return QtGui.QIcon()
+    return icons.icon(ICONS[kind])
 
 
 def _warn(message):
@@ -303,9 +322,7 @@ class ScripterWindow(ToolWindow):
             item.setData(0, PATH_ROLE, entry.path)
             if entry.kind in items.FILE_KINDS:
                 self._show_target(item)
-            icon = ICONS.get(entry.kind)
-            if icon:
-                item.setIcon(0, self.style().standardIcon(getattr(QtWidgets.QStyle.StandardPixmap, icon)))
+            item.setIcon(0, kind_icon(entry.kind))
             color = ROW_COLORS.get(entry.kind)
             if color:
                 for column in range(item.columnCount()):
