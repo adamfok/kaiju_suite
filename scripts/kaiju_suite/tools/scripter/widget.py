@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.scripter import items, logic, script_editor, versions
+from kaiju_suite.tools.scripter import items, logic, script_editor, versions, vscode
 from kaiju_suite.ui import status_icons
 from kaiju_suite.ui.base_window import ToolWindow
 
@@ -474,7 +474,7 @@ class ScripterWindow(ToolWindow):
             if new_kind in NEW_MENU_BREAKS:
                 new_menu.addSeparator()
         if kind == logic.SCRIPT:
-            menu.addAction("Edit in Script Editor", lambda: self.attempt(lambda: script_editor.open_in_script_editor(path)))
+            menu.addAction("Edit in VS Code", lambda: self.attempt(lambda: vscode.open_in_vscode(path)))
         if kind == logic.FOLDER:
             menu.addAction("Open in Explorer", lambda: self.attempt(lambda: _open_in_file_browser(path)))
         if kind in items.FILE_KINDS:
