@@ -26,8 +26,6 @@ DESCRIPTIONS_FILE = "descriptions.json"
 VERSIONED_EXTENSIONS = (".py",)
 
 NO_DESCRIPTION = "(no description)"
-# Unpublished edits that Restore saves before replacing them.
-KEPT_UNPUBLISHED = "Unpublished changes, kept automatically"
 
 _VERSION_RE = re.compile(r"^v(\d+)$")
 
@@ -140,15 +138,26 @@ def publish(path, description=""):
     return number
 
 
+def has_unpublished(path):
+    """Whether ``path`` was edited since the version it's at."""
+    found = list_versions(path)
+    return bool(found) and _modified(path, _base(path, found))
+
+
+def is_latest(path):
+    """Whether ``path`` is at (or based on) its newest version; true when it
+    has none."""
+    found = list_versions(path)
+    return not found or _base(path, found).number == found[-1].number
+
+
 def restore(path, number):
-    """Put version ``number`` back as ``path``. Unpublished edits are saved
-    as a version first, so nothing is lost."""
+    """Put version ``number`` back as ``path``. Unpublished edits are lost:
+    the caller asks first (see :func:`has_unpublished`)."""
     found = list_versions(path)
     version = next((v for v in found if v.number == number), None)
     if version is None:
         raise ValueError(f"{os.path.basename(path)} has no version {number}.")
-    if os.path.isfile(path) and _modified(path, _base(path, found)):
-        _save(path, KEPT_UNPUBLISHED)
     shutil.copy2(version.path, path)
     _set_base(path, number)
 

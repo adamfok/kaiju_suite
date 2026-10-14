@@ -70,18 +70,31 @@ def test_restore_puts_a_version_back(script):
     assert len(versions.list_versions(script)) == 2
 
 
-def test_restore_keeps_unpublished_edits_as_a_version(script):
+def test_restore_discards_unpublished_edits_without_saving_them(script):
     versions.publish(script, "First")
     _set(script, "print('unsaved work')\n")
+    assert versions.has_unpublished(script)
 
     versions.restore(script, 1)
 
-    found = versions.list_versions(script)
-    assert [v.number for v in found] == [1, 2]
-    assert found[1].description == versions.KEPT_UNPUBLISHED
-    assert _text(found[1].path) == "print('unsaved work')\n"
+    assert [v.number for v in versions.list_versions(script)] == [1]
     assert _text(script) == "print('one')\n"
-    assert versions.label(script) == "v001"
+    assert not versions.has_unpublished(script)
+
+
+def test_is_latest_only_at_the_newest_version(script):
+    assert versions.is_latest(script)  # never published: nothing newer
+    versions.publish(script, "First")
+    _set(script, "print('two')\n")
+    assert versions.is_latest(script)  # edited, but still based on the newest
+    versions.publish(script, "Second")
+    assert versions.is_latest(script)
+
+    versions.restore(script, 1)
+    assert not versions.is_latest(script)
+    _set(script, "print('edited old')\n")
+    assert not versions.is_latest(script)
+    assert versions.label(script) == "v001*"
 
 
 def test_restore_of_a_missing_version_raises(script):

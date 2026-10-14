@@ -14,8 +14,8 @@ log = get_logger(__name__)
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
-# Version column when the item has edits not published yet.
-UNPUBLISHED_COLOR = QtGui.QColor(235, 150, 50)
+# Version column when the item isn't at its newest version.
+OLD_VERSION_COLOR = QtGui.QColor(235, 150, 50)
 FAILED_COLOR = QtGui.QColor(225, 85, 85)
 ROW_COLORS = {
     logic.FOLDER: QtGui.QColor(60, 60, 60),
@@ -235,11 +235,15 @@ class ScripterWindow(ToolWindow):
             return
         text = versions.label(path)
         item.setText(1, text)
+        tips = []
+        if not text:
+            tips.append("Not published yet")
+        if not versions.is_latest(path):
+            item.setForeground(1, OLD_VERSION_COLOR)
+            tips.append("Not the newest version")
         if text.endswith("*"):
-            item.setForeground(1, UNPUBLISHED_COLOR)
-            item.setToolTip(1, "Has changes not published yet")
-        elif not text:
-            item.setToolTip(1, "Not published yet")
+            tips.append("Has changes not published yet")
+        item.setToolTip(1, "\n".join(tips))
 
     def _show_status(self, item):
         status, message = self.runner.status(item.data(0, PATH_ROLE))
@@ -461,7 +465,7 @@ class VersionsDialog(QtWidgets.QDialog):
         buttons = QtWidgets.QHBoxLayout()
         buttons.addStretch()
         restore = QtWidgets.QPushButton("Restore")
-        restore.setToolTip("Put this version back. Unpublished edits are kept as a version first.")
+        restore.setToolTip("Put this version back. Asks first if there are changes not published yet.")
         restore.clicked.connect(self._restore)
         buttons.addWidget(restore)
         layout.addLayout(buttons)
@@ -488,6 +492,18 @@ class VersionsDialog(QtWidgets.QDialog):
         if row is None:
             return
         number = row.data(0, PATH_ROLE)
+        if versions.has_unpublished(self.path):
+            Button = QtWidgets.QMessageBox.StandardButton
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                "Restore",
+                f"{os.path.basename(self.path)} has changes not published yet. "
+                f"Restoring v{number:03d} loses them.\n\nRestore anyway?",
+                Button.Yes | Button.No,
+                Button.No,
+            )
+            if answer != Button.Yes:
+                return
         script_editor.watch_in_script_editor(self.path)
         self.owner.attempt(lambda: versions.restore(self.path, number))
         self.owner.populate()
