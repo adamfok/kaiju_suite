@@ -30,7 +30,13 @@ def solid_colors(icon):
                 colors.add(color.getRgb()[:3])
     return sorted(colors)
 
-out = {"icons": {}}
+def same_when_selected(icon):
+    normal = icon.pixmap(16, 16, QtGui.QIcon.Mode.Normal).toImage()
+    selected = icon.pixmap(16, 16, QtGui.QIcon.Mode.Selected).toImage()
+    return normal == selected
+
+
+out = {"icons": {}, "selected_changes": []}
 for status in (logic.RAN, logic.FAILED, logic.PAUSED):
     icon = widget.status_icon(status)
     out["icons"][status] = {"null": icon.isNull(), "colors": solid_colors(icon)}
@@ -47,6 +53,11 @@ for kind in widget.NEW_KINDS:
     image = icon.pixmap(16, 16).toImage()
     drawn = sum(1 for y in range(image.height()) for x in range(image.width()) if QtGui.QColor.fromRgba(image.pixel(x, y)).alpha() > 0)
     out["kind_icons"][kind] = {"null": icon.isNull(), "drawn": drawn}
+    if not same_when_selected(icon):
+        out["selected_changes"].append(kind)
+for status in (logic.RAN, logic.FAILED, logic.PAUSED):
+    if not same_when_selected(widget.status_icon(status)):
+        out["selected_changes"].append(status)
 print(json.dumps(out))
 """
 
@@ -94,6 +105,12 @@ def test_item_icons_draw_something(probe):
     for kind, icon in probe["kind_icons"].items():
         assert not icon["null"], kind
         assert icon["drawn"] > 10, kind
+
+
+def test_icons_look_the_same_when_their_row_is_selected(probe):
+    # Left to itself, the style tints an icon with the selection color when its
+    # row is selected, and Maya's style tints it out of sight.
+    assert probe["selected_changes"] == []
 
 
 def test_item_icons_ship_as_svg(probe):

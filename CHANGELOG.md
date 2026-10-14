@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Fix: Scripter's item and status icons no longer disappear when you select their row
+- Developers: `ui.icons.same_when_selected(icon)` gives a `QIcon` the same look when its item is selected, instead of the style's tinted one
 - Scripter: every item shows an icon for its kind again: Script (code brackets), Folder, Separator (grey bar), Breakpoint (red dot), Import File and Export File (orange arrow into or out of a tray), Joints (joint chain), Skin (pink envelope round a bone) and Mesh (cube). They're drawn as SVGs, so they stay sharp at any Maya UI scale
 - Scripter: double-click a folder to open it in Explorer (Finder on macOS); the right-click **Open in Explorer** entry is gone. Double-click no longer expands or collapses a folder: use its arrow
 - Scripter: right-click a script ▸ **Edit in VS Code** opens it in VS Code, in the window you already have open. Saving there updates the Version column as usual. It replaces **Edit in Script Editor** in the menu: double-click a script to open it in the Script Editor, as before. If VS Code isn't installed (or its `code` command can't be found), it warns and does nothing
