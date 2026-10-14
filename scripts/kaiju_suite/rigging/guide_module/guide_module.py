@@ -64,7 +64,9 @@ class GuideModule:
     :meth:`create`, :meth:`layout`, :meth:`reset`, :meth:`mirrored` and
     :meth:`delete` (plus :meth:`check_extract` if extracting can fail);
     override :meth:`rebuild` if an earlier build can leave something to
-    reuse."""
+    reuse. For a form in the Guide Module Editor, add ``fields(layout)``
+    (``{"name", "count"`` if it has middle guides to set ``, "axes": [{"part",
+    "label", "aim", "up"}...]}``) and :meth:`set_axes`."""
 
     key = ""
     name = ""
@@ -166,6 +168,14 @@ class GuideModule:
     def check_extract(self, group):
         """Why the joints under ``group`` can't be extracted now, as messages."""
         return []
+
+    def set_axes(self, group, part, aim, up):
+        """Turn the joints of ``part`` of the guides under ``group``: ``aim``
+        points at the next joint and ``up`` towards its up guide's side.
+        ``part`` is one of the ``"axes"`` parts :meth:`fields` lists, for a
+        guide module that has an editor form. Raises ``ValueError`` if the
+        axes can't be used."""
+        raise NotImplementedError
 
     def delete(self, group):
         """Delete ``group`` and its guides, leaving their joints where they

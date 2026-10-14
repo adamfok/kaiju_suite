@@ -21,6 +21,8 @@ L_LEG = {
     "heel": [2.0, 0.0, -1.0],
     "inner": [1.0, 0.0, 2.0],
     "outer": [3.0, 0.0, 2.0],
+    "foot_aim": "z",
+    "foot_up_axis": "-x",
 }
 
 
@@ -111,7 +113,9 @@ def test_problems(new_scene, leg):
 
 
 def test_describe_and_nodes(leg):
-    assert leg.describe(L_LEG) == ["L_leg: hip, knee, ankle, ball, toe; heel, inner and outer pivots, aim x, up y"]
+    assert leg.describe(L_LEG) == [
+        "L_leg: hip, knee, ankle, ball, toe; heel, inner and outer pivots; leg aim x, up y; foot aim z, up -x"
+    ]
     assert leg.nodes(L_LEG) == ["L_leg_guides_grp"]
 
 
@@ -119,6 +123,7 @@ def test_mirrored_flips_across_x_and_reverses_the_axes(leg):
     mirrored = leg.mirrored(L_LEG)
     assert mirrored["name"] == "R_leg"
     assert (mirrored["aim"], mirrored["up"]) == ("-x", "-y")
+    assert (mirrored["foot_aim"], mirrored["foot_up_axis"]) == ("-z", "x")
     assert mirrored["leg"][0] == [-2.0, 10.0, 0.0]
     assert mirrored["foot_up"] == [-2.0, 4.0, 2.0]
     assert mirrored["inner"] == [-1.0, 0.0, 2.0]  # still nearer the middle
@@ -236,6 +241,48 @@ def test_gather_then_apply_builds_the_leg_again(new_scene, leg):
     cmds.file(new=True, force=True)
     spec.apply(payload)
     assert leg.layout("L_leg_guides_grp") == L_LEG
+
+
+# -- the foot's own axes ---------------------------------------------------------
+
+
+def _axis(node, index):
+    m = cmds.xform(node, query=True, worldSpace=True, matrix=True)
+    return [round(v, 4) + 0.0 for v in m[index * 4 : index * 4 + 3]]
+
+
+def test_the_leg_and_the_foot_turn_to_their_own_axes(new_scene, leg):
+    group = leg.build(L_LEG)
+    hip = planar_chain.joints(group)[0]
+    ball = planar_chain.joints("L_leg_foot_guides_grp")[0]
+    assert _axis(hip, 0) == [0.0, -0.9701, 0.2425]  # leg aim +X: hip to knee
+    assert _axis(ball, 2) == [0.0, 0.0, 1.0]  # foot aim +Z: ball to toe
+    assert _axis(ball, 0) == [0.0, -1.0, 0.0]  # foot up -X: towards the foot's up guide
+
+
+def test_default_layout_gives_the_foot_the_legs_axes(leg):
+    layout = leg.default_layout("L_leg")
+    assert (layout["foot_aim"], layout["foot_up_axis"]) == (layout["aim"], layout["up"])
+
+
+def test_a_layout_without_foot_axes_uses_the_legs(new_scene, leg):
+    older = {k: v for k, v in L_LEG.items() if k not in ("foot_aim", "foot_up_axis")}
+    assert leg.problems(older) == []
+    group = leg.build(older)
+    assert leg.layout(group) == dict(older, foot_aim="x", foot_up_axis="y")
+
+
+def test_problems_with_the_foot_axes(new_scene, leg):
+    assert leg.problems(dict(L_LEG, foot_up_axis="-z")) == [
+        "L_leg foot: The aim axis and the up axis must be different axes."
+    ]
+
+
+def test_restore_puts_the_foot_axes_back(new_scene, leg):
+    group = leg.build(L_LEG)
+    leg.set_axes(group, "foot", "y", "x")
+    leg.restore(group, L_LEG)
+    assert leg.layout(group) == L_LEG
 
 
 def test_file_round_trip(tmp_path, leg):

@@ -8,13 +8,17 @@ foot. The foot is part of the leg, not a guide module of its own: they
 share the ankle, and the foot roll drives the leg IK, so a leg rig module
 needs both.
 
-Its layout is the leg's name, its aim and up axes (the same for leg and
-foot) and world positions::
+Its layout is the leg's name, the leg's and the foot's aim and up axes
+and world positions::
 
     {"name": "L_leg", "aim": "x", "up": "y",
      "leg": [hip, knee, ankle], "leg_up": [x, y, z],
      "foot": [ball, toe], "foot_up": [x, y, z],
-     "heel": [x, y, z], "inner": [x, y, z], "outer": [x, y, z]}
+     "heel": [x, y, z], "inner": [x, y, z], "outer": [x, y, z],
+     "foot_aim": "x", "foot_up_axis": "y"}
+
+Leg layouts saved before the foot had its own axes have no ``foot_aim``
+and ``foot_up_axis``: their foot takes the leg's.
 
 Its top group is the leg chain's guide group, ``<name>_guides_grp``; the
 foot's is under it.
@@ -51,6 +55,8 @@ class LegGuideModule(GuideModule):
             "heel": [1.0, 0.0, -0.5],
             "inner": [0.5, 0.0, 1.5],
             "outer": [1.5, 0.0, 1.5],
+            "foot_aim": "x",
+            "foot_up_axis": "y",
         }
 
     def _shape_problems(self, layout):
@@ -79,12 +85,12 @@ class LegGuideModule(GuideModule):
             planar_chain.check_build(name, layout["leg"], layout["leg_up"], aim, up)
         except ValueError as e:
             return [f"{name}: {e}"]
-        return foot.problems(name, layout["leg"][-1], layout, aim, up)
+        return foot.problems(name, layout["leg"][-1], layout)
 
     def create(self, layout):
         name, aim, up = layout["name"], layout["aim"], layout["up"]
         group = planar_chain.build_at(name, layout["leg"], layout["leg_up"], aim, up)
-        foot.build(group, name, layout, aim, up)
+        foot.build(group, name, layout)
         return group
 
     def layout(self, group):
@@ -103,12 +109,34 @@ class LegGuideModule(GuideModule):
         if problems:
             raise ValueError(problems[0])
         # Check both chains first: setting the leg, then failing on the foot, would change something.
+        planar_chain.check_axes(layout["aim"], layout["up"])
         planar_chain.planar_positions(layout["leg"], layout["leg_up"])
         foot.check(layout, layout["leg"][-1])
         foot.pivots(group)
         group = planar_chain.set_layout(group, layout["leg"], layout["leg_up"], layout["aim"], layout["up"])
-        foot.reset(group, layout, layout["aim"], layout["up"])
+        foot.reset(group, layout)
         return group
+
+    def fields(self, layout):
+        """What the Guide Module Editor shows for ``layout``: its name, and
+        Aim and Up for the leg and for the foot (no # Mid)."""
+        foot_aim, foot_up = foot.axes(layout)
+        return {
+            "name": layout["name"],
+            "axes": [
+                {"part": "leg", "label": "Leg", "aim": layout["aim"], "up": layout["up"]},
+                {"part": "foot", "label": "Foot", "aim": foot_aim, "up": foot_up},
+            ],
+        }
+
+    def set_axes(self, group, part, aim, up):
+        """Turn the ``"leg"`` or the ``"foot"`` joints."""
+        if part == "foot":
+            foot.set_axes(group, aim, up)
+        elif part == "leg":
+            planar_chain.set_axes(group, aim, up)
+        else:
+            raise ValueError(f"A {self.name} has no {part!r} axes: use 'leg' or 'foot'.")
 
     def check_extract(self, group):
         try:
@@ -123,15 +151,16 @@ class LegGuideModule(GuideModule):
         return planar_chain.delete_guides(group)
 
     def describe(self, layout):
+        foot_aim, foot_up = foot.axes(layout)
         return [
-            f"{layout['name']}: hip, knee, ankle, ball, toe; heel, inner and outer pivots, "
-            f"aim {layout['aim']}, up {layout['up']}"
+            f"{layout['name']}: hip, knee, ankle, ball, toe; heel, inner and outer pivots; "
+            f"leg aim {layout['aim']}, up {layout['up']}; foot aim {foot_aim}, up {foot_up}"
         ]
 
     def mirrored(self, layout):
         """``layout`` for the other side: renamed with
         :func:`~kaiju_suite.core.naming.mirrored_name` (``L_leg`` -> ``R_leg``),
-        every guide flipped across X and the axes reversed, so the joints
+        every guide flipped across X and the leg's and foot's axes reversed, so the joints
         come out as Maya's Behavior mirror makes them, as Chain Guide's do.
         Mirroring twice gives ``layout`` back."""
         return {

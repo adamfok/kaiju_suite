@@ -51,9 +51,19 @@ def load(path):
 
 
 def fields(guide_module, layout):
-    """What the editor's form shows for ``layout`` (for a Chain: ``{"name",
-    "count", "aim", "up"}``), or ``None`` for a guide module with no form."""
+    """What the editor's form shows for ``layout``: ``{"name", "count"`` (a
+    Chain's # Mid only) ``, "axes": [{"part", "label", "aim", "up"}...]}``,
+    one Aim and Up pair per part (a Chain has one, a Leg its leg and foot),
+    or ``None`` for a guide module with no form."""
     return guide_module.fields(layout) if hasattr(guide_module, "fields") else None
+
+
+@undoable
+def set_guide_axes(guide_module, group, part, aim, up):
+    """Turn the joints of ``part`` (one of :func:`fields`' axes parts) of
+    the guides under ``group``. Raises ``ValueError`` if ``aim`` and ``up``
+    are the same axis."""
+    guide_module.set_axes(group, part, aim, up)
 
 
 def save(path, guide_module, group):
