@@ -24,6 +24,26 @@ class GuideError(ValueError):
     """A layout a guide module can't build."""
 
 
+def is_point(value):
+    """Whether ``value`` is an ``[x, y, z]`` position, as layouts hold them."""
+    return (
+        isinstance(value, (list, tuple))
+        and len(value) == 3
+        and all(isinstance(c, (int, float)) and not isinstance(c, bool) for c in value)
+    )
+
+
+def flipped_axis(axis):
+    """``axis`` (``"x"``, ``"-y"``...) pointing the other way."""
+    return axis[1:] if axis.startswith("-") else f"-{axis}"
+
+
+def flip_x(point):
+    """``point`` mirrored across X (the YZ plane)."""
+    # + 0.0 keeps 0 from turning into -0.0.
+    return [-point[0] + 0.0, point[1], point[2]]
+
+
 def tag(group, key):
     """Mark ``group`` as the top group of the guide module keyed ``key``."""
     if not cmds.attributeQuery(TAG, node=group, exists=True):

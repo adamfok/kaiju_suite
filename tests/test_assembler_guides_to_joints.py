@@ -3,7 +3,7 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.rigging.guide_module import get_guide_module, planar_chain
+from kaiju_suite.rigging.guide_module import all_guide_modules, get_guide_module, planar_chain
 from kaiju_suite.tools.assembler import logic, products, runlog
 from kaiju_suite.tools.assembler.products import guides_to_joints
 
@@ -59,7 +59,7 @@ def test_new_menu_puts_it_between_guides_and_joints():
     labels = [None if entry is None else entry[1].label for entry in products.new_menu()]
     at = labels.index("Guides to Joints")
     assert labels[at + 1] == "Joints"
-    assert labels[at - 1] == "Chain Guide"
+    assert labels[at - 1] == all_guide_modules()[-1].name
 
 
 def test_run_extracts_every_chains_joints(new_scene, tmp_path):
