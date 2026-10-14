@@ -22,6 +22,8 @@ NAME, VERSION, TYPE, STATUS = range(4)
 SIZED = (VERSION, TYPE)
 DEFAULT_WIDTHS = (60, 90)
 STATUS_WIDTH = 28
+# Columns the header's right-click menu can hide, by label.
+HIDEABLE = {"Type": TYPE}
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
 # Version column when the item isn't at its newest version.
@@ -105,6 +107,11 @@ class _Tree(QtWidgets.QTreeWidget):
         header.setSectionResizeMode(STATUS, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.setColumnWidth(STATUS, STATUS_WIDTH)
         header.sectionResized.connect(self._remember_widths)
+        # Right-click the header to hide or show columns; remembered per user.
+        for label, column in HIDEABLE.items():
+            self.setColumnHidden(column, bool(settings.get(logic.SETTINGS_KEY, self._hidden_key(label), 0)))
+        header.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._on_header_menu)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -124,6 +131,23 @@ class _Tree(QtWidgets.QTreeWidget):
         if column in SIZED:
             widths = ",".join(str(self.columnWidth(c)) for c in SIZED)
             settings.set(logic.SETTINGS_KEY, "version_type_widths", widths)
+
+    @staticmethod
+    def _hidden_key(label):
+        return f"{label.lower()}_column_hidden"
+
+    def _on_header_menu(self, pos):
+        menu = QtWidgets.QMenu(self)
+        for label, column in HIDEABLE.items():
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(not self.isColumnHidden(column))
+            action.toggled.connect(functools.partial(self._set_column_shown, label, column))
+        menu.exec(self.header().mapToGlobal(pos))
+
+    def _set_column_shown(self, label, column, shown):
+        self.setColumnHidden(column, not shown)
+        settings.set(logic.SETTINGS_KEY, self._hidden_key(label), not shown)
 
     def dropEvent(self, event):
         # Don't call super: the tree is rebuilt from disk instead.
