@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
+from kaiju_suite.tools.scripter import versions
+from kaiju_suite.tools.scripter.versions import HIDDEN_DIR  # noqa: F401 (everything Scripter keeps in a folder)
 
 log = get_logger(__name__)
 
@@ -27,8 +29,6 @@ SETTINGS_KEY = "scripter"
 # How many folders the folder dropdown remembers.
 MAX_RECENT = 10
 
-# Everything Scripter keeps in a folder goes in here.
-HIDDEN_DIR = ".scripter"
 ORDER_FILE = "order.json"
 SKIP_DIRS = ("__pycache__",)
 
@@ -38,6 +38,8 @@ SEPARATOR = "Separator"
 BREAKPOINT = "Breakpoint"
 
 EXTENSIONS = {SCRIPT: ".py", SEPARATOR: ".sep", BREAKPOINT: ".brk"}
+# A separator's Version and Type columns, so it reads as a divider.
+SEPARATOR_TEXT = "====="
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 
@@ -64,6 +66,15 @@ class Entry:
     def label(self):
         """Name shown in the tree: files lose their extension."""
         return self.name if self.is_dir else os.path.splitext(self.name)[0]
+
+    @property
+    def type_label(self):
+        """The Type column: the kind, blank for folders, a rule for separators."""
+        if self.kind == FOLDER:
+            return ""
+        if self.kind == SEPARATOR:
+            return SEPARATOR_TEXT
+        return self.kind
 
 
 def scan(root):
@@ -233,7 +244,7 @@ def default_name(kind, directory):
 
 def rename_path(path, name):
     """Rename an item in place and return its new path. Files keep their
-    extension, and the item keeps its place and disabled state."""
+    extension, and the item keeps its place, disabled state and versions."""
     path = os.path.normpath(path)
     if not os.path.exists(path):
         raise FileNotFoundError(path)
@@ -249,6 +260,7 @@ def rename_path(path, name):
     else:
         new = _new_path(directory, name, ext or None)
     os.rename(path, new)
+    versions.move_history(path, new)
 
     new_name = os.path.basename(new)
     meta = _load_meta(directory)
@@ -268,7 +280,7 @@ def _top_level(paths):
 def place(paths, directory, index):
     """Move ``paths`` into ``directory`` at ``index`` (a position in its
     order before the move; ``None`` is the end), in the given order. Items
-    keep their disabled state. Everything is checked before anything moves.
+    keep their disabled state and versions. Everything is checked before anything moves.
     Returns the new paths."""
     directory = os.path.normpath(directory)
     srcs = _top_level(paths)
@@ -291,6 +303,7 @@ def place(paths, directory, index):
         if new != src:
             was_disabled = _forget(src)
             shutil.move(src, new)
+            versions.move_history(src, new)
             if was_disabled:
                 set_enabled([new], False)
         new_paths.append(new)
@@ -310,6 +323,7 @@ def delete_paths(paths):
             shutil.rmtree(path)
         else:
             os.remove(path)
+            versions.delete_history(path)
         _forget(path)
 
 
