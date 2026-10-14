@@ -128,9 +128,13 @@ class _Tree(QtWidgets.QTreeWidget):
         return widths if len(widths) == len(DEFAULT_WIDTHS) else DEFAULT_WIDTHS
 
     def _remember_widths(self, column, _old, _new):
-        if column in SIZED:
-            widths = ",".join(str(self.columnWidth(c)) for c in SIZED)
-            settings.set(logic.SETTINGS_KEY, "version_type_widths", widths)
+        # Hiding a column resizes it to 0: a hidden column keeps its saved width.
+        if column in SIZED and not self.isColumnHidden(column):
+            widths = (
+                saved if self.isColumnHidden(c) else self.columnWidth(c)
+                for c, saved in zip(SIZED, self._saved_widths())
+            )
+            settings.set(logic.SETTINGS_KEY, "version_type_widths", ",".join(map(str, widths)))
 
     @staticmethod
     def _hidden_key(label):

@@ -205,6 +205,19 @@ out["checked_when_hidden"] = type_action.isChecked()
 type_action.trigger()
 out["hidden_after_tick"] = tree.isColumnHidden(widget.TYPE)
 out["new_tree_hidden_again"] = widget._Tree(None).isColumnHidden(widget.TYPE)
+
+# On screen, hiding a column resizes it to 0: that mustn't be saved as its width.
+shown = widget._Tree(None)
+shown.resize(400, 300)
+shown.show()
+app.processEvents()
+shown.setColumnWidth(widget.TYPE, 140)
+shown._set_column_shown("Type", widget.TYPE, False)
+app.processEvents()
+out["saved_widths_while_hidden"] = saved["version_type_widths"]
+reopened = widget._Tree(None)
+reopened._set_column_shown("Type", widget.TYPE, True)
+out["width_after_reopen"] = reopened.columnWidth(widget.TYPE)
 print(json.dumps(out))
 """
 
@@ -232,3 +245,8 @@ def test_header_menu_toggles_the_type_column(header_probe):
 def test_type_column_choice_is_remembered(header_probe):
     assert header_probe["new_tree_hidden"] is True
     assert header_probe["new_tree_hidden_again"] is False
+
+
+def test_hiding_type_keeps_its_saved_width(header_probe):
+    assert header_probe["saved_widths_while_hidden"] == "60,140"
+    assert header_probe["width_after_reopen"] == 140
