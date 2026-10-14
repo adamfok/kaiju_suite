@@ -91,6 +91,8 @@ class _Tree(QtWidgets.QTreeWidget):
     def __init__(self, window):
         super().__init__()
         self.owner = window
+        # Double-click opens a folder in the file browser; its arrow expands it.
+        self.setExpandsOnDoubleClick(False)
         self.setHeaderLabels(["Name", "Version", "Type", ""])
         header = self.header()
         header.setSectionsMovable(False)
@@ -426,6 +428,8 @@ class ScripterWindow(ToolWindow):
                 QtWidgets.QMessageBox.information(self, os.path.basename(path), "\n".join(lines))
         elif kind in items.FILE_KINDS:
             self._change_target(path)
+        elif kind == logic.FOLDER:
+            self.attempt(lambda: _open_in_file_browser(path))
 
     def _pick_file(self, kind, start):
         """Ask for an Import File's file (to open) or an Export File's (to
@@ -475,8 +479,6 @@ class ScripterWindow(ToolWindow):
                 new_menu.addSeparator()
         if kind == logic.SCRIPT:
             menu.addAction("Edit in VS Code", lambda: self.attempt(lambda: vscode.open_in_vscode(path)))
-        if kind == logic.FOLDER:
-            menu.addAction("Open in Explorer", lambda: self.attempt(lambda: _open_in_file_browser(path)))
         if kind in items.FILE_KINDS:
             menu.addAction("Change File...", lambda: self._change_target(path))
         if path and versions.is_versioned(path):

@@ -1,4 +1,4 @@
-"""Scripter's status column icons and row colors.
+"""Scripter's status column icons, row colors and folder double-click.
 
 maya.standalone runs a Qt application without widgets, so the widget module
 is loaded off-screen in a separate mayapy process that doesn't start Maya."""
@@ -80,3 +80,85 @@ def test_breakpoint_rows_are_a_dark_red(probe):
 
 def test_only_folders_have_an_icon(probe):
     assert probe["kinds_with_icons"] == ["Folder"]
+
+
+# Double-clicking a folder opens it in the file browser (there's no right-click
+# "Open in Explorer"). The window's handlers run on a stand-in widget, since
+# building the real window needs Maya's docking.
+_FOLDER_PROBE = r"""
+import json, os, sys, tempfile
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import widget
+
+root = tempfile.mkdtemp()
+folder = os.path.join(root, "rig")
+os.mkdir(folder)
+
+opened = []
+widget._open_in_file_browser = opened.append
+# No Maya here: column widths come from their defaults.
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+
+
+class Stand(QtWidgets.QWidget):
+    root = root
+    runner = None
+    attempt = staticmethod(lambda fn: fn())
+    selected_paths = staticmethod(lambda: [])
+    _delete_selected = staticmethod(lambda: None)
+    _on_double_click = widget.ScripterWindow._on_double_click
+    _on_context_menu = widget.ScripterWindow._on_context_menu
+
+
+stand = Stand()
+stand.tree = widget._Tree(stand)
+item = QtWidgets.QTreeWidgetItem(stand.tree, ["rig"])
+item.setData(0, widget.PATH_ROLE, folder)
+
+stand._on_double_click(item, 0)
+
+menus = []
+
+
+class RecordingMenu(QtWidgets.QMenu):
+    def exec(self, *_):
+        actions = self.actions()
+        menus.append([a.text() for a in actions] + [s.text() for a in actions if a.menu() for s in a.menu().actions()])
+
+
+QtWidgets.QMenu = RecordingMenu
+stand.tree.itemAt = lambda pos: item
+stand._on_context_menu(stand.tree.rect().center())
+
+print(json.dumps({
+    "opened": opened,
+    "folder": folder,
+    "menu": menus[0] if menus else None,
+    "expands_on_double_click": stand.tree.expandsOnDoubleClick(),
+}))
+"""
+
+
+@pytest.fixture(scope="module")
+def folder_probe():
+    done = subprocess.run([sys.executable, "-c", _FOLDER_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_double_click_opens_a_folder_in_the_file_browser(folder_probe):
+    assert folder_probe["opened"] == [folder_probe["folder"]]
+
+
+def test_double_click_does_not_also_expand_or_collapse(folder_probe):
+    assert folder_probe["expands_on_double_click"] is False
+
+
+def test_folder_menu_has_no_open_in_explorer(folder_probe):
+    assert folder_probe["menu"] is not None
+    assert "Rename" in folder_probe["menu"]
+    assert "Open in Explorer" not in folder_probe["menu"]
