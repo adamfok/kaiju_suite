@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Scripter: selecting an item gives its folder a grey background, so you can tell at a glance which folder it is in. With several items selected, each one's folder is grey
 - Scripter: folder rows no longer have a grey background, and separator rows are now a darker grey than the window and tree, so they read as dividers
 - Fix: Scripter's item and status icons no longer disappear when you select their row
 - Developers: `ui.icons.same_when_selected(icon)` gives a `QIcon` the same look when its item is selected, instead of the style's tinted one

@@ -35,6 +35,9 @@ ROW_COLORS = {logic.BREAKPOINT: QtGui.QColor(80, 28, 28)}
 # Separator rows are the tree's background darkened by this (percent), so
 # they read as dividers darker than the window in any Maya UI color scheme.
 SEPARATOR_DARKER = 150
+# The folder of each selected item is the tree's background lightened by this
+# (percent), so you can tell at a glance where the selection lives.
+PARENT_LIGHTER = 150
 STATUS_ICONS = {
     logic.RAN: (status_icons.check, RAN_COLOR),
     logic.FAILED: (status_icons.cross, FAILED_COLOR),
@@ -142,6 +145,20 @@ class _Tree(QtWidgets.QTreeWidget):
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
         self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+        self.itemSelectionChanged.connect(self._grey_parent_folders)
+
+    def _grey_parent_folders(self):
+        # Only folders (items with children) are touched: they have no row color
+        # of their own, unlike separators and breakpoints.
+        parents = [item.parent() for item in self.selectedItems() if item.parent()]
+        grey = QtGui.QBrush(self.palette().color(QtGui.QPalette.ColorRole.Base).lighter(PARENT_LIGHTER))
+        iterator = QtWidgets.QTreeWidgetItemIterator(self, QtWidgets.QTreeWidgetItemIterator.IteratorFlag.HasChildren)
+        while iterator.value():
+            folder = iterator.value()
+            brush = grey if any(folder is parent for parent in parents) else QtGui.QBrush()
+            for column in range(self.columnCount()):
+                folder.setBackground(column, brush)
+            iterator += 1
 
     @staticmethod
     def _saved_widths():
