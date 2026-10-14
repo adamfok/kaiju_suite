@@ -131,10 +131,10 @@ class ScripterWindow(ToolWindow):
             shortcut.activated.connect(fn)
         self.layout.addWidget(self.tree)
 
-        run = QtWidgets.QPushButton("Run")
-        run.setToolTip("Run the selected items and folders, in tree order")
-        run.clicked.connect(self._run_selected)
-        self.layout.addWidget(run)
+        # Versioned files in the tree, so the Version column updates (e.g. to
+        # "v002*") as soon as one is saved, from the Script Editor or anywhere.
+        self._watcher = QtCore.QFileSystemWatcher(self)
+        self._watcher.fileChanged.connect(self._on_file_changed)
 
         recent = logic.recent_folders()
         self._fill_folder_box(recent)
@@ -178,6 +178,8 @@ class ScripterWindow(ToolWindow):
             return
         collapsed = self._collapsed_paths()
         self.tree.clear()
+        if self._watcher.files():
+            self._watcher.removePaths(self._watcher.files())
         entries = logic.scan(self.root)
         if not entries:
             self._placeholder("Empty folder. Right-click > New to add a script.")
@@ -224,6 +226,8 @@ class ScripterWindow(ToolWindow):
             elif inside_disabled:
                 item.setForeground(0, DISABLED_COLOR)
                 item.setToolTip(0, "In a disabled folder: skipped when its folder runs")
+            if versions.is_versioned(entry.path):
+                self._watcher.addPath(entry.path)
             self._show_version(item)
             self._show_status(item)
             if entry.is_dir:
@@ -238,12 +242,27 @@ class ScripterWindow(ToolWindow):
         tips = []
         if not text:
             tips.append("Not published yet")
-        if not versions.is_latest(path):
-            item.setForeground(1, OLD_VERSION_COLOR)
+        latest = versions.is_latest(path)
+        item.setData(1, QtCore.Qt.ItemDataRole.ForegroundRole, None if latest else OLD_VERSION_COLOR)
+        if not latest:
             tips.append("Not the newest version")
         if text.endswith("*"):
             tips.append("Has changes not published yet")
         item.setToolTip(1, "\n".join(tips))
+
+    def _on_file_changed(self, path):
+        # Editors may still be writing, or save by replacing the file (which
+        # drops it from the watcher): look a moment later, and watch it again.
+        QtCore.QTimer.singleShot(200, lambda: self._update_version(path))
+
+    def _update_version(self, path):
+        if not os.path.isfile(path):
+            return
+        if path not in self._watcher.files():
+            self._watcher.addPath(path)
+        item = self._find_item(path)
+        if item:
+            self._show_version(item)
 
     def _show_status(self, item):
         status, message = self.runner.status(item.data(0, PATH_ROLE))
