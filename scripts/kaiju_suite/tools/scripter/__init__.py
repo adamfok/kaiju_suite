@@ -6,7 +6,7 @@ def show():
 
 
 TOOL = {
-    "name": "Kaiju Scripter",
+    "name": "Scripter",
     "launch": show,
     "description": "Run Python scripts from a folder, in your order, with breakpoints to pause a run.",
 }

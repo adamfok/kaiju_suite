@@ -391,6 +391,6 @@ def test_the_tool_is_registered_without_loading_qt():
 
     from kaiju_suite import registry
 
-    tool = registry.find("Kaiju Scripter")
+    tool = registry.find("Scripter")
     assert tool is not None and callable(tool["launch"])
     assert "kaiju_suite.tools.scripter.widget" not in sys.modules
