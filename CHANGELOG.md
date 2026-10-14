@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Fix: a long path in Scripter's scripts-folder box no longer stops you making the window narrower. The box shrinks with the window, and its dropdown still opens wide enough to show full paths
 - Scripter: selecting an item gives its folder a grey background, so you can tell at a glance which folder it is in. With several items selected, each one's folder is grey
 - Scripter: folder rows no longer have a grey background, and separator rows are now a darker grey than the window and tree, so they read as dividers
 - Fix: Scripter's item and status icons no longer disappear when you select their row

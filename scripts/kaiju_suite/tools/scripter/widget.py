@@ -115,6 +115,27 @@ def _open_in_file_browser(path):
         subprocess.Popen(["xdg-open", path])
 
 
+class _FolderBox(QtWidgets.QComboBox):
+    """Path box that doesn't grow with its paths, so a long one can't stop the
+    window getting narrower. Its dropdown still opens wide enough to read them."""
+
+    def showPopup(self):
+        metrics = self.view().fontMetrics()
+        widest = max((metrics.horizontalAdvance(self.itemText(i)) for i in range(self.count())), default=0)
+        self.view().setMinimumWidth(widest + 2 * metrics.averageCharWidth())
+        super().showPopup()
+
+
+def folder_box():
+    box = _FolderBox()
+    box.setEditable(True)
+    box.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
+    box.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+    box.setMinimumContentsLength(10)
+    box.lineEdit().setPlaceholderText("Scripts folder...")
+    return box
+
+
 class _Tree(QtWidgets.QTreeWidget):
     """Tree whose drag and drop moves and reorders files on disk, then refreshes."""
 
@@ -229,10 +250,7 @@ class ScripterWindow(ToolWindow):
         self.runner = logic.Runner()
 
         top = QtWidgets.QHBoxLayout()
-        self.folder_box = QtWidgets.QComboBox()
-        self.folder_box.setEditable(True)
-        self.folder_box.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-        self.folder_box.lineEdit().setPlaceholderText("Scripts folder...")
+        self.folder_box = folder_box()
         self.folder_box.lineEdit().returnPressed.connect(lambda: self.open_folder(self.folder_box.currentText()))
         self.folder_box.activated.connect(lambda i: self.open_folder(self.folder_box.itemText(i)))
         browse = QtWidgets.QPushButton()
