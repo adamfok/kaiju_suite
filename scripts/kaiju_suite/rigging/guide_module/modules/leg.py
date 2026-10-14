@@ -38,6 +38,11 @@ _POINTS = ("leg_up", "foot_up") + foot.PIVOTS
 class LegGuideModule(GuideModule):
     key = "leg"
     name = "Leg Guide"
+    # What its guides are called, top down: the leg chain's, then the foot's.
+    # A subclass with other names (and a matching default layout) is another
+    # leg, e.g. Quad Leg Guide.
+    leg_guides = ("hip", "knee", "ankle")
+    foot_guides = ("ball", "toe")
 
     def default_layout(self, name):
         """A left leg standing at X 1, facing +Z, 9 tall: the knee bent a
@@ -68,10 +73,9 @@ class LegGuideModule(GuideModule):
         lists_ok = all(isinstance(layout[k], list) and all(is_point(p) for p in layout[k]) for k in _LISTS)
         if not lists_ok or not all(is_point(layout[k]) for k in _POINTS):
             return [f"{name}: every guide must be an [x, y, z] position."]
-        if len(layout["leg"]) != 3:
-            return [f"{name}: leg needs 3 guides (hip, knee, ankle)."]
-        if len(layout["foot"]) != 2:
-            return [f"{name}: foot needs 2 guides (ball, toe)."]
+        for key, names in (("leg", self.leg_guides), ("foot", self.foot_guides)):
+            if len(layout[key]) != len(names):
+                return [f"{name}: {key} needs {len(names)} guides ({', '.join(names)})."]
         return []
 
     def check(self, layout):
@@ -153,7 +157,7 @@ class LegGuideModule(GuideModule):
     def describe(self, layout):
         foot_aim, foot_up = foot.axes(layout)
         return [
-            f"{layout['name']}: hip, knee, ankle, ball, toe; heel, inner and outer pivots; "
+            f"{layout['name']}: {', '.join(self.leg_guides + self.foot_guides)}; heel, inner and outer pivots; "
             f"leg aim {layout['aim']}, up {layout['up']}; foot aim {foot_aim}, up {foot_up}"
         ]
 
