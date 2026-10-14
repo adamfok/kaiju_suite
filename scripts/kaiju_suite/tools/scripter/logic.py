@@ -1,8 +1,7 @@
 """Kaiju Scripter logic: a folder of scripts, in your order, run on demand.
 
-The tree is the folder on disk. Items are Python scripts (``.py``),
-folders, separators (``.sep``, dividers only) and breakpoints (``.brk``,
-which pause a run). Each folder keeps its order and disabled items in
+The tree is the folder on disk; its items are the kinds in :mod:`.items`
+(scripts, folders, separators, breakpoints, data and file items). Each folder keeps its order and disabled items in
 ``<folder>/.scripter/order.json``, by name; anything not listed there comes
 after, sorted by name. Dot-names and ``__pycache__`` aren't shown.
 
@@ -20,7 +19,21 @@ from dataclasses import dataclass, field
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.scripter import versions
+from kaiju_suite.tools.scripter import items, versions
+from kaiju_suite.tools.scripter.items import (  # noqa: F401 (re-exported)
+    BREAKPOINT,
+    EXPORT_FILE,
+    EXTENSIONS,
+    FOLDER,
+    IMPORT_FILE,
+    JOINTS,
+    MESH,
+    SCRIPT,
+    SEPARATOR,
+    SKIN,
+    kind_of,
+    run_script,
+)
 from kaiju_suite.tools.scripter.versions import HIDDEN_DIR  # noqa: F401 (everything Scripter keeps in a folder)
 
 log = get_logger(__name__)
@@ -32,22 +45,8 @@ MAX_RECENT = 10
 ORDER_FILE = "order.json"
 SKIP_DIRS = ("__pycache__",)
 
-SCRIPT = "Script"
-FOLDER = "Folder"
-SEPARATOR = "Separator"
-BREAKPOINT = "Breakpoint"
-
-EXTENSIONS = {SCRIPT: ".py", SEPARATOR: ".sep", BREAKPOINT: ".brk"}
 # A separator's Version and Type columns, so it reads as a divider.
 SEPARATOR_TEXT = "====="
-_KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
-
-
-def kind_of(path):
-    """The item kind of ``path``, or ``None`` if Scripter doesn't show it."""
-    if os.path.isdir(path):
-        return FOLDER
-    return _KIND_OF_EXT.get(os.path.splitext(path)[1].lower())
 
 
 @dataclass
@@ -230,6 +229,37 @@ def create_item(kind, directory, name, index=None):
     return path
 
 
+def create_data_item(kind, directory, name, selection, index=None):
+    """Create a Joints, Skin or Mesh item from ``selection`` (long names),
+    published as v001, at ``index`` as in :func:`create_item`. Raises,
+    creating nothing, if the selection can't be published."""
+    problems = items.selection_problems(kind, selection)
+    if problems:
+        raise ValueError(" ".join(problems))
+    path = create_item(kind, directory, name, index)
+    try:
+        items.write_data(kind, path, selection)
+        versions.publish(path)
+    except Exception:
+        delete_paths([path])
+        raise
+    return path
+
+
+def create_file_item(kind, directory, name, target, index=None):
+    """Create an Import or Export File item pointing to ``target``, at
+    ``index`` as in :func:`create_item`. Raises, creating nothing, if
+    ``target`` can't be used (e.g. a format Export can't write)."""
+    items.check_target(kind, target)
+    path = create_item(kind, directory, name, index)
+    try:
+        items.set_target(path, target)
+    except Exception:
+        delete_paths([path])
+        raise
+    return path
+
+
 def default_name(kind, directory):
     """The name a new ``kind`` item starts with: the kind, with ``_2``,
     ``_3``... if an item in ``directory`` already has that name."""
@@ -371,7 +401,7 @@ def _sort_key(path, cache):
 
 
 def _folder_steps(folder):
-    """The enabled scripts and breakpoints under ``folder``, in order;
+    """The enabled runnable items and breakpoints under ``folder``, in order;
     disabled folders are skipped with everything in them."""
     steps = []
     for entry in scan(folder):
@@ -379,14 +409,14 @@ def _folder_steps(folder):
             continue
         if entry.kind == FOLDER:
             steps.extend(_folder_steps(entry.path))
-        elif entry.kind in (SCRIPT, BREAKPOINT):
+        elif entry.kind in items.RUNNABLE or entry.kind == BREAKPOINT:
             steps.append(entry.path)
     return steps
 
 
 def steps_for(paths):
     """What running ``paths`` runs, in tree order. A selected folder brings
-    its enabled items (even if it's disabled itself); a selected script runs
+    its enabled items (even if it's disabled itself); a selected item runs
     even if disabled; a selected breakpoint is ignored; an item reached both
     ways runs once."""
     steps = []
@@ -394,30 +424,10 @@ def steps_for(paths):
         kind = kind_of(path)
         if kind == FOLDER:
             steps.extend(_folder_steps(path))
-        elif kind == SCRIPT:
+        elif kind in items.RUNNABLE:
             steps.append(path)
     cache = {}
     return sorted(dict.fromkeys(steps), key=lambda p: _sort_key(p, cache))
-
-
-def run_script(path):
-    """Run a script file in ``__main__``, as the Script Editor does, with
-    ``__file__`` set to it while it runs."""
-    import __main__
-
-    with open(path, encoding="utf-8") as f:
-        code = f.read()
-    namespace = __main__.__dict__
-    missing = object()
-    before = namespace.get("__file__", missing)
-    namespace["__file__"] = path
-    try:
-        exec(compile(code, path, "exec"), namespace)
-    finally:
-        if before is missing:
-            namespace.pop("__file__", None)
-        else:
-            namespace["__file__"] = before
 
 
 class Runner:
@@ -468,9 +478,7 @@ class Runner:
                     self._remaining = steps[i + 1 :]
                     return PAUSED
                 try:
-                    if not os.path.isfile(path):
-                        raise FileNotFoundError(f"File not found: {path}")
-                    run_script(path)
+                    items.run(path)
                 except Exception as e:
                     sys.stderr.write(traceback.format_exc())
                     self._status[path] = (FAILED, f"{type(e).__name__}: {e}")

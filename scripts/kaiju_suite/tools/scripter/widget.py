@@ -7,7 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.scripter import logic, script_editor, versions
+from kaiju_suite.tools.scripter import items, logic, script_editor, versions
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -34,7 +34,23 @@ STATUS_TEXT = {logic.RAN: "✓", logic.FAILED: "✗", logic.PAUSED: "⏸"}
 STATUS_TIPS = {logic.RAN: "Ran", logic.PAUSED: "Paused here. Right-click > Continue to run the rest."}
 ICONS = {logic.FOLDER: "SP_DirIcon", logic.SCRIPT: "SP_FileIcon"}
 # The right-click New menu, in order.
-NEW_KINDS = (logic.SCRIPT, logic.FOLDER, logic.SEPARATOR, logic.BREAKPOINT)
+NEW_KINDS = (
+    logic.SCRIPT,
+    logic.FOLDER,
+    logic.SEPARATOR,
+    logic.BREAKPOINT,
+    logic.IMPORT_FILE,
+    logic.EXPORT_FILE,
+    logic.JOINTS,
+    logic.SKIN,
+    logic.MESH,
+)
+# Dividers in the New menu after these kinds.
+NEW_MENU_BREAKS = (logic.BREAKPOINT, logic.EXPORT_FILE)
+IMPORT_FILTER = (
+    "All Files (*);;Maya Scenes (*.ma *.mb);;FBX (*.fbx);;OBJ (*.obj);;Alembic (*.abc)"
+)
+EXPORT_FILTER = "Maya ASCII (*.ma);;Maya Binary (*.mb);;FBX (*.fbx);;OBJ (*.obj)"
 # How many names the delete confirmation lists before "...and N more".
 MAX_LISTED = 10
 
@@ -237,6 +253,8 @@ class ScripterWindow(ToolWindow):
             if entry.kind == logic.SEPARATOR:
                 item.setText(VERSION, logic.SEPARATOR_TEXT)
             item.setToolTip(TYPE, entry.name)
+            if entry.kind in items.FILE_KINDS:
+                self._show_target(item)
             item.setData(0, PATH_ROLE, entry.path)
             icon = ICONS.get(entry.kind)
             if icon:
@@ -370,10 +388,46 @@ class ScripterWindow(ToolWindow):
                 fade=True,
             )
 
+    def _show_target(self, item):
+        """Name tooltip of an Import or Export File: the file it points to."""
+        path = item.data(0, PATH_ROLE)
+        try:
+            text = items.target(path)
+        except ValueError as e:
+            text = str(e)
+        if not item.toolTip(0):
+            item.setToolTip(0, text)
+
     def _on_double_click(self, item, _column):
         path = item.data(0, PATH_ROLE)
-        if path and logic.kind_of(path) == logic.SCRIPT:
+        kind = logic.kind_of(path) if path else None
+        if kind == logic.SCRIPT:
             self.attempt(lambda: script_editor.open_in_script_editor(path))
+        elif kind in items.DATATYPES:
+            lines = self.attempt(lambda: items.describe(path))
+            if lines is not None:
+                QtWidgets.QMessageBox.information(self, os.path.basename(path), "\n".join(lines))
+        elif kind in items.FILE_KINDS:
+            self._change_target(path)
+
+    def _pick_file(self, kind, start):
+        """Ask for an Import File's file (to open) or an Export File's (to
+        save to, which asks before overwriting). ``""`` if cancelled."""
+        if kind == logic.IMPORT_FILE:
+            picked, _ = QtWidgets.QFileDialog.getOpenFileName(self, "File to Import", start, IMPORT_FILTER)
+        else:
+            picked, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export Selected To", start, EXPORT_FILTER)
+        return os.path.normpath(picked) if picked else ""
+
+    def _change_target(self, path):
+        try:
+            start = items.target(path)
+        except ValueError:
+            start = os.path.dirname(path)
+        picked = self._pick_file(logic.kind_of(path), start)
+        if picked:
+            self.attempt(lambda: items.set_target(path, picked))
+            self.populate()
 
     def _on_context_menu(self, pos):
         item = self.tree.itemAt(pos)
@@ -400,10 +454,14 @@ class ScripterWindow(ToolWindow):
         new_menu = menu.addMenu("New")
         for new_kind in NEW_KINDS:
             new_menu.addAction(new_kind, lambda k=new_kind: self._create(k, item))
+            if new_kind in NEW_MENU_BREAKS:
+                new_menu.addSeparator()
         if kind == logic.SCRIPT:
             menu.addAction("Edit in Script Editor", lambda: self.attempt(lambda: script_editor.open_in_script_editor(path)))
         if kind == logic.FOLDER:
             menu.addAction("Open in Explorer", lambda: self.attempt(lambda: _open_in_file_browser(path)))
+        if kind in items.FILE_KINDS:
+            menu.addAction("Change File...", lambda: self._change_target(path))
         if path and versions.is_versioned(path):
             menu.addSeparator()
             menu.addAction("Publish...", lambda: self._publish(path))
@@ -436,12 +494,27 @@ class ScripterWindow(ToolWindow):
         directory, index = self._new_target(item)
         if not directory or not os.path.isdir(directory):
             return
-        name, ok = QtWidgets.QInputDialog.getText(
-            self, f"New {kind}", "Name:", text=logic.default_name(kind, directory)
-        )
+        default = logic.default_name(kind, directory)
+        if kind in items.DATATYPES:
+            # Check the selection first, so a bad one doesn't cost a name dialog.
+            selection = cmds.ls(selection=True, long=True) or []
+            problems = items.selection_problems(kind, selection)
+            if problems:
+                _warn(" ".join(problems))
+                return
+            create = lambda name: logic.create_data_item(kind, directory, name, selection, index)  # noqa: E731
+        elif kind in items.FILE_KINDS:
+            target = self._pick_file(kind, directory)
+            if not target:
+                return
+            default = os.path.splitext(os.path.basename(target))[0]
+            create = lambda name: logic.create_file_item(kind, directory, name, target, index)  # noqa: E731
+        else:
+            create = lambda name: logic.create_item(kind, directory, name, index)  # noqa: E731
+        name, ok = QtWidgets.QInputDialog.getText(self, f"New {kind}", "Name:", text=default)
         if not ok or not name:
             return
-        path = self.attempt(lambda: logic.create_item(kind, directory, name, index))
+        path = self.attempt(lambda: create(name))
         self.populate()
         if path and kind == logic.SCRIPT:
             self.attempt(lambda: script_editor.open_in_script_editor(path))
@@ -488,7 +561,11 @@ class ScripterWindow(ToolWindow):
         )
         if not ok:
             return
-        number = self.attempt(lambda: versions.publish(path, description))
+        if logic.kind_of(path) in items.DATATYPES:
+            selection = cmds.ls(selection=True, long=True) or []
+            number = self.attempt(lambda: items.publish_data(path, selection, description))
+        else:
+            number = self.attempt(lambda: versions.publish(path, description))
         self.populate()
         if number:
             cmds.inViewMessage(
