@@ -6,7 +6,7 @@ from maya import cmds
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.scripter import logic, script_editor
+from kaiju_suite.tools.scripter import logic, script_editor, versions
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -14,6 +14,8 @@ log = get_logger(__name__)
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
+# Version column when the item has edits not published yet.
+UNPUBLISHED_COLOR = QtGui.QColor(235, 150, 50)
 FAILED_COLOR = QtGui.QColor(225, 85, 85)
 ROW_COLORS = {
     logic.FOLDER: QtGui.QColor(60, 60, 60),
@@ -48,12 +50,13 @@ class _Tree(QtWidgets.QTreeWidget):
     def __init__(self, window):
         super().__init__()
         self.owner = window
-        self.setHeaderLabels(["Name", ""])
+        self.setHeaderLabels(["Name", "Version", ""])
         header = self.header()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Fixed)
-        self.setColumnWidth(1, 28)
+        for column, width in ((1, 60), (2, 28)):
+            header.setSectionResizeMode(column, QtWidgets.QHeaderView.ResizeMode.Fixed)
+            self.setColumnWidth(column, width)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -201,14 +204,14 @@ class ScripterWindow(ToolWindow):
 
     def _add_entries(self, parent, entries, inside_disabled=False):
         for entry in entries:
-            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, ""])
+            item = QtWidgets.QTreeWidgetItem(parent, [entry.label, "", ""])
             item.setData(0, PATH_ROLE, entry.path)
             icon = ICONS.get(entry.kind)
             if icon:
                 item.setIcon(0, self.style().standardIcon(getattr(QtWidgets.QStyle.StandardPixmap, icon)))
             color = ROW_COLORS.get(entry.kind)
             if color:
-                for column in range(2):
+                for column in range(3):
                     item.setBackground(column, color)
             if not entry.is_dir:
                 item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsDropEnabled)
@@ -221,14 +224,27 @@ class ScripterWindow(ToolWindow):
             elif inside_disabled:
                 item.setForeground(0, DISABLED_COLOR)
                 item.setToolTip(0, "In a disabled folder: skipped when its folder runs")
+            self._show_version(item)
             self._show_status(item)
             if entry.is_dir:
                 self._add_entries(item, entry.children, inside_disabled or not entry.enabled)
 
+    def _show_version(self, item):
+        path = item.data(0, PATH_ROLE)
+        if not versions.is_versioned(path):
+            return
+        text = versions.label(path)
+        item.setText(1, text)
+        if text.endswith("*"):
+            item.setForeground(1, UNPUBLISHED_COLOR)
+            item.setToolTip(1, "Has changes not published yet")
+        elif not text:
+            item.setToolTip(1, "Not published yet")
+
     def _show_status(self, item):
         status, message = self.runner.status(item.data(0, PATH_ROLE))
-        item.setText(1, STATUS_TEXT.get(status, ""))
-        item.setToolTip(1, message or STATUS_TIPS.get(status, ""))
+        item.setText(2, STATUS_TEXT.get(status, ""))
+        item.setToolTip(2, message or STATUS_TIPS.get(status, ""))
         if status == logic.FAILED:
             item.setForeground(0, FAILED_COLOR)
             item.setToolTip(0, message)
@@ -335,6 +351,12 @@ class ScripterWindow(ToolWindow):
             menu.addAction("Edit in Script Editor", lambda: self.attempt(lambda: script_editor.open_in_script_editor(path)))
         if kind == logic.FOLDER:
             menu.addAction("Open in Explorer", lambda: self.attempt(lambda: _open_in_file_browser(path)))
+        if path and versions.is_versioned(path):
+            menu.addSeparator()
+            menu.addAction("Publish...", lambda: self._publish(path))
+            history = menu.addAction("Versions...", lambda: VersionsDialog(self, path).exec())
+            history.setEnabled(versions.count(path) > 0)
+        menu.addSeparator()
         if path:
             menu.addAction("Rename", lambda: self._rename(path))
             menu.addAction("Delete", self._delete_selected)
@@ -396,6 +418,9 @@ class ScripterWindow(ToolWindow):
             shown += f"\n...and {len(names) - MAX_LISTED} more"
         folders = "\nFolders are deleted with everything in them." if any(map(os.path.isdir, paths)) else ""
         what = "this item" if len(paths) == 1 else f"these {len(paths)} items"
+        kept = sum(versions.count(p) for p in paths if os.path.isfile(p))
+        if kept:
+            folders += f"\n{kept} saved version{'s' if kept != 1 else ''} will be deleted too."
         Button = QtWidgets.QMessageBox.StandardButton
         answer = QtWidgets.QMessageBox.question(
             self, "Confirm Delete", f"Delete {what}?{folders}\n\n{shown}", Button.Yes | Button.No, Button.No
@@ -403,3 +428,67 @@ class ScripterWindow(ToolWindow):
         if answer == Button.Yes:
             self.attempt(lambda: logic.delete_paths(paths))
             self.populate()
+
+    def _publish(self, path):
+        description, ok = QtWidgets.QInputDialog.getText(
+            self, f"Publish {os.path.basename(path)}", "What changed? (optional)"
+        )
+        if not ok:
+            return
+        number = self.attempt(lambda: versions.publish(path, description))
+        self.populate()
+        if number:
+            cmds.inViewMessage(
+                assistMessage=f"Published {os.path.basename(path)} v{number:03d}", position="topCenter", fade=True
+            )
+
+
+class VersionsDialog(QtWidgets.QDialog):
+    """An item's versions, newest first, with Restore."""
+
+    def __init__(self, window, path):
+        super().__init__(window)
+        self.owner, self.path = window, path
+        self.setWindowTitle(f"Versions of {os.path.basename(path)}")
+        self.resize(460, 300)
+        layout = QtWidgets.QVBoxLayout(self)
+        self.table = QtWidgets.QTreeWidget()
+        self.table.setHeaderLabels(["Version", "Saved", "Description"])
+        self.table.setRootIsDecorated(False)
+        self.table.header().setStretchLastSection(True)
+        self.table.itemDoubleClicked.connect(lambda *_: self._restore())
+        layout.addWidget(self.table)
+        buttons = QtWidgets.QHBoxLayout()
+        buttons.addStretch()
+        restore = QtWidgets.QPushButton("Restore")
+        restore.setToolTip("Put this version back. Unpublished edits are kept as a version first.")
+        restore.clicked.connect(self._restore)
+        buttons.addWidget(restore)
+        layout.addLayout(buttons)
+        self._fill()
+
+    def _fill(self):
+        self.table.clear()
+        current = versions.label(self.path).rstrip("*")
+        for version in reversed(versions.list_versions(self.path)):
+            name = f"v{version.number:03d}"
+            saved = QtCore.QDateTime.fromSecsSinceEpoch(int(version.mtime)).toString("yyyy-MM-dd hh:mm")
+            row = QtWidgets.QTreeWidgetItem(self.table, [name, saved, version.description])
+            row.setData(0, PATH_ROLE, version.number)
+            if name == current:
+                font = row.font(0)
+                font.setBold(True)
+                for column in range(3):
+                    row.setFont(column, font)
+        self.table.resizeColumnToContents(0)
+        self.table.resizeColumnToContents(1)
+
+    def _restore(self):
+        row = self.table.currentItem()
+        if row is None:
+            return
+        number = row.data(0, PATH_ROLE)
+        script_editor.watch_in_script_editor(self.path)
+        self.owner.attempt(lambda: versions.restore(self.path, number))
+        self.owner.populate()
+        self._fill()
