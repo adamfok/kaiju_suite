@@ -253,9 +253,9 @@ class ScripterWindow(ToolWindow):
             if entry.kind == logic.SEPARATOR:
                 item.setText(VERSION, logic.SEPARATOR_TEXT)
             item.setToolTip(TYPE, entry.name)
+            item.setData(0, PATH_ROLE, entry.path)
             if entry.kind in items.FILE_KINDS:
                 self._show_target(item)
-            item.setData(0, PATH_ROLE, entry.path)
             icon = ICONS.get(entry.kind)
             if icon:
                 item.setIcon(0, self.style().standardIcon(getattr(QtWidgets.QStyle.StandardPixmap, icon)))
