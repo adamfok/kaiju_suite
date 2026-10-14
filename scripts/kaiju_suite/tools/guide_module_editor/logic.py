@@ -51,10 +51,11 @@ def load(path):
 
 
 def fields(guide_module, layout):
-    """What the editor's form shows for ``layout``: ``{"name", "count"`` (a
-    Chain's # Mid only) ``, "axes": [{"part", "label", "aim", "up"}...]}``,
-    one Aim and Up pair per part (a Chain has one, a Leg its leg and foot),
-    or ``None`` for a guide module with no form."""
+    """What the editor's form shows for ``layout``: ``{"name", "count"`` (#
+    Mid: a Chain's or a Hand's) ``, "fingers", "thumb"`` (a Hand's only)
+    ``, "axes": [{"part", "label", "aim", "up"}...]}``, one Aim and Up pair
+    per part (a Chain and a Hand have one, a Leg its leg and foot), or
+    ``None`` for a guide module with no form."""
     return guide_module.fields(layout) if hasattr(guide_module, "fields") else None
 
 
@@ -128,6 +129,15 @@ def revert(guide_module, group, layout):
     """Put the guides under ``group`` back as ``layout`` has them. Returns
     the top group, a new one if the guides had to be made again."""
     return guide_module.restore(group, layout)
+
+
+@undoable
+def reshape(guide_module, group, **values):
+    """Build the guides under ``group`` again in a new shape (a Hand's
+    ``fingers``, ``count`` and ``thumb``), as one undo step, keeping its
+    guides where they are. Returns the new top group. Raises ``ValueError``,
+    changing nothing, for a shape it can't make."""
+    return guide_module.reshape(group, **values)
 
 
 @undoable

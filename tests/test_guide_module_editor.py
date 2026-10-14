@@ -831,9 +831,9 @@ def test_load_of_an_empty_item_says_to_publish(tmp_path):
 
 
 def test_load_refuses_an_unknown_guide_module(tmp_path):
-    path = str(tmp_path / "L_hand.guide")
-    spec.write(path, "hand", {})
-    with pytest.raises(LookupError, match="hand"):
+    path = str(tmp_path / "L_tentacle.guide")
+    spec.write(path, "tentacle", {})
+    with pytest.raises(LookupError, match="tentacle"):
         logic.load(path)
 
 
@@ -1003,3 +1003,38 @@ def test_set_guide_axes_refuses_the_same_axis_twice(new_scene):
     group = leg.build(leg.default_layout("L_leg"))
     with pytest.raises(ValueError, match="different axes"):
         logic.set_guide_axes(leg, group, "foot", "y", "-y")
+
+
+# -- a Hand's form: # Fingers, # Mid, Thumb ---------------------------------------
+
+
+def test_fields_show_a_hands_fingers_middles_and_thumb():
+    hand = get_guide_module("hand")
+    assert logic.fields(hand, hand.default_layout("L_hand")) == {
+        "name": "L_hand",
+        "fingers": 5,
+        "count": 2,
+        "thumb": True,
+        "axes": [{"part": "hand", "label": "", "aim": "x", "up": "y"}],
+    }
+
+
+def test_reshape_changes_a_hands_fingers_as_one_undo_step(new_scene):
+    hand = get_guide_module("hand")
+    group = hand.build(hand.default_layout("L_hand"))
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    group = logic.reshape(hand, group, fingers=3, count=1, thumb=False)
+    assert {k: v for k, v in logic.fields(hand, hand.layout(group)).items() if k in ("fingers", "count", "thumb")} == {
+        "fingers": 3, "count": 1, "thumb": False
+    }
+    cmds.undo()
+    assert hand.layout("L_hand_guides_grp") == hand.default_layout("L_hand")
+
+
+def test_reshape_refuses_a_thumb_with_no_middles_and_changes_nothing(new_scene):
+    hand = get_guide_module("hand")
+    group = hand.build(hand.default_layout("L_hand"))
+    with pytest.raises(ValueError, match="# Mid must be 1 or more"):
+        logic.reshape(hand, group, count=0)
+    assert hand.layout(group) == hand.default_layout("L_hand")

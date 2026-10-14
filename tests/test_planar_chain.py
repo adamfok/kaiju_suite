@@ -161,16 +161,6 @@ def test_extract_problems_names_missing_guides(new_scene):
 # -- deleting guides quietly -----------------------------------------------------
 
 
-@pytest.fixture
-def maya_errors():
-    """Maya's error and warning output while the test runs."""
-    found = []
-    kinds = (om.MCommandMessage.kError, om.MCommandMessage.kWarning)
-    callback = om.MCommandMessage.addCommandOutputCallback(lambda message, kind, *_: kind in kinds and found.append(message))
-    yield found
-    om.MMessage.removeCallback(callback)
-
-
 def test_delete_guides_reports_no_errors(new_scene, maya_errors):
     guides.delete_guides(guides.build_at("arm", POSITIONS, UP))
     assert maya_errors == []
@@ -276,3 +266,120 @@ def test_set_layout_moves_an_attached_chains_guides(new_scene):
     assert guides.layout(foot)["guides"] == [list(map(float, p)) for p in moved]
     with pytest.raises(ValueError, match="attached"):
         guides.set_layout(foot, moved + [(1, 0, 5)], FOOT_UP)
+
+
+# -- a chain with no end joint (a hand's wrist) -----------------------------------
+
+WRIST = [(10, 0, 0), (11.5, 0, 0)]
+WRIST_UP = (10.75, 1.5, 0)
+
+
+def test_a_chain_without_an_end_joint_has_one_joint_fewer(new_scene):
+    group = guides.build_at("hand", WRIST, WRIST_UP, end_joint=False)
+    assert len(guides.guides(group)["chain"]) == 2
+    (wrist,) = guides.joints(group)
+    assert cmds.ls(wrist) == ["hand_01_jnt"]
+    assert not cmds.objExists("hand_02_jnt")
+    assert _pos(wrist) == [10.0, 0.0, 0.0]
+    # Its end guide only aims the joint before it: no preview shows a joint there.
+    assert not cmds.getAttr(f"{guides.previews(group)[-1]}.visibility")
+    assert guides.layout(group)["guides"] == [list(map(float, p)) for p in WRIST]
+
+
+def test_a_chain_without_an_end_joint_aims_at_its_end_guide(new_scene):
+    group = guides.build_at("hand", WRIST, WRIST_UP, end_joint=False)
+    (wrist,) = guides.joints(group)
+    cmds.xform(guides.guides(group)["chain"][-1], worldSpace=True, translation=(10, 0, 1.5))
+    m = cmds.xform(wrist, query=True, worldSpace=True, matrix=True)
+    assert [round(v, 4) + 0.0 for v in m[0:3]] == [0.0, 0.0, 1.0]
+
+
+def test_check_build_without_an_end_joint_doesnt_need_its_name(new_scene):
+    cmds.createNode("transform", name="hand_02_jnt")
+    guides.check_build("hand", WRIST, WRIST_UP, end_joint=False)
+    with pytest.raises(ValueError, match="hand_02_jnt"):
+        guides.check_build("hand", WRIST, WRIST_UP)
+
+
+def test_extracting_a_chain_without_an_end_joint_leaves_no_note(new_scene):
+    group = guides.build_at("hand", WRIST, WRIST_UP, end_joint=False)
+    (wrist,) = guides.delete_guides(group)
+    assert _pos(wrist) == [10.0, 0.0, 0.0]
+    assert not cmds.attributeQuery("kaijuGuideName", node=wrist, exists=True)
+
+
+def test_a_chain_without_an_end_joint_keeps_its_two_guides(new_scene):
+    group = guides.build_at("hand", WRIST, WRIST_UP, end_joint=False)
+    with pytest.raises(ValueError, match="no end joint"):
+        guides.set_layout(group, [WRIST[0], (11, 0, 0), WRIST[1]], WRIST_UP)
+    with pytest.raises(ValueError, match="no end joint"):
+        guides.build_guides("hand", 1)
+    assert len(guides.joints(group)) == 1
+
+
+# -- a chain hanging under a joint with a start guide of its own (a finger) -------
+
+FINGER = [(11.5, 0, 0.5), (12.2, 0, 0.5), (12.7, 0, 0.5), (13.1, 0, 0.5)]
+FINGER_UP = (12.3, 1, 0.5)
+
+
+def _hand_and_finger():
+    hand = guides.build_at("hand", WRIST, WRIST_UP, end_joint=False)
+    finger = guides.build_at("index", FINGER, FINGER_UP, parent=guides.joints(hand)[0], share_start=False)
+    return hand, finger
+
+
+def test_an_unshared_attached_chain_has_its_own_start_guide_and_joint(new_scene):
+    hand, finger = _hand_and_finger()
+    (wrist,) = guides.joints(hand)
+    chain = guides.guides(finger)["chain"]
+    assert cmds.ls(chain[0]) == ["index_start_guide"]
+    assert cmds.listRelatives(chain[0], parent=True, fullPath=True) == [finger]
+    joints = guides.joints(finger)
+    assert cmds.ls(joints) == ["index_01_jnt", "index_02_jnt", "index_03_jnt", "index_04_jnt"]
+    assert cmds.listRelatives(joints[0], parent=True, fullPath=True) == [wrist]
+    assert [_pos(j) for j in joints] == [list(map(float, p)) for p in FINGER]
+    assert guides.attached(wrist) == [finger]
+    assert guides.parent_joint(finger) == wrist
+    # Its first preview shows its own first joint.
+    assert cmds.getAttr(f"{guides.previews(finger)[0]}.visibility")
+
+
+def test_an_unshared_attached_chain_follows_its_guides_and_the_parent(new_scene):
+    hand, finger = _hand_and_finger()
+    knuckle = guides.joints(finger)[0]
+    cmds.xform(guides.guides(finger)["chain"][0], worldSpace=True, translation=(11.5, 0.2, 0.5))
+    assert _pos(knuckle) == [11.5, 0.2, 0.5]
+    cmds.xform(guides.guides(hand)["chain"][0], worldSpace=True, translation=(9, 0, 0))  # the wrist
+    assert _pos(guides.joints(hand)[0]) == [9.0, 0.0, 0.0]
+    assert _pos(knuckle) == [11.5, 0.2, 0.5]
+
+
+def test_an_unshared_attached_chains_layout_is_its_own_guides(new_scene):
+    _, finger = _hand_and_finger()
+    assert guides.layout(finger)["guides"] == [list(map(float, p)) for p in FINGER]
+
+
+def test_extracting_an_unshared_attached_chain_keeps_it_under_the_parent(new_scene):
+    hand, finger = _hand_and_finger()
+    joints = guides.delete_guides(hand)
+    assert cmds.ls(joints) == ["hand_01_jnt", "index_01_jnt", "index_02_jnt", "index_03_jnt", "index_04_jnt"]
+    assert [_pos(j) for j in joints[1:]] == [list(map(float, p)) for p in FINGER]
+    assert cmds.listRelatives(joints[1], parent=True, fullPath=True) == cmds.ls(joints[0], long=True)
+    assert cmds.ls(type="locator") == []
+
+
+def test_owned_nodes_lets_a_rebuild_reuse_its_own_names(new_scene):
+    hand, _ = _hand_and_finger()
+    with pytest.raises(ValueError, match="index_start_guide"):
+        guides.check_build("index", FINGER, FINGER_UP)
+    guides.check_build("index", FINGER, FINGER_UP, owned=guides.owned_nodes(hand))
+
+
+def test_remove_deletes_the_guides_and_their_joints(new_scene):
+    hand, _ = _hand_and_finger()
+    guides.remove(hand)
+    assert cmds.ls(type="joint") == []
+    assert cmds.ls(type="locator") == []
+    assert not cmds.objExists("hand_guides_grp")
+    assert cmds.ls(type="aimMatrix") == []

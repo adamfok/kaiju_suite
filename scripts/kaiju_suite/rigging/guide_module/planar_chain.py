@@ -22,9 +22,13 @@ stay where they are, with plain translate and joint orient values.
 
 A chain can also hang under a joint of another chain (a foot under a leg's
 ankle): it shares that joint's guide as its start guide, and its joints,
-from the second on, are parented under that joint. Its guide group sits
-under the other chain's group, and extracting the other chain extracts it
-first.
+from the second on, are parented under that joint. Or it keeps a start
+guide of its own (a finger under a wrist), and all its joints are parented
+under that joint. Its guide group sits under the other chain's group, and
+extracting the other chain extracts it first.
+
+A chain can also have no end joint (a hand's wrist): its end guide only
+aims the joint before it.
 
 Every function that changes the scene raises ``ValueError``, changing
 nothing, when its input is wrong. None of them opens an undo chunk: the
@@ -50,6 +54,7 @@ _PREVIEWS = "guidePreviews"  # one transform per joint, placed as the joint will
 _PLANE = "guidePlane"
 _PARENT = "guideParent"  # the joint of another chain an attached chain hangs under
 _NODES = "guideNodes"  # utility nodes of the preview network, deleted with the group
+_NO_END = "guideNoEndJoint"  # on a chain whose end guide makes no joint
 # The previews' aim axis and the axis that lines up with the plane normal.
 _AIM = "previewAim"
 _THIRD = "previewThird"
@@ -123,6 +128,17 @@ def _plane(points, up):
         if (b - a).length() < _TOLERANCE:
             raise ValueError(f"Joints {i} and {i + 1} land on the same spot on the plane; move their guides apart.")
     return placed, normal
+
+
+def _ends(group):
+    """Whether ``group``'s end guide makes a joint."""
+    return not cmds.attributeQuery(_NO_END, node=group, exists=True)
+
+
+def _shares_start(group):
+    """Whether ``group``'s start guide is another chain's (it isn't under ``group``)."""
+    start = _connected(group, _CHAIN)[:1]
+    return bool(start) and cmds.listRelatives(start[0], parent=True, fullPath=True) != [group]
 
 
 def _lock_to_move_only(node):
@@ -446,15 +462,16 @@ def _chain_names(name, count, attached=False):
     return ([] if attached else [f"{name}_start_guide"]) + middles + [f"{name}_end_guide"]
 
 
-def _joint_names(name, count, attached=False):
-    """The joints' names; an attached chain has no joint on its start guide."""
-    return [f"{name}_{i:02d}_jnt" for i in range(1, count + (2 if attached else 3))]
+def _joint_names(name, count, attached=False, end_joint=True):
+    """The joints' names; an attached chain has no joint on its start guide,
+    and a chain without an end joint none on its end guide."""
+    return [f"{name}_{i:02d}_jnt" for i in range(1, count + 3 - bool(attached) - (not end_joint))]
 
 
-def _names(name, count, attached=False):
+def _names(name, count, attached=False, end_joint=True):
     """Every name building ``count`` middle guides for ``name`` uses."""
     names = [f"{name}_guides_grp", f"{name}_up_guide", f"{name}_guide_crv", f"{name}_up_crv", f"{name}_plane"]
-    names += _chain_names(name, count, attached) + _joint_names(name, count, attached)
+    names += _chain_names(name, count, attached) + _joint_names(name, count, attached, end_joint)
     return names + [f"{name}_{i:02d}_{kind}" for i in range(1, count + 3) for kind in ("preview", "disc")]
 
 
@@ -513,16 +530,22 @@ def _live_joints(group, name, uuids=None):
     joints' own parentInverseMatrix instead goes stale. Translate and rotate
     stay zero, locked. An attached chain makes no joint on its first preview:
     its top joint hangs under the parent joint, in the space of the preview
-    that drives that joint."""
+    that drives that joint; one with a start guide of its own hangs all its
+    joints under the parent joint. A chain without an end joint makes none
+    on its last preview."""
     shown, parent = previews(group), parent_joint(group)
+    shared = bool(parent) and _shares_start(group)
     if parent:
         parent_group, index = _guided(parent)
-        driven, spaces = shown[1:], [previews(parent_group)[index]] + shown[1:-1]
+        space = previews(parent_group)[index]
+        driven, spaces = (shown[1:], [space] + shown[1:-1]) if shared else (shown, [space] + shown[:-1])
     else:
         driven, spaces = shown, [None] + shown[:-1]
+    if not _ends(group):
+        driven = driven[:-1]
     if uuids is None:
         uuids, above = [], parent
-        for joint_name in _joint_names(name, len(shown) - 2, attached=bool(parent)):
+        for joint_name in _joint_names(name, len(shown) - 2, attached=shared, end_joint=_ends(group)):
             joint = _long(cmds.createNode("joint", name=joint_name, **({"parent": above} if above else {})))
             if above:
                 cmds.connectAttr(f"{above}.scale", f"{joint}.inverseScale", force=True)
@@ -560,7 +583,8 @@ def _extract(group):
     uuids = cmds.ls(linked, uuid=True)
     worlds = [om.MMatrix(cmds.xform(j, query=True, worldSpace=True, matrix=True)) for j in linked]
     note = (cmds.getAttr(f"{group}.{_TAG}"), cmds.getAttr(f"{group}.{_AXES_TEXT}") or "x y", _position(found["up"]))
-    parented = parent_joint(group) is not None
+    # An attached chain can't be built again on its own, nor can one without an end joint.
+    noted = parent_joint(group) is None and _ends(group)
     # One delete takes the drivers too, so the joints keep their last value.
     _remove(group)
     for uuid in uuids:
@@ -572,8 +596,7 @@ def _extract(group):
         joint = _by_uuid(uuid)
         cmds.xform(joint, worldSpace=True, translation=(world[12], world[13], world[14]))
         orient.set_world_rotation(joint, world)
-    # An attached chain can't be built again on its own: it gets no note.
-    if uuids and not parented:
+    if uuids and noted:
         _leave_note(_by_uuid(uuids[0]), *note)
     return [_by_uuid(uuid) for uuid in uuids + hanging]
 
@@ -625,35 +648,41 @@ def _remove(group):
     cmds.delete(nodes + [group])
 
 
-def _taken(name, count, owned=(), attached=False):
-    owned = set(owned)
-    return [n for n in _names(name, count, attached) if set(cmds.ls(n, long=True)) - owned]
+def _taken(name, count, owned=(), attached=False, end_joint=True):
+    owned = set(cmds.ls(list(owned), long=True)) if owned else set()
+    return [n for n in _names(name, count, attached, end_joint) if set(cmds.ls(n, long=True)) - owned]
 
 
-def _check_free(name, count, owned=(), attached=False):
-    taken = _taken(name, count, owned, attached)
+def _check_free(name, count, owned=(), attached=False, end_joint=True):
+    taken = _taken(name, count, owned, attached, end_joint)
     if taken:
         raise ValueError(f"These names are already used, rename or delete them first: {', '.join(taken)}")
 
 
-def _build_at(name, positions, up_position, axes, uuids=None, parent=None):
+def _build_at(name, positions, up_position, axes, uuids=None, parent=None, share_start=True, end_joint=True):
     """Guides for ``name`` on ``positions`` (start, middles, end), the up
     guide on ``up_position``, and joints following them live (``uuids`` to
     reuse, top first, or new ones), attached under the ``parent`` joint if
-    given. Checks nothing."""
-    start_guide = None
+    given (sharing its guide if ``share_start``), with no joint on the end
+    guide unless ``end_joint``. Checks nothing."""
+    start_guide, shared = None, parent is not None and share_start
     if parent:
         parent_group, index = _guided(parent)
-        start_guide = guides(parent_group)["chain"][index]
+        if shared:
+            start_guide = guides(parent_group)["chain"][index]
     group = _create_guides(name, len(positions) - 2, positions[0], positions[-1], axes, start_guide)
+    if not end_joint:
+        cmds.addAttr(group, longName=_NO_END, attributeType="bool", defaultValue=True)
+        cmds.setAttr(f"{previews(group)[-1]}.visibility", False)
     if parent:
         group = _long(cmds.parent(group, parent_group)[0])
         _link(parent, group, _PARENT)
-        # Its first preview sits on the parent joint, which shows its own.
-        cmds.setAttr(f"{previews(group)[0]}.visibility", False)
+        if shared:
+            # Its first preview sits on the parent joint, which shows its own.
+            cmds.setAttr(f"{previews(group)[0]}.visibility", False)
     chain = guides(group)["chain"]
     # The shared start guide stays where its own chain has it.
-    for guide, position in list(zip(chain, positions))[1 if parent else 0 :]:
+    for guide, position in list(zip(chain, positions))[1 if shared else 0 :]:
         cmds.xform(guide, worldSpace=True, translation=(position.x, position.y, position.z))
     cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
     _live_joints(group, name, uuids)
@@ -683,6 +712,8 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     old = f"{name}_guides_grp"
     old = _long(old) if cmds.objExists(old) and _is_group(old) else None
     owned, keep, doomed = set(), None, []
+    if old and not _ends(old):
+        raise ValueError(f"{short_name(old)} has no end joint: it keeps its 2 guides.")
     if old:
         found = guides(old)
         start, end = _position(found["chain"][0]), _position(found["chain"][-1])
@@ -836,6 +867,8 @@ def set_layout(group, positions, up_position, aim="x", up="y"):
     positions, up_position = [om.MVector(p) for p in positions], om.MVector(up_position)
     _plane(positions, up_position)  # raises if it can't be built
     count = len(guides(group)["chain"])
+    if count != len(positions) and not _ends(group):
+        raise ValueError(f"{short_name(group)} has no end joint: it keeps its {count} guides.")
     if count != len(positions) and parent_joint(group):
         raise ValueError(f"{short_name(group)} is attached to another chain: it keeps its {count} guides.")
     if count != len(positions):
@@ -871,19 +904,47 @@ def layout(group):
     }
 
 
-def check_build(name, positions, up_position, aim="x", up="y", attached=False):
+def check_build(name, positions, up_position, aim="x", up="y", attached=False, end_joint=True, owned=()):
     """Raise ``ValueError`` if :func:`build_at` can't build these guides in
-    the current scene (``attached`` under another chain's joint, if so).
-    Changes nothing."""
+    the current scene (``attached`` under another chain's joint sharing its
+    guide, if so; without an end joint unless ``end_joint``). Names that
+    ``owned`` nodes use count as free (see :func:`owned_nodes`). Changes
+    nothing."""
     _check_name(name)
     if len(positions) < 2:
         raise ValueError(f"The {name} chain needs 2 guides or more.")
     _axes(aim, up)
     _plane(positions, up_position)
-    _check_free(name, len(positions) - 2, attached=attached)
+    _check_free(name, len(positions) - 2, owned=owned, attached=attached, end_joint=end_joint)
 
 
-def build_at(name, positions, up_position, aim="x", up="y", parent=None):
+def _groups_under(group):
+    """``group`` and the guide groups of the chains under it."""
+    below = cmds.listRelatives(group, allDescendents=True, type="transform", fullPath=True) or []
+    return [group] + [g for g in below if _is_group(g)]
+
+
+def owned_nodes(group):
+    """Every node :func:`remove` deletes with ``group``: its guides, the
+    chains under it, their utility nodes and all their joints."""
+    group = guide_group(group)
+    nodes = cmds.ls(group, dag=True, long=True)
+    for g in _groups_under(group):
+        nodes += cmds.ls(_connected(g, _NODES), long=True) + cmds.ls(joints(g), dag=True, long=True)
+    return nodes
+
+
+def remove(group):
+    """Delete ``group``, the chains under it and all their joints."""
+    group = guide_group(group)
+    uuids = cmds.ls([j for g in _groups_under(group) for j in joints(g)], uuid=True)
+    _remove(group)
+    left = cmds.ls(uuids, long=True)
+    if left:
+        cmds.delete(left)
+
+
+def build_at(name, positions, up_position, aim="x", up="y", parent=None, share_start=True, end_joint=True):
     """Build guides for a chain named ``name`` with a guide on each of
     ``positions`` (start, middles, end) and the up guide on
     ``up_position``, and a joint chain that follows them live (see
@@ -893,10 +954,23 @@ def build_at(name, positions, up_position, aim="x", up="y", parent=None):
     hangs under it: its start guide is that joint's guide (left where it
     is, so ``positions`` should start there), its joints from the second
     on are parented under ``parent``, and its group goes under the other
-    chain's group."""
+    chain's group. Unless ``share_start``, it makes a start guide of its
+    own and hangs all its joints under ``parent``.
+
+    Unless ``end_joint``, the end guide makes no joint: it only aims the
+    joint before it, and the chain keeps its 2 guides (no middle guides)."""
     if parent is not None:
         _guided(parent)  # raises if no guides drive it
-    check_build(name, positions, up_position, aim, up, attached=parent is not None)
+    attached = parent is not None and share_start
+    check_build(name, positions, up_position, aim, up, attached=attached, end_joint=end_joint)
     positions = [om.MVector(p) for p in positions]
-    return _build_at(name, positions, om.MVector(up_position), _axes(aim, up), parent=parent)
+    return _build_at(
+        name,
+        positions,
+        om.MVector(up_position),
+        _axes(aim, up),
+        parent=parent,
+        share_start=share_start,
+        end_joint=end_joint,
+    )
 

@@ -65,8 +65,11 @@ class GuideModule:
     :meth:`delete` (plus :meth:`check_extract` if extracting can fail);
     override :meth:`rebuild` if an earlier build can leave something to
     reuse. For a form in the Guide Module Editor, add ``fields(layout)``
-    (``{"name", "count"`` if it has middle guides to set ``, "axes": [{"part",
-    "label", "aim", "up"}...]}``) and :meth:`set_axes`."""
+    (``{"name", "count"`` if it has middle guides to set ``, "fingers",
+    "thumb"`` for a hand ``, "axes": [{"part", "label", "aim", "up"}...]}``)
+    and :meth:`set_axes`; with ``fingers`` or ``thumb``, also
+    ``reshape(group, **values)``, which builds the guides again in the new
+    shape and returns their top group."""
 
     key = ""
     name = ""

@@ -28,3 +28,15 @@ def new_scene():
     cmds.file(new=True, force=True)
     yield
     cmds.file(new=True, force=True)
+
+
+@pytest.fixture
+def maya_errors():
+    """Maya's error and warning output while the test runs."""
+    from maya.api import OpenMaya as om
+
+    found = []
+    kinds = (om.MCommandMessage.kError, om.MCommandMessage.kWarning)
+    callback = om.MCommandMessage.addCommandOutputCallback(lambda message, kind, *_: kind in kinds and found.append(message))
+    yield found
+    om.MMessage.removeCallback(callback)

@@ -294,3 +294,29 @@ def test_new_leg_guide_item_runs_publishes_and_mirrors(new_scene, tmp_path):
     assert key == "leg" and mirrored == leg.mirrored(spec.read(path)[1])
     guides.PRODUCT.run(str(tmp_path / "R_leg.guide"))
     assert cmds.objExists("R_leg_guides_grp")
+
+
+# -- Hand Guide -----------------------------------------------------------------
+
+
+def test_new_hand_guide_item_runs_publishes_and_mirrors(new_scene, tmp_path):
+    hand = get_guide_module("hand")
+    path = _creator("Hand Guide").fn(str(tmp_path), "L_hand", None)
+    assert spec.read(path) == ("hand", hand.default_layout("L_hand"))
+    assert guides.PRODUCT.type_name(path) == "Hand Guide"
+
+    guides.PRODUCT.run(path)
+    group = "L_hand_guides_grp"
+    assert len(core_guides.joints(group)) == 1
+    assert len(cmds.ls(type="joint")) == 1 + 3 + 4 * 4
+    index = "L_hand_index_guides_grp"
+    cmds.xform(core_guides.guides(index)["chain"][0], worldSpace=True, translation=(11.4, 0.1, 0.6))
+    cmds.select(core_guides.joints(index)[1])
+    versions.publish_action(path).fn()
+    assert spec.read(path)[1]["fingers"][1]["guides"][0] == [11.4, 0.1, 0.6]
+
+    _mirror_action(path).fn()
+    key, mirrored = spec.read(str(tmp_path / "R_hand.guide"))
+    assert key == "hand" and mirrored == hand.mirrored(spec.read(path)[1])
+    guides.PRODUCT.run(str(tmp_path / "R_hand.guide"))
+    assert cmds.objExists("R_hand_index_04_jnt")

@@ -65,8 +65,19 @@ class GuideModuleEditorWindow(ToolWindow):
             "Changing it makes the middle guides again, evenly between start and end."
         )
         self.count.valueChanged.connect(self._on_count)
+        self.fingers = QtWidgets.QSpinBox(minimum=1, maximum=20, keyboardTracking=False)
+        self.fingers.setToolTip(
+            "How many fingers the hand has, the thumb included.\n"
+            "Changing it builds the hand again: fingers go from the end, new ones copy the last."
+        )
+        self.fingers.valueChanged.connect(lambda value: self._reshape(fingers=int(value)))
+        self.thumb = QtWidgets.QCheckBox()
+        self.thumb.setToolTip("The first finger is a thumb, with one middle joint fewer than the other fingers.")
+        self.thumb.toggled.connect(lambda checked: self._reshape(thumb=bool(checked)))
         form.addRow("Name", self.name_label)
+        form.addRow("# Fingers", self.fingers)
         form.addRow("# Mid", self.count)
+        form.addRow("Thumb", self.thumb)
         # One Aim and Up row pair per part of the guide module (see logic.fields):
         # [(part, label, aim combo, up combo)], made again when the parts change.
         self._axis_rows = []
@@ -256,12 +267,15 @@ class GuideModuleEditorWindow(ToolWindow):
         if shown is None:
             return
         self.name_label.setText(shown["name"])
-        has_count = "count" in shown
-        self.form.setRowVisible(self.count, has_count)
-        if has_count and not self.count.hasFocus():  # don't overwrite a number being typed
-            self.count.blockSignals(True)
-            self.count.setValue(shown["count"])
-            self.count.blockSignals(False)
+        for field, key in ((self.count, "count"), (self.fingers, "fingers"), (self.thumb, "thumb")):
+            self.form.setRowVisible(field, key in shown)
+            if key in shown and not field.hasFocus():  # don't overwrite a number being typed
+                field.blockSignals(True)
+                if field is self.thumb:
+                    field.setChecked(shown[key])
+                else:
+                    field.setValue(shown[key])
+                field.blockSignals(False)
         self._set_axis_rows(shown["axes"])
         combos = []
         for (_, _, aim, up), entry in zip(self._axis_rows, shown["axes"]):
@@ -270,17 +284,32 @@ class GuideModuleEditorWindow(ToolWindow):
                 combo.setCurrentIndex(max(combo.findData(entry[key]), 0))
                 combo.blockSignals(False)
                 combos.append(combo)
-        for field in [self.count] + combos:
+        for field in [self.count, self.fingers, self.thumb] + combos:
             field.setEnabled(editable)
 
     # -- editing ------------------------------------------------------------
 
     def _on_count(self, value):
+        if hasattr(self.guide_module, "reshape"):
+            self._reshape(count=int(value))
+            return
         group = self._group()
         if group is None:
             return
         try:
             self._track(logic.set_count(group, int(value)))
+        except ValueError as e:
+            _warn(str(e))
+            self._refresh()
+
+    def _reshape(self, **values):
+        """Build the guides again in the shape the form now shows (a Hand's
+        # Fingers, # Mid or Thumb)."""
+        group = self._group()
+        if group is None:
+            return
+        try:
+            self._track(logic.reshape(self.guide_module, group, **values))
         except ValueError as e:
             _warn(str(e))
             self._refresh()
