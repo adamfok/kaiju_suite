@@ -2,6 +2,8 @@
 
 ## Unreleased
 - Scripter: folder rows no longer have a grey background; separators keep theirs
+- Scripter: right-click the column header to hide or show the **Type** column. The choice is remembered for next time
+- Scripter: every item shows an icon for its kind again: Script (code brackets), Folder, Separator (grey bar), Breakpoint (red dot), Import File and Export File (orange arrow into or out of a tray), Joints (joint chain), Skin (pink envelope round a bone) and Mesh (cube). They're drawn as SVGs, so they stay sharp at any Maya UI scale
 - Scripter: double-click a folder to open it in Explorer (Finder on macOS); the right-click **Open in Explorer** entry is gone. Double-click no longer expands or collapses a folder: use its arrow
 - Scripter: right-click a script ▸ **Edit in VS Code** opens it in VS Code, in the window you already have open. Saving there updates the Version column as usual. It replaces **Edit in Script Editor** in the menu: double-click a script to open it in the Script Editor, as before. If VS Code isn't installed (or its `code` command can't be found), it warns and does nothing
 - Scripter: the status column shows drawn icons instead of text characters: a green check for ran, a red cross for failed and a yellow pause sign for paused. They stay sharp at any Maya UI scale. Breakpoint rows are a darker red, and scripts no longer show a file icon (folders keep theirs)

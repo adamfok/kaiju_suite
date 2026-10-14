@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.tools.scripter import items, logic, script_editor, versions, vscode
-from kaiju_suite.ui import status_icons
+from kaiju_suite.ui import icons, status_icons
 from kaiju_suite.ui.base_window import ToolWindow
 
 log = get_logger(__name__)
@@ -22,6 +22,8 @@ NAME, VERSION, TYPE, STATUS = range(4)
 SIZED = (VERSION, TYPE)
 DEFAULT_WIDTHS = (60, 90)
 STATUS_WIDTH = 28
+# Columns the header's right-click menu can hide, by label.
+HIDEABLE = {"Type": TYPE}
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
 # Version column when the item isn't at its newest version.
@@ -39,7 +41,18 @@ STATUS_ICONS = {
     logic.PAUSED: (status_icons.pause, PAUSED_COLOR),
 }
 STATUS_TIPS = {logic.RAN: "Ran", logic.PAUSED: "Paused here. Right-click > Continue to run the rest."}
-ICONS = {logic.FOLDER: "SP_DirIcon"}
+# Each item kind's icon in the module's icons/ folder.
+ICONS = {
+    logic.SCRIPT: "scripter_script.svg",
+    logic.FOLDER: "scripter_folder.svg",
+    logic.SEPARATOR: "scripter_separator.svg",
+    logic.BREAKPOINT: "scripter_breakpoint.svg",
+    logic.IMPORT_FILE: "scripter_import_file.svg",
+    logic.EXPORT_FILE: "scripter_export_file.svg",
+    logic.JOINTS: "scripter_joints.svg",
+    logic.SKIN: "scripter_skin.svg",
+    logic.MESH: "scripter_mesh.svg",
+}
 # The right-click New menu, in order.
 NEW_KINDS = (
     logic.SCRIPT,
@@ -69,6 +82,14 @@ def status_icon(status):
         return QtGui.QIcon()
     draw, color = STATUS_ICONS[status]
     return draw(color)
+
+
+@functools.cache
+def kind_icon(kind):
+    """The name column's icon for an item ``kind``; an empty icon for none."""
+    if kind not in ICONS:
+        return QtGui.QIcon()
+    return icons.icon(ICONS[kind])
 
 
 def _warn(message):
@@ -104,6 +125,11 @@ class _Tree(QtWidgets.QTreeWidget):
         header.setSectionResizeMode(STATUS, QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.setColumnWidth(STATUS, STATUS_WIDTH)
         header.sectionResized.connect(self._remember_widths)
+        # Right-click the header to hide or show columns; remembered per user.
+        for label, column in HIDEABLE.items():
+            self.setColumnHidden(column, bool(settings.get(logic.SETTINGS_KEY, self._hidden_key(label), 0)))
+        header.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        header.customContextMenuRequested.connect(self._on_header_menu)
         self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -120,9 +146,30 @@ class _Tree(QtWidgets.QTreeWidget):
         return widths if len(widths) == len(DEFAULT_WIDTHS) else DEFAULT_WIDTHS
 
     def _remember_widths(self, column, _old, _new):
-        if column in SIZED:
-            widths = ",".join(str(self.columnWidth(c)) for c in SIZED)
-            settings.set(logic.SETTINGS_KEY, "version_type_widths", widths)
+        # Hiding a column resizes it to 0: a hidden column keeps its saved width.
+        if column in SIZED and not self.isColumnHidden(column):
+            widths = (
+                saved if self.isColumnHidden(c) else self.columnWidth(c)
+                for c, saved in zip(SIZED, self._saved_widths())
+            )
+            settings.set(logic.SETTINGS_KEY, "version_type_widths", ",".join(map(str, widths)))
+
+    @staticmethod
+    def _hidden_key(label):
+        return f"{label.lower()}_column_hidden"
+
+    def _on_header_menu(self, pos):
+        menu = QtWidgets.QMenu(self)
+        for label, column in HIDEABLE.items():
+            action = menu.addAction(label)
+            action.setCheckable(True)
+            action.setChecked(not self.isColumnHidden(column))
+            action.toggled.connect(functools.partial(self._set_column_shown, label, column))
+        menu.exec(self.header().mapToGlobal(pos))
+
+    def _set_column_shown(self, label, column, shown):
+        self.setColumnHidden(column, not shown)
+        settings.set(logic.SETTINGS_KEY, self._hidden_key(label), not shown)
 
     def dropEvent(self, event):
         # Don't call super: the tree is rebuilt from disk instead.
@@ -274,9 +321,7 @@ class ScripterWindow(ToolWindow):
             item.setData(0, PATH_ROLE, entry.path)
             if entry.kind in items.FILE_KINDS:
                 self._show_target(item)
-            icon = ICONS.get(entry.kind)
-            if icon:
-                item.setIcon(0, self.style().standardIcon(getattr(QtWidgets.QStyle.StandardPixmap, icon)))
+            item.setIcon(0, kind_icon(entry.kind))
             color = ROW_COLORS.get(entry.kind)
             if color:
                 for column in range(item.columnCount()):

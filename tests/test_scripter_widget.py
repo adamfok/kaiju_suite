@@ -1,4 +1,4 @@
-"""Scripter's status column icons, row colors and folder double-click.
+"""Scripter's item and status column icons, row colors and folder double-click.
 
 maya.standalone runs a Qt application without widgets, so the widget module
 is loaded off-screen in a separate mayapy process that doesn't start Maya."""
@@ -40,6 +40,14 @@ out["breakpoint_row"] = widget.ROW_COLORS[logic.BREAKPOINT].getRgb()[:3]
 out["has_status_text"] = hasattr(widget, "STATUS_TEXT")
 out["kinds_with_icons"] = sorted(widget.ICONS)
 out["row_color_kinds"] = sorted(widget.ROW_COLORS)
+out["icon_files"] = sorted(widget.ICONS.values())
+out["new_kinds"] = sorted(widget.NEW_KINDS)
+out["kind_icons"] = {}
+for kind in widget.NEW_KINDS:
+    icon = widget.kind_icon(kind)
+    image = icon.pixmap(16, 16).toImage()
+    drawn = sum(1 for y in range(image.height()) for x in range(image.width()) if QtGui.QColor.fromRgba(image.pixel(x, y)).alpha() > 0)
+    out["kind_icons"][kind] = {"null": icon.isNull(), "drawn": drawn}
 print(json.dumps(out))
 """
 
@@ -79,8 +87,25 @@ def test_breakpoint_rows_are_a_dark_red(probe):
     assert red > 2 * green and red > 2 * blue
 
 
-def test_only_folders_have_an_icon(probe):
-    assert probe["kinds_with_icons"] == ["Folder"]
+def test_every_item_kind_has_an_icon(probe):
+    assert probe["kinds_with_icons"] == probe["new_kinds"]
+
+
+def test_item_icons_draw_something(probe):
+    for kind, icon in probe["kind_icons"].items():
+        assert not icon["null"], kind
+        assert icon["drawn"] > 10, kind
+
+
+def test_item_icons_ship_as_svg(probe):
+    import xml.etree.ElementTree as ET
+
+    from kaiju_suite.ui import icons
+
+    for name in probe["icon_files"]:
+        path = icons.path(name)
+        assert os.path.isfile(path), path
+        assert ET.parse(path).getroot().tag == "{http://www.w3.org/2000/svg}svg"
 
 
 def test_folders_have_no_background_color(probe):
@@ -168,3 +193,91 @@ def test_folder_menu_has_no_open_in_explorer(folder_probe):
     assert folder_probe["menu"] is not None
     assert "Rename" in folder_probe["menu"]
     assert "Open in Explorer" not in folder_probe["menu"]
+
+
+# Right-clicking the column header shows a menu that hides or shows the Type
+# column; the choice is remembered, so a new tree starts the same way.
+_HEADER_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import widget
+
+saved = {}
+widget.settings.get = lambda tool, key, default=None: saved.get(key, default)
+widget.settings.set = lambda tool, key, value: saved.__setitem__(key, value)
+
+menus = []
+
+
+class RecordingMenu(QtWidgets.QMenu):
+    def exec(self, *_):
+        menus.append(self)
+
+
+widget.QtWidgets.QMenu = RecordingMenu
+
+tree = widget._Tree(None)
+out = {"policy_custom": tree.header().contextMenuPolicy() == widget.QtCore.Qt.ContextMenuPolicy.CustomContextMenu}
+out["hidden_at_start"] = tree.isColumnHidden(widget.TYPE)
+tree.header().customContextMenuRequested.emit(tree.header().rect().center())
+type_action = [a for a in menus[-1].actions() if a.text() == "Type"][0]
+out["menu"] = [a.text() for a in menus[-1].actions()]
+out["checked_before"] = type_action.isChecked()
+type_action.trigger()
+out["hidden_after_untick"] = tree.isColumnHidden(widget.TYPE)
+out["new_tree_hidden"] = widget._Tree(None).isColumnHidden(widget.TYPE)
+
+tree.header().customContextMenuRequested.emit(tree.header().rect().center())
+type_action = [a for a in menus[-1].actions() if a.text() == "Type"][0]
+out["checked_when_hidden"] = type_action.isChecked()
+type_action.trigger()
+out["hidden_after_tick"] = tree.isColumnHidden(widget.TYPE)
+out["new_tree_hidden_again"] = widget._Tree(None).isColumnHidden(widget.TYPE)
+
+# On screen, hiding a column resizes it to 0: that mustn't be saved as its width.
+shown = widget._Tree(None)
+shown.resize(400, 300)
+shown.show()
+app.processEvents()
+shown.setColumnWidth(widget.TYPE, 140)
+shown._set_column_shown("Type", widget.TYPE, False)
+app.processEvents()
+out["saved_widths_while_hidden"] = saved["version_type_widths"]
+reopened = widget._Tree(None)
+reopened._set_column_shown("Type", widget.TYPE, True)
+out["width_after_reopen"] = reopened.columnWidth(widget.TYPE)
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def header_probe():
+    done = subprocess.run([sys.executable, "-c", _HEADER_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_type_column_shows_by_default(header_probe):
+    assert header_probe["policy_custom"]
+    assert header_probe["hidden_at_start"] is False
+
+
+def test_header_menu_toggles_the_type_column(header_probe):
+    assert header_probe["menu"] == ["Type"]
+    assert header_probe["checked_before"] is True
+    assert header_probe["hidden_after_untick"] is True
+    assert header_probe["checked_when_hidden"] is False
+    assert header_probe["hidden_after_tick"] is False
+
+
+def test_type_column_choice_is_remembered(header_probe):
+    assert header_probe["new_tree_hidden"] is True
+    assert header_probe["new_tree_hidden_again"] is False
+
+
+def test_hiding_type_keeps_its_saved_width(header_probe):
+    assert header_probe["saved_widths_while_hidden"] == "60,140"
+    assert header_probe["width_after_reopen"] == 140
