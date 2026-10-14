@@ -31,11 +31,10 @@ OLD_VERSION_COLOR = QtGui.QColor(235, 150, 50)
 FAILED_COLOR = QtGui.QColor(225, 85, 85)
 RAN_COLOR = QtGui.QColor(110, 190, 110)
 PAUSED_COLOR = QtGui.QColor(232, 197, 71)
-ROW_COLORS = {
-    logic.FOLDER: QtGui.QColor(60, 60, 60),
-    logic.SEPARATOR: QtGui.QColor(60, 60, 60),
-    logic.BREAKPOINT: QtGui.QColor(80, 28, 28),
-}
+ROW_COLORS = {logic.BREAKPOINT: QtGui.QColor(80, 28, 28)}
+# Separator rows are the tree's background darkened by this (percent), so
+# they read as dividers darker than the window in any Maya UI color scheme.
+SEPARATOR_DARKER = 150
 STATUS_ICONS = {
     logic.RAN: (status_icons.check, RAN_COLOR),
     logic.FAILED: (status_icons.cross, FAILED_COLOR),
@@ -91,6 +90,13 @@ def kind_icon(kind):
     if kind not in ICONS:
         return QtGui.QIcon()
     return icons.same_when_selected(icons.icon(ICONS[kind]))
+
+
+def row_color(kind, palette):
+    """The background for a row of ``kind`` in a tree with ``palette``; None for none."""
+    if kind == logic.SEPARATOR:
+        return palette.color(QtGui.QPalette.ColorRole.Base).darker(SEPARATOR_DARKER)
+    return ROW_COLORS.get(kind)
 
 
 def _warn(message):
@@ -323,7 +329,7 @@ class ScripterWindow(ToolWindow):
             if entry.kind in items.FILE_KINDS:
                 self._show_target(item)
             item.setIcon(0, kind_icon(entry.kind))
-            color = ROW_COLORS.get(entry.kind)
+            color = row_color(entry.kind, self.tree.palette())
             if color:
                 for column in range(item.columnCount()):
                     item.setBackground(column, color)
