@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Scripter: folder rows no longer have a grey background; separators keep theirs
+- Scripter: folder rows no longer have a grey background, and separator rows are now a darker grey than the window and tree, so they read as dividers
 - Scripter: right-click the column header to hide or show the **Type** column. The choice is remembered for next time
 - Scripter: every item shows an icon for its kind again: Script (code brackets), Folder, Separator (grey bar), Breakpoint (red dot), Import File and Export File (orange arrow into or out of a tray), Joints (joint chain), Skin (pink envelope round a bone) and Mesh (cube). They're drawn as SVGs, so they stay sharp at any Maya UI scale
 - Scripter: double-click a folder to open it in Explorer (Finder on macOS); the right-click **Open in Explorer** entry is gone. Double-click no longer expands or collapses a folder: use its arrow

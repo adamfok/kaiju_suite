@@ -39,7 +39,14 @@ out["failed_color"] = widget.FAILED_COLOR.getRgb()[:3]
 out["breakpoint_row"] = widget.ROW_COLORS[logic.BREAKPOINT].getRgb()[:3]
 out["has_status_text"] = hasattr(widget, "STATUS_TEXT")
 out["kinds_with_icons"] = sorted(widget.ICONS)
-out["row_color_kinds"] = sorted(widget.ROW_COLORS)
+# Maya's dark UI: window background 68 grey, tree background 43.
+maya_palette = QtGui.QPalette()
+maya_palette.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(68, 68, 68))
+maya_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(43, 43, 43))
+out["row_colors"] = {}
+for kind in widget.NEW_KINDS:
+    color = widget.row_color(kind, maya_palette)
+    out["row_colors"][kind] = color.getRgb()[:3] if color else None
 out["icon_files"] = sorted(widget.ICONS.values())
 out["new_kinds"] = sorted(widget.NEW_KINDS)
 out["kind_icons"] = {}
@@ -109,8 +116,14 @@ def test_item_icons_ship_as_svg(probe):
 
 
 def test_folders_have_no_background_color(probe):
-    assert "Folder" not in probe["row_color_kinds"]
-    assert {"Separator", "Breakpoint"} <= set(probe["row_color_kinds"])
+    assert probe["row_colors"]["Folder"] is None
+    assert probe["row_colors"]["Breakpoint"] == probe["breakpoint_row"]
+
+
+def test_separator_rows_are_darker_than_the_window_and_tree(probe):
+    separator = probe["row_colors"]["Separator"]
+    assert separator is not None
+    assert max(separator) < 43  # the tree background, itself darker than the window's 68
 
 
 # Double-clicking a folder opens it in the file browser (there's no right-click
