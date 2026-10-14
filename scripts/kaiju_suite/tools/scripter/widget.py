@@ -30,7 +30,6 @@ FAILED_COLOR = QtGui.QColor(225, 85, 85)
 RAN_COLOR = QtGui.QColor(110, 190, 110)
 PAUSED_COLOR = QtGui.QColor(232, 197, 71)
 ROW_COLORS = {
-    logic.FOLDER: QtGui.QColor(60, 60, 60),
     logic.SEPARATOR: QtGui.QColor(60, 60, 60),
     logic.BREAKPOINT: QtGui.QColor(80, 28, 28),
 }

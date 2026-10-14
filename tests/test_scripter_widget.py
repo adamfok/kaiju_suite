@@ -39,6 +39,7 @@ out["failed_color"] = widget.FAILED_COLOR.getRgb()[:3]
 out["breakpoint_row"] = widget.ROW_COLORS[logic.BREAKPOINT].getRgb()[:3]
 out["has_status_text"] = hasattr(widget, "STATUS_TEXT")
 out["kinds_with_icons"] = sorted(widget.ICONS)
+out["row_color_kinds"] = sorted(widget.ROW_COLORS)
 print(json.dumps(out))
 """
 
@@ -80,6 +81,11 @@ def test_breakpoint_rows_are_a_dark_red(probe):
 
 def test_only_folders_have_an_icon(probe):
     assert probe["kinds_with_icons"] == ["Folder"]
+
+
+def test_folders_have_no_background_color(probe):
+    assert "Folder" not in probe["row_color_kinds"]
+    assert {"Separator", "Breakpoint"} <= set(probe["row_color_kinds"])
 
 
 # Double-clicking a folder opens it in the file browser (there's no right-click
