@@ -82,7 +82,7 @@ def status_icon(status):
     if status not in STATUS_ICONS:
         return QtGui.QIcon()
     draw, color = STATUS_ICONS[status]
-    return draw(color)
+    return icons.same_when_selected(draw(color))
 
 
 @functools.cache
@@ -90,7 +90,7 @@ def kind_icon(kind):
     """The name column's icon for an item ``kind``; an empty icon for none."""
     if kind not in ICONS:
         return QtGui.QIcon()
-    return icons.icon(ICONS[kind])
+    return icons.same_when_selected(icons.icon(ICONS[kind]))
 
 
 def _warn(message):
