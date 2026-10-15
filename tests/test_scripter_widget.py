@@ -188,12 +188,18 @@ item.setData(0, widget.PATH_ROLE, folder)
 stand._on_double_click(item, 0)
 
 menus = []
+new_icons = {}
 
 
 class RecordingMenu(QtWidgets.QMenu):
     def exec(self, *_):
         actions = self.actions()
         menus.append([a.text() for a in actions] + [s.text() for a in actions if a.menu() for s in a.menu().actions()])
+        for a in actions:
+            if a.menu() and a.text() == "New":
+                for s in a.menu().actions():
+                    if not s.isSeparator():
+                        new_icons[s.text()] = s.icon().cacheKey() == widget.kind_icon(s.text()).cacheKey()
 
 
 QtWidgets.QMenu = RecordingMenu
@@ -204,6 +210,7 @@ print(json.dumps({
     "opened": opened,
     "folder": folder,
     "menu": menus[0] if menus else None,
+    "new_icons": new_icons,
     "expands_on_double_click": stand.tree.expandsOnDoubleClick(),
 }))
 """
@@ -222,6 +229,14 @@ def test_double_click_opens_a_folder_in_the_file_browser(folder_probe):
 
 def test_double_click_does_not_also_expand_or_collapse(folder_probe):
     assert folder_probe["expands_on_double_click"] is False
+
+
+def test_new_menu_shows_each_kinds_icon(folder_probe):
+    # The same icon the item gets in the tree, so the menu previews it.
+    assert sorted(folder_probe["new_icons"]) == sorted(
+        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh"]
+    )
+    assert all(folder_probe["new_icons"].values()), folder_probe["new_icons"]
 
 
 def test_folder_menu_has_no_open_in_explorer(folder_probe):

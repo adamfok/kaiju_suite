@@ -590,7 +590,7 @@ class ScripterWindow(ToolWindow):
 
         new_menu = menu.addMenu("New")
         for new_kind in NEW_KINDS:
-            new_menu.addAction(new_kind, lambda k=new_kind: self._create(k, item))
+            new_menu.addAction(kind_icon(new_kind), new_kind, lambda k=new_kind: self._create(k, item))
             if new_kind in NEW_MENU_BREAKS:
                 new_menu.addSeparator()
         if kind == logic.SCRIPT:
