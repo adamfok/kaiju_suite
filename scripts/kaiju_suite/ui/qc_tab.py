@@ -1,8 +1,10 @@
 """A QC tab for a datatype tool: a Run Checks button above a list of the
 checks, each with its problems folded under it once run. A check with
-options has an options button (sliders icon) on the right of its row that opens them
-(:class:`QCOptionsDialog`); hover the check to see them. Also
-:class:`QCResultsDialog`, results in a dialog with a go-ahead button (Scripter's Publish shows it when QC finds problems).
+options has an options button (sliders icon) on its row that opens them
+(:class:`QCOptionsDialog`); hover the check to see them. A check with a
+``fix`` gets a Fix button at the right of its row when a run finds
+something. Also :class:`QCResultsDialog`, results in a dialog with a
+go-ahead button (Scripter's Publish shows it when QC finds problems).
 
 The tool passes in its checks (:class:`kaiju_suite.core.checks.Check`) and
 callbacks, so this never imports ``datatypes`` or a tool:
@@ -11,6 +13,8 @@ callbacks, so this never imports ``datatypes`` or a tool:
 - ``on_run()``: run the checks on the selection; returns ``(check,
   problems)`` pairs, or ``None`` after warning why it couldn't.
 - ``on_pick(problem)``: a problem was clicked; select what it points at.
+- ``on_fix(check)`` (optional): fix what ``check`` found, then return fresh
+  ``(check, problems)`` pairs, or ``None`` after warning why it couldn't.
 """
 
 from PySide6 import QtCore, QtWidgets
@@ -50,12 +54,13 @@ class QCResults(QtWidgets.QTreeWidget):
         self.problems = []
         self.rows = {}
         self.setHeaderHidden(True)
-        # Column 1 holds a check's options button, at the right.
-        self.setColumnCount(2)
+        # Column 1 holds a check's options button, column 2 its Fix button.
+        self.setColumnCount(3)
         header = self.header()
         header.setStretchLastSection(False)
         header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.setToolTip("Click a problem to select what it points at.")
         self.itemClicked.connect(self._picked)
         for check in checks:
@@ -98,9 +103,10 @@ class QCResults(QtWidgets.QTreeWidget):
 
 
 class QCTab(QtWidgets.QWidget):
-    def __init__(self, checks, settings, on_setting, on_run, on_pick, parent=None):
+    def __init__(self, checks, settings, on_setting, on_run, on_pick, parent=None, on_fix=None):
         super().__init__(parent)
-        self.on_setting, self.on_run = on_setting, on_run
+        self.on_setting, self.on_run, self.on_fix = on_setting, on_run, on_fix
+        self.fix_buttons = {}
         layout = QtWidgets.QVBoxLayout(self)
 
         self.run_button = QtWidgets.QPushButton("Run Checks")
@@ -123,6 +129,13 @@ class QCTab(QtWidgets.QWidget):
                 button.setToolTip("Options...")
                 button.clicked.connect(lambda _=False, check=check: self._edit_options(check))
                 self.results.setItemWidget(self.results.rows[check.key], 1, button)
+            if check.fix and on_fix:
+                fix = QtWidgets.QPushButton("Fix")
+                fix.setToolTip(f"Fix what {check.label} found, as one undo step, then run the checks again.")
+                fix.clicked.connect(lambda _=False, check=check: self._fix(check))
+                self.results.setItemWidget(self.results.rows[check.key], 2, fix)
+                fix.hide()  # after setItemWidget, which shows it
+                self.fix_buttons[check.key] = fix
         layout.addWidget(self.results, 1)
         self.status = QtWidgets.QLabel("Select meshes and click Run Checks. Click a check's button to set its options.")
         self.status.setWordWrap(True)
@@ -147,9 +160,19 @@ class QCTab(QtWidgets.QWidget):
 
     def _run(self):
         found = self.on_run()
-        if found is None:
-            return
+        if found is not None:
+            self._show(found)
+
+    def _fix(self, check):
+        found = self.on_fix(check)
+        if found is not None:
+            self._show(found)
+
+    def _show(self, found):
         total = self.results.show_results(found)
+        problems = {check.key: problems for check, problems in found}
+        for key, button in self.fix_buttons.items():
+            button.setVisible(bool(problems.get(key)))
         color = FAIL_BUTTON_COLOR if total else PASS_BUTTON_COLOR
         self.run_button.setStyleSheet(f"QPushButton {{ background-color: {color}; color: white; }}")
         self.status.setText(f"{total} problem(s) found." if total else "No problems found.")
@@ -157,7 +180,8 @@ class QCTab(QtWidgets.QWidget):
 
 class QCOptionsDialog(QtWidgets.QDialog):
     """A row per option of ``check``, its label then a spin box starting at
-    ``values``, with OK and Cancel. After ``exec()``, :meth:`values` gives what was set."""
+    ``values``, with OK and Cancel. After ``exec()``, :meth:`values` gives
+    what was set."""
 
     def __init__(self, parent, check, values):
         super().__init__(parent)

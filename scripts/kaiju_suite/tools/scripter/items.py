@@ -61,7 +61,7 @@ _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 # Data published from the selection, by kind.
 DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
 # The tool each data kind opens on double-click, by its registry name.
-TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool"}
+TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool"}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
 RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)
@@ -176,9 +176,10 @@ def unchanged_since(path, selection):
 
 def publish_qc(path, objects):
     """Run the QC checks of the data item at ``path``'s kind on ``objects``
-    (long names), with the settings saved in its tool. ``(check, problems)``
-    pairs; empty for kinds without checks."""
-    return datatypes.run_qc(DATATYPES[kind_of(path)], objects)
+    (long names), with the settings saved in its tool, leaving out checks
+    not meant for publishing. ``(check, problems)`` pairs; empty for kinds
+    without checks."""
+    return datatypes.run_qc(DATATYPES[kind_of(path)], objects, publish=True)
 
 
 def describe(path):

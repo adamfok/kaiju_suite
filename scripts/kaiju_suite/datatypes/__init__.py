@@ -95,11 +95,15 @@ def save_qc_setting(module, key, option, value):
     checks.save_setting(_qc_key(module), key, option, value)
 
 
-def run_qc(module, nodes, settings=None):
+def run_qc(module, nodes, settings=None, publish=False):
     """Run ``module``'s QC checks on ``nodes`` (long names), with
-    ``settings`` or the saved ones (every check, with the saved options). Returns ``(check, problems)`` pairs;
-    empty if ``module`` has no checks. Changes nothing."""
+    ``settings`` or the saved ones (every check, with the saved options);
+    with ``publish``, only the checks meant to run before publishing.
+    Returns ``(check, problems)`` pairs; empty if ``module`` has no checks.
+    Changes nothing."""
     found = qc_checks(module)
+    if publish:
+        found = tuple(check for check in found if check.publish)
     if not found:
         return []
     return checks.run(qc_settings(module) if settings is None else settings, found, nodes=nodes)

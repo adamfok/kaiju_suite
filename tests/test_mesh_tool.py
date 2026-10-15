@@ -2,6 +2,8 @@ import pytest
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite.core import checks
+from kaiju_suite.datatypes import mesh as mesh_data
 from kaiju_suite.tools.mesh_tool import logic
 
 
@@ -22,33 +24,68 @@ def _mesh(points, faces, name="geo"):
 
 
 def _found(mesh, key):
-    """The items check ``key`` finds on ``mesh``."""
-    results = logic.run([mesh], [key])
-    assert [r.check.key for r in results] in ([], [key])
-    return results[0].items if results else []
+    """What check ``key`` points at on ``mesh``: its faces, edges, vertices
+    or the mesh itself, as long names."""
+    problems = checks.get(key, mesh_data.CHECKS).run(nodes=[mesh])
+    assert len(problems) <= 1
+    return checks.selection_of(problems[0]) if problems else []
 
 
 # -- the checks -------------------------------------------------------------
 
 
 def test_every_check_has_a_label_and_description():
-    keys = [check.key for check in logic.CHECKS]
+    keys = [check.key for check in mesh_data.CHECKS]
     assert len(keys) == len(set(keys))
-    for check in logic.CHECKS:
+    for check in mesh_data.CHECKS:
         assert check.label and check.description
 
 
+def test_the_mesh_checks():
+    assert [c.key for c in mesh_data.CHECKS] == [
+        "ngons", "non_manifold", "lamina", "zero_area", "zero_length", "uvs",
+        "normals", "symmetry", "transforms", "history", "names", "shape_names",
+    ]  # fmt: skip
+
+
+def test_symmetry_and_uvs_are_left_out_of_publish():
+    assert [c.key for c in mesh_data.CHECKS if not c.publish] == ["uvs", "symmetry"]
+
+
+def _problems(selection):
+    return {check.key: problems for check, problems in logic.run_qc(selection) if problems}
+
+
 def test_a_clean_cube_passes_every_check(new_scene):
-    assert logic.run([_cube()]) == []
+    assert _problems([_cube()]) == {}
 
 
-def test_run_reports_each_problem_per_mesh(new_scene):
+def test_problems_are_one_per_mesh_naming_it(new_scene):
     a, b = _cube("a"), _cube("b")
     cmds.setAttr(f"{b}.translateX", 2)
 
-    results = logic.run([a, b])
+    assert _problems([a, b]) == {"transforms": ["b: transform not frozen"]}
 
-    assert [(r.check.key, r.mesh) for r in results] == [("transforms", b)]
+
+@pytest.mark.parametrize("key, make, text", [
+    ("ngons", "ngon", "p: 1 face with more than 4 sides"),
+    ("uvs", "no_uvs", "geo: 1 face without UVs"),
+    ("history", "history", "body: construction history"),
+    ("shape_names", "shape_name", "body: shape is oops, not bodyShape"),
+])
+def test_problem_messages(new_scene, key, make, text):
+    if make == "ngon":
+        mesh = cmds.ls(cmds.polyPlane(name="p", sx=2, sy=1, constructionHistory=False)[0], long=True)[0]
+        cmds.polyDelEdge(f"{mesh}.e[3]", cleanVertices=False, constructionHistory=False)
+    elif make == "no_uvs":
+        mesh = _mesh([(0, 0, 0), (1, 0, 0), (0, 0, 1)], [[0, 1, 2]])
+    elif make == "history":
+        mesh = cmds.ls(cmds.polyCube(name="body")[0], long=True)[0]
+    else:
+        mesh = _cube()
+        cmds.rename(cmds.listRelatives(mesh, shapes=True, fullPath=True)[0], "oops")
+
+    assert checks.get(key, mesh_data.CHECKS).run(nodes=[mesh]) == [text]
 
 
 def test_ngons(new_scene):
@@ -82,12 +119,6 @@ def test_zero_length_edges(new_scene):
     mesh = _mesh([(0, 0, 0), (1, 0, 0), (1, 0, 0), (0, 1, 0)], [[0, 1, 2, 3]])
 
     assert _found(mesh, "zero_length") == [f"{mesh}.e[1]"]
-
-
-def test_open_borders(new_scene):
-    plane = cmds.ls(cmds.polyPlane(name="p", sx=1, sy=1, constructionHistory=False)[0], long=True)[0]
-
-    assert sorted(_found(plane, "borders")) == [f"{plane}.e[{i}]" for i in range(4)]
 
 
 def test_faces_without_uvs(new_scene):
@@ -158,7 +189,7 @@ def test_shape_names(new_scene):
 # -- fixing -----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("key", [check.key for check in logic.CHECKS if check.fix])
+@pytest.mark.parametrize("key", [check.key for check in mesh_data.CHECKS if check.fix])
 def test_only_some_checks_can_fix(key):
     assert key in {"transforms", "history", "normals", "shape_names"}
 
@@ -217,18 +248,50 @@ def test_fix_refuses_a_check_that_cannot_fix(new_scene):
         logic.fix("ngons", [_cube()])
 
 
-# -- picking meshes ---------------------------------------------------------
+# -- the QC tab -------------------------------------------------------------
 
 
-def test_meshes_takes_transforms_shapes_and_components(new_scene):
+def test_qc_takes_transforms_shapes_and_components(new_scene):
     a, b, c = _cube("a"), _cube("b"), _cube("c")
+    for cube in (a, b, c):
+        cmds.setAttr(f"{cube}.translateY", 1)
     shape = cmds.listRelatives(b, shapes=True, fullPath=True)[0]
     joint = cmds.createNode("joint")
 
-    assert logic.meshes([a, shape, f"{c}.vtx[0]", joint, a]) == [a, b, c]
+    found = _problems([a, shape, f"{c}.vtx[0]", cmds.ls(joint, long=True)[0], a])
+
+    assert found["transforms"] == ["a: transform not frozen", "b: transform not frozen", "c: transform not frozen"]
 
 
-def test_meshes_with_nothing_given_is_every_mesh_in_the_scene(new_scene):
-    a, b = _cube("a"), _cube("b")
+def test_qc_needs_meshes(new_scene):
+    _cube()
+    joint = cmds.ls(cmds.createNode("joint"), long=True)[0]
 
-    assert logic.meshes([]) == [a, b]
+    with pytest.raises(ValueError, match="No meshes selected"):
+        logic.run_qc([joint])
+    with pytest.raises(ValueError, match="No meshes selected"):
+        logic.run_qc([])
+
+
+def test_qc_options_are_saved_for_publish_too(new_scene):
+    from kaiju_suite import datatypes
+
+    assert logic.qc_settings() == datatypes.qc_settings(mesh_data)
+
+
+def test_fix_on_the_selection_returns_fresh_results(new_scene):
+    cube = _broken("shape_names")
+
+    found = logic.fix_and_check("shape_names", [cube])
+
+    assert dict((c.key, p) for c, p in found)["shape_names"] == []
+
+
+def test_select_problem_selects_the_components(new_scene):
+    plane = cmds.ls(cmds.polyPlane(name="p", sx=2, sy=1, constructionHistory=False)[0], long=True)[0]
+    cmds.polyDelEdge(f"{plane}.e[3]", cleanVertices=False, constructionHistory=False)
+    [problem] = _problems([plane])["ngons"]
+
+    logic.select_problem(problem)
+
+    assert cmds.ls(selection=True) == ["p.f[0]"]

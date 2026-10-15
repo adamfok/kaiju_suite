@@ -186,9 +186,24 @@ def test_run_qc_uses_the_saved_options(new_scene, clean_qc_settings):
 
 
 def test_a_datatype_without_checks_has_no_qc(new_scene):
-    from kaiju_suite.datatypes import mesh
+    import types
 
-    assert datatypes.run_qc(mesh, []) == []
+    assert datatypes.run_qc(types.SimpleNamespace(KIND="nothing"), []) == []
+
+
+def test_publishing_leaves_out_checks_not_meant_for_publish(new_scene, clean_qc_settings, monkeypatch):
+    import types
+
+    fake = types.SimpleNamespace(
+        KIND="fake",
+        CHECKS=(
+            checks.Check("a", "A", "d.", lambda nodes: ["a"]),
+            checks.Check("b", "B", "d.", lambda nodes: ["b"], publish=False),
+        ),
+    )
+
+    assert [c.key for c, _ in datatypes.run_qc(fake, ["x"])] == ["a", "b"]
+    assert [c.key for c, _ in datatypes.run_qc(fake, ["x"], publish=True)] == ["a"]
 
 
 def test_failed_keeps_only_checks_that_found_something(new_scene, clean_qc_settings):

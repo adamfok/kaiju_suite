@@ -47,7 +47,9 @@ class Check:
     """One check: ``fn(**options)`` returns problem messages.
 
     ``options`` holds each option's default; :meth:`run` fills in the ones
-    not given.
+    not given. ``fix(nodes)``, if given, repairs what the check finds on
+    ``nodes``. ``publish=False`` leaves the check out of the QC that runs
+    before Scripter publishes (it still runs in the tool).
     """
 
     key: str
@@ -55,6 +57,8 @@ class Check:
     description: str
     fn: object
     options: dict = field(default_factory=dict)
+    fix: object = None
+    publish: bool = True
 
     def run(self, **options):
         return self.fn(**{**self.options, **options})

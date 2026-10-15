@@ -1127,8 +1127,8 @@ def test_double_click_on_a_skin_item_opens_the_skincluster_tool(data_probe):
     assert data_probe["double_click"]["leg.skin"] == [["tool", "leg.skin"]]
 
 
-def test_double_click_on_a_data_item_without_a_tool_shows_its_info(data_probe):
-    assert data_probe["double_click"]["body.mesh"] == [["describe", "body.mesh"], ["box", "body.mesh"]]
+def test_double_click_on_a_mesh_item_opens_the_mesh_tool(data_probe):
+    assert data_probe["double_click"]["body.mesh"] == [["tool", "body.mesh"]]
 
 
 def test_double_click_on_a_joints_item_opens_the_joint_tool(data_probe):

@@ -168,7 +168,7 @@ def test_double_click_expands_a_check_and_does_not_open_options(probe):
 
 
 def test_checks_with_options_have_an_options_button_on_the_right(probe):
-    assert probe["columns"] == 2
+    assert probe["columns"] == 3
     assert probe["option_buttons"] == {
         "Too many": ["QToolButton", False, "Options..."],
         "Tiny": ["QToolButton", False, "Options..."],
@@ -286,3 +286,72 @@ def test_run_checks_turns_green_when_every_check_passes(probe):
 
 def test_run_checks_keeps_its_colour_when_it_could_not_run(probe):
     assert probe["run_style_after_no_run"] == probe["run_style_passed"]
+
+
+# Checks with a fix get a Fix button on their row once a run finds something.
+_FIX_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.core.checks import Check, defaults
+from kaiju_suite.ui import qc_tab
+
+CHECKS = (
+    Check("frozen", "Unfrozen", "Not frozen.", None, fix=lambda nodes: None),
+    Check("ngons", "N-gons", "Too many sides.", None),
+    Check("names", "Shape name", "Bad shape name.", None, fix=lambda nodes: None),
+)
+results = {"now": [(CHECKS[0], ["a: not frozen"]), (CHECKS[1], ["a: 1 face"]), (CHECKS[2], [])]}
+fixed = []
+
+def on_fix(check):
+    fixed.append(check.key)
+    results["now"] = [(CHECKS[0], []), (CHECKS[1], ["a: 1 face"]), (CHECKS[2], [])]
+    return results["now"]
+
+tab = qc_tab.QCTab(CHECKS, defaults(CHECKS), lambda *a: None, lambda: results["now"], lambda p: None, on_fix=on_fix)
+tree = tab.results
+
+def fix_buttons():
+    out = {}
+    for i in range(tree.topLevelItemCount()):
+        row = tree.topLevelItem(i)
+        button = tree.itemWidget(row, 2)
+        out[row.text(0).split(":")[0]] = None if button is None or button.isHidden() else button.text()
+    return out
+
+out = {"before": fix_buttons(), "columns": tree.columnCount()}
+[run] = [b for b in tab.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"]
+run.click()
+out["after_run"] = fix_buttons()
+[fix] = [b for b in tab.findChildren(QtWidgets.QPushButton) if b.text() == "Fix" and not b.isHidden()]
+fix.click()
+out["fixed"] = fixed
+out["after_fix"] = fix_buttons()
+out["heads_after_fix"] = [tree.topLevelItem(i).text(0) for i in range(tree.topLevelItemCount())]
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def fix_probe():
+    done = subprocess.run([sys.executable, "-c", _FIX_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_no_fix_buttons_before_a_run(fix_probe):
+    assert fix_probe["columns"] == 3
+    assert fix_probe["before"] == {"Unfrozen": None, "N-gons": None, "Shape name": None}
+
+
+def test_a_fix_button_only_where_a_fixable_check_found_something(fix_probe):
+    assert fix_probe["after_run"] == {"Unfrozen": "Fix", "N-gons": None, "Shape name": None}
+
+
+def test_fix_fixes_then_shows_the_fresh_results(fix_probe):
+    assert fix_probe["fixed"] == ["frozen"]
+    assert fix_probe["heads_after_fix"] == ["Unfrozen: OK", "N-gons: 1 found", "Shape name: OK"]
+    assert fix_probe["after_fix"] == {"Unfrozen": None, "N-gons": None, "Shape name": None}
