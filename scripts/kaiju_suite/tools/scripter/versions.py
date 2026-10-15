@@ -188,6 +188,16 @@ def move_history(src, dst):
     shutil.move(old, new)
 
 
+def copy_history(src, dst):
+    """Give ``dst`` a copy of ``src``'s history, replacing any it had."""
+    old, new = history_dir(src), history_dir(dst)
+    if not os.path.isdir(old) or old == new:
+        return
+    if os.path.isdir(new):
+        shutil.rmtree(new)
+    shutil.copytree(old, new)
+
+
 def delete_history(path):
     history = history_dir(path)
     if os.path.isdir(history):
