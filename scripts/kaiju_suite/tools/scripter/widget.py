@@ -824,8 +824,15 @@ class SelectionDialog(QtWidgets.QDialog):
         )
         self.table.itemDoubleClicked.connect(self._edit_row)
         self.table.itemSelectionChanged.connect(self._refresh)
-        self.table.setColumnWidth(0, 70)
-        self.table.setColumnWidth(1, 260)
+        # Entry takes the width left by Type and Found; long entries end in "...".
+        header = self.table.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(0, 70)
+        header.resizeSection(2, 50)
+        self.table.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
 
         # The preview shows what the selected entries find, or all of them
         # when none is selected; the objects it lists are self.previewed.

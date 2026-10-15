@@ -509,6 +509,10 @@ out = {
     "delete_on_the_right": dialog.delete_button.geometry().left() > table.geometry().center().x()
     and dialog.delete_button.geometry().bottom() < table.geometry().top(),
     "rows": [row(0), row(1)],
+    "entry_fills": [table.header().sectionResizeMode(c) == QtWidgets.QHeaderView.ResizeMode.Stretch for c in range(3)],
+    "no_sideways_scroll": table.horizontalScrollBar().maximum() == 0,
+    "columns_fill_the_list": table.header().sectionSize(0) + table.header().sectionSize(1) + table.header().sectionSize(2)
+    == table.viewport().width(),
     "preview_header": [
         w for w in (dialog.preview_row.itemAt(i).widget() for i in range(dialog.preview_row.count())) if w
     ] == [dialog.preview_label, dialog.count],
@@ -909,3 +913,9 @@ def test_new_set_is_named_after_a_missing_set(selection_dialog_probe):
     # Making it again lists it once, picked.
     names, picked = window["after_remaking_missing"]
     assert names.count("gone_set") == 1 and picked == "gone_set"
+
+
+def test_entry_column_fills_the_width(selection_dialog_probe):
+    assert selection_dialog_probe["entry_fills"] == [False, True, False]
+    assert selection_dialog_probe["no_sideways_scroll"]
+    assert selection_dialog_probe["columns_fill_the_list"]
