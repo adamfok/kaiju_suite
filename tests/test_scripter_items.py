@@ -715,3 +715,46 @@ def test_publish_qc_runs_the_joint_checks_on_the_joints(tmp_path, new_scene):
     found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long(hip)))
 
     assert found["rotate"] == ["hip: rotate is (30, 0, 0)"]
+
+
+# -- NurbsSurface -----------------------------------------------------------
+
+
+def test_nurbs_surface_item_round_trip_as_one_undo_step(tmp_path, new_scene):
+    group = cmds.createNode("transform", name="ribbons_grp")
+    plane = cmds.parent(cmds.nurbsPlane(name="ribbon", constructionHistory=False)[0], group)[0]
+    path = logic.create_data_item(items.NURBS_SURFACE, str(tmp_path), "ribbons", _long(plane))
+
+    assert path == os.path.join(str(tmp_path), "ribbons.surface")
+    assert versions.is_versioned(path) and versions.label(path) == "v001"
+    assert items.describe(path) == ["1 NURBS surface", "ribbon"]
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.NURBS_SURFACE, "NurbsSurface")
+
+    cmds.file(new=True, force=True)
+    cmds.createNode("transform", name="ribbons_grp")
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.listRelatives("ribbon", parent=True) == ["ribbons_grp"]
+
+    cmds.undo()
+    assert not cmds.objExists("ribbon")
+
+
+def test_nurbs_surface_items_open_the_surface_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.NURBS_SURFACE) == "Surface Tool"
+    assert registry.find(items.tool_for(items.NURBS_SURFACE)) is not None
+
+
+def test_publish_qc_runs_the_surface_checks(tmp_path, new_scene):
+    plane = cmds.nurbsPlane(name="ribbon", constructionHistory=False)[0]
+    path = logic.create_data_item(items.NURBS_SURFACE, str(tmp_path), "ribbons", _long(plane))
+    cmds.setAttr(f"{cmds.listRelatives(plane, shapes=True, fullPath=True)[0]}.weights[0]", 2.0)
+
+    found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long(plane)))
+
+    assert list(found) == ["names", "rational", "trimmed", "history"]
+    assert found["rational"] == ["ribbon: 1 CV with weights (weights aren't saved)"]

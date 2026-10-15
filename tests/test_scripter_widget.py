@@ -235,7 +235,7 @@ def test_double_click_does_not_also_expand_or_collapse(folder_probe):
 def test_new_menu_shows_each_kinds_icon(folder_probe):
     # The same icon the item gets in the tree, so the menu previews it.
     assert sorted(folder_probe["new_icons"]) == sorted(
-        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh"]
+        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh", "NurbsSurface"]
     )
     assert all(folder_probe["new_icons"].values()), folder_probe["new_icons"]
 
@@ -1254,3 +1254,25 @@ def test_publish_with_qc_problems_then_cancel_publishes_nothing(publish_probe):
 
 def test_publish_of_a_kind_without_checks_shows_no_dialog(publish_probe):
     assert [e[0] for e in publish_probe["no_checks"]] == ["qc", "describe", "publish", "message"]
+
+
+@pytest.fixture(scope="module")
+def surface_probe():
+    probe = _DATA_PROBE.replace('("leg.skin", "skeleton.jnt", "body.mesh")', '("ribbons.surface",)')
+    done = subprocess.run([sys.executable, "-c", probe, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_double_click_on_a_nurbs_surface_item_opens_the_surface_tool(surface_probe):
+    assert surface_probe["double_click"]["ribbons.surface"] == [["tool", "ribbons.surface"]]
+
+
+def test_nurbs_surface_items_have_right_click_select_objects_and_info(surface_probe):
+    assert "Select Objects" in surface_probe["menus"]["ribbons.surface"]
+    assert surface_probe["info"]["ribbons.surface"] == [["describe", "ribbons.surface"], ["box", "ribbons.surface"]]
+
+
+def test_new_menu_offers_a_nurbs_surface_item_with_its_icon(probe):
+    assert "NurbsSurface" in probe["new_kinds"]
+    assert "scripter_nurbs_surface.svg" in probe["icon_files"]
