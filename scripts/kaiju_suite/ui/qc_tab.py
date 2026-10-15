@@ -2,8 +2,8 @@
 checks, each with its problems folded under it once run. A check with
 options has an options button (sliders icon) on its row that opens them
 (:class:`QCOptionsDialog`); hover the check to see them. A check with a
-``fix`` gets a Fix button at the right of its row when a run finds
-something. Also :class:`QCResultsDialog`, results in a dialog with a
+``fix`` gets a Fix button (wrench icon) at the right of its row when a
+run finds something. Also :class:`QCResultsDialog`, results in a dialog with a
 go-ahead button (Scripter's Publish shows it when QC finds problems).
 
 The tool passes in its checks (:class:`kaiju_suite.core.checks.Check`) and
@@ -27,6 +27,7 @@ PROBLEM_ROLE = QtCore.Qt.ItemDataRole.UserRole
 OK_COLOR = "#5cb85c"
 FOUND_COLOR = "#e8a33d"
 OPTIONS_ICON = "qc_options.svg"
+FIX_ICON = "qc_fix.svg"
 # The Run Checks button's background after a run: every check passed, or not.
 PASS_BUTTON_COLOR = "#3f8f4f"
 FAIL_BUTTON_COLOR = "#e53935"
@@ -130,7 +131,9 @@ class QCTab(QtWidgets.QWidget):
                 button.clicked.connect(lambda _=False, check=check: self._edit_options(check))
                 self.results.setItemWidget(self.results.rows[check.key], 1, button)
             if check.fix and on_fix:
-                fix = QtWidgets.QPushButton("Fix")
+                fix = QtWidgets.QToolButton()
+                fix.setIcon(icons.icon(FIX_ICON))
+                fix.setAutoRaise(True)
                 fix.setToolTip(f"Fix what {check.label} found, as one undo step, then run the checks again.")
                 fix.clicked.connect(lambda _=False, check=check: self._fix(check))
                 self.results.setItemWidget(self.results.rows[check.key], 2, fix)

@@ -319,14 +319,18 @@ def fix_buttons():
     for i in range(tree.topLevelItemCount()):
         row = tree.topLevelItem(i)
         button = tree.itemWidget(row, 2)
-        out[row.text(0).split(":")[0]] = None if button is None or button.isHidden() else button.text()
+        out[row.text(0).split(":")[0]] = (
+            None if button is None or button.isHidden()
+            else [type(button).__name__, button.icon().isNull(), button.toolTip()]
+        )
     return out
 
 out = {"before": fix_buttons(), "columns": tree.columnCount()}
 [run] = [b for b in tab.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"]
 run.click()
 out["after_run"] = fix_buttons()
-[fix] = [b for b in tab.findChildren(QtWidgets.QPushButton) if b.text() == "Fix" and not b.isHidden()]
+[fix] = [b for b in tab.fix_buttons.values() if not b.isHidden()]
+out["fix_icon_file"] = qc_tab.FIX_ICON
 fix.click()
 out["fixed"] = fixed
 out["after_fix"] = fix_buttons()
@@ -348,7 +352,15 @@ def test_no_fix_buttons_before_a_run(fix_probe):
 
 
 def test_a_fix_button_only_where_a_fixable_check_found_something(fix_probe):
-    assert fix_probe["after_run"] == {"Unfrozen": "Fix", "N-gons": None, "Shape name": None}
+    assert fix_probe["after_run"] == {
+        "Unfrozen": ["QToolButton", False, "Fix what Unfrozen found, as one undo step, then run the checks again."],
+        "N-gons": None,
+        "Shape name": None,
+    }
+
+
+def test_the_fix_button_is_the_wrench_icon(fix_probe):
+    assert fix_probe["fix_icon_file"] == "qc_fix.svg"
 
 
 def test_fix_fixes_then_shows_the_fresh_results(fix_probe):
