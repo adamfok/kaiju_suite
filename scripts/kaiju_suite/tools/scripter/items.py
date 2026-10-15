@@ -11,6 +11,11 @@
   file is inside it (see :mod:`kaiju_suite.core.paths`). Import File imports
   any file Maya can import, into the root namespace; Export File exports
   the selection, overwriting the file. Not versioned.
+- **Selection** (``.sel``): a list of entries, as ``{"entries": [...]}``,
+  each ``{"type": ..., "value": ...}``: a picked object (its shortest unique
+  name, or a component), a name pattern (Maya wildcards, searched on every
+  run) or a selection set (its members read on every run). Running it
+  replaces the selection with what they find. Not versioned.
 
 No Qt here.
 """
@@ -34,6 +39,7 @@ SKIN = "Skin"
 MESH = "Mesh"
 IMPORT_FILE = "Import File"
 EXPORT_FILE = "Export File"
+SELECTION = "Selection"
 
 EXTENSIONS = {
     SCRIPT: ".py",
@@ -44,6 +50,7 @@ EXTENSIONS = {
     MESH: mesh.EXTENSION,
     IMPORT_FILE: ".import",
     EXPORT_FILE: ".export",
+    SELECTION: ".sel",
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
@@ -51,7 +58,7 @@ _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
-RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE)
+RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {
@@ -84,6 +91,8 @@ def run(path):
         import_file(target(path))
     elif kind == EXPORT_FILE:
         export_selected(target(path))
+    elif kind == SELECTION:
+        select_entries(read_entries(path))
     else:
         raise ValueError(f"Not something Kaiju Scripter runs: {os.path.basename(path)}")
 
@@ -213,3 +222,128 @@ def export_selected(file_path):
     os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
     cmds.file(file_path, exportSelected=True, type=file_type, force=True)
     return file_path
+
+
+# -- Selection --------------------------------------------------------------
+
+PICKED = "picked"
+PATTERN = "pattern"
+SET = "set"
+# How many entries a summary names before "...and N more".
+MAX_SUMMARY = 10
+
+
+def read_entries(path):
+    """The entries of the Selection item at ``path``; ``[]`` for a new, empty file."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    if not text.strip():
+        return []
+    try:
+        return list(json.loads(text)["entries"])
+    except (ValueError, KeyError, TypeError):
+        raise ValueError(f"{os.path.basename(path)} isn't a valid Selection item.") from None
+
+
+def write_entries(path, entries):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"entries": list(entries)}, f, indent=2)
+
+
+def picked_names():
+    """The scene selection as picked-entry names: the shortest unique ones."""
+    return cmds.ls(selection=True) or []
+
+
+def add_picked(entries, names):
+    """``entries`` with a picked entry added for each of ``names`` not already picked."""
+    entries = list(entries)
+    taken = {e["value"] for e in entries if e["type"] == PICKED}
+    for name in names:
+        if name not in taken:
+            entries.append({"type": PICKED, "value": name})
+            taken.add(name)
+    return entries
+
+
+def entry_label(entry):
+    """How an entry reads in a list, e.g. ``body_geo``, ``*_geo``, ``set: render_set``."""
+    if entry["type"] == SET:
+        return f"set: {entry['value']}"
+    return entry["value"]
+
+
+def summary(entries):
+    """One line naming ``entries``, for a tooltip."""
+    if not entries:
+        return "No entries. Double-click to add some."
+    text = ", ".join(entry_label(e) for e in entries[:MAX_SUMMARY])
+    if len(entries) > MAX_SUMMARY:
+        text += f" ...and {len(entries) - MAX_SUMMARY} more"
+    return text
+
+
+def _set_members(name, seen):
+    if name in seen or cmds.nodeType(name) not in ("objectSet",):
+        return []
+    seen.add(name)
+    found = []
+    for member in cmds.sets(name, query=True) or []:
+        if "." not in member and cmds.nodeType(member) == "objectSet":
+            found.extend(_set_members(member, seen))
+        else:
+            found.append(member)
+    return found
+
+
+def find(entry):
+    """What ``entry`` finds in the scene now, as shortest unique names."""
+    kind, value = entry["type"], entry["value"]
+    if kind == SET:
+        if not cmds.objExists(value):
+            return []
+        members = _set_members(value, set())
+        return cmds.ls(members) if members else []
+    names = value.split() if kind == PATTERN else [value]
+    try:
+        return cmds.ls(names) or []
+    except RuntimeError:
+        return []
+
+
+def resolve(entries):
+    """``(objects, empty)``: everything ``entries`` find, in entry order and
+    without repeats, and the entries that find nothing."""
+    objects, empty, seen = [], [], set()
+    for entry in entries:
+        found = find(entry)
+        if not found:
+            empty.append(entry)
+        for name in found:
+            if name not in seen:
+                seen.add(name)
+                objects.append(name)
+    return objects, empty
+
+
+def select_entries(entries):
+    """Replace the selection with what ``entries`` find. Raises, selecting
+    nothing new, if there are none or any of them finds nothing."""
+    if not entries:
+        raise ValueError("This Selection has no entries. Double-click it to add some.")
+    objects, empty = resolve(entries)
+    if empty:
+        raise ValueError("Found nothing for: " + ", ".join(entry_label(e) for e in empty))
+    cmds.select(objects, replace=True)
+    return objects
+
+
+def scene_sets():
+    """The scene's selection sets, by name: not shading groups, deformer sets
+    or Maya's default sets."""
+    found = []
+    for name in cmds.ls(exactType="objectSet") or []:
+        if name in ("defaultLightSet", "defaultObjectSet") or cmds.listConnections(f"{name}.usedBy"):
+            continue
+        found.append(name)
+    return sorted(found)

@@ -29,6 +29,7 @@ from kaiju_suite.tools.scripter.items import (  # noqa: F401 (re-exported)
     JOINTS,
     MESH,
     SCRIPT,
+    SELECTION,
     SEPARATOR,
     SKIN,
     kind_of,
@@ -257,6 +258,14 @@ def create_file_item(kind, directory, name, target, index=None):
     except Exception:
         delete_paths([path])
         raise
+    return path
+
+
+def create_selection_item(directory, name, selection, index=None):
+    """Create a Selection item with a picked entry for each name in
+    ``selection``, at ``index`` as in :func:`create_item`."""
+    path = create_item(SELECTION, directory, name, index)
+    items.write_entries(path, items.add_picked([], selection))
     return path
 
 

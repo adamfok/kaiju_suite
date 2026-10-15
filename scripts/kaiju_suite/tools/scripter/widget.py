@@ -55,6 +55,7 @@ ICONS = {
     logic.JOINTS: "scripter_joints.svg",
     logic.SKIN: "scripter_skin.svg",
     logic.MESH: "scripter_mesh.svg",
+    logic.SELECTION: "scripter_selection.svg",
 }
 # The right-click New menu, in order.
 NEW_KINDS = (
@@ -64,12 +65,13 @@ NEW_KINDS = (
     logic.BREAKPOINT,
     logic.IMPORT_FILE,
     logic.EXPORT_FILE,
+    logic.SELECTION,
     logic.JOINTS,
     logic.SKIN,
     logic.MESH,
 )
 # Dividers in the New menu after these kinds.
-NEW_MENU_BREAKS = (logic.BREAKPOINT, logic.EXPORT_FILE)
+NEW_MENU_BREAKS = (logic.BREAKPOINT, logic.SELECTION)
 IMPORT_FILTER = (
     "All Files (*);;Maya Scenes (*.ma *.mb);;FBX (*.fbx);;OBJ (*.obj);;Alembic (*.abc)"
 )
@@ -363,6 +365,8 @@ class ScripterWindow(ToolWindow):
             item.setData(0, PATH_ROLE, entry.path)
             if entry.kind in items.FILE_KINDS:
                 self._show_target(item)
+            elif entry.kind == logic.SELECTION:
+                self._show_entries(item)
             item.setIcon(0, kind_icon(entry.kind))
             color = row_color(entry.kind, self.tree.palette())
             if color:
@@ -503,6 +507,25 @@ class ScripterWindow(ToolWindow):
         if not item.toolTip(0):
             item.setToolTip(0, text)
 
+    def _show_entries(self, item):
+        """Name tooltip of a Selection: a summary of its entries."""
+        path = item.data(0, PATH_ROLE)
+        try:
+            text = items.summary(items.read_entries(path))
+        except (OSError, ValueError) as e:
+            text = str(e)
+        if not item.toolTip(0):
+            item.setToolTip(0, text)
+
+    def _edit_selection(self, path):
+        entries = self.attempt(lambda: items.read_entries(path))
+        if entries is None:
+            return
+        dialog = SelectionDialog(self, os.path.splitext(os.path.basename(path))[0], entries)
+        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
+            self.attempt(lambda: items.write_entries(path, dialog.entries))
+            self.populate()
+
     def _on_double_click(self, item, _column):
         path = item.data(0, PATH_ROLE)
         kind = logic.kind_of(path) if path else None
@@ -514,6 +537,8 @@ class ScripterWindow(ToolWindow):
                 QtWidgets.QMessageBox.information(self, os.path.basename(path), "\n".join(lines))
         elif kind in items.FILE_KINDS:
             self._change_target(path)
+        elif kind == logic.SELECTION:
+            self._edit_selection(path)
         elif kind == logic.FOLDER:
             self.attempt(lambda: _open_in_file_browser(path))
 
@@ -614,6 +639,9 @@ class ScripterWindow(ToolWindow):
                 return
             default = os.path.splitext(os.path.basename(target))[0]
             create = lambda name: logic.create_file_item(kind, directory, name, target, index)  # noqa: E731
+        elif kind == logic.SELECTION:
+            selection = items.picked_names()
+            create = lambda name: logic.create_selection_item(directory, name, selection, index)  # noqa: E731
         else:
             create = lambda name: logic.create_item(kind, directory, name, index)  # noqa: E731
         name, ok = QtWidgets.QInputDialog.getText(self, f"New {kind}", "Name:", text=default)
@@ -623,6 +651,8 @@ class ScripterWindow(ToolWindow):
         self.populate()
         if path and kind == logic.SCRIPT:
             self.attempt(lambda: script_editor.open_in_script_editor(path))
+        elif path and kind == logic.SELECTION:
+            self._edit_selection(path)
 
     def _rename_current(self):
         item = self.tree.currentItem()
@@ -739,3 +769,138 @@ class VersionsDialog(QtWidgets.QDialog):
         self.owner.attempt(lambda: versions.restore(self.path, number))
         self.owner.populate()
         self._fill()
+
+
+class SelectionDialog(QtWidgets.QDialog):
+    """Edit a Selection item's entries and preview what they find now.
+    The edited entries are in :attr:`entries` once it's accepted."""
+
+    TYPE_LABELS = {items.PICKED: "Picked", items.PATTERN: "Pattern", items.SET: "Set"}
+
+    def __init__(self, window, name, entries):
+        super().__init__(window)
+        self.entries = list(entries)
+        self.setWindowTitle(f"Selection: {name}")
+        self.resize(460, 520)
+
+        self.table = QtWidgets.QTreeWidget()
+        self.table.setHeaderLabels(["Type", "Entry", "Found"])
+        self.table.setRootIsDecorated(False)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table.itemDoubleClicked.connect(self._edit_row)
+        self.table.setColumnWidth(0, 70)
+        self.table.setColumnWidth(1, 260)
+
+        buttons = QtWidgets.QHBoxLayout()
+        for label, slot in (
+            ("Add Selected", self._add_selected),
+            ("Add Pattern...", self._add_pattern),
+            ("Add Set...", self._add_set),
+            ("Remove", self._remove),
+        ):
+            button = QtWidgets.QPushButton(label)
+            button.clicked.connect(slot)
+            buttons.addWidget(button)
+
+        self.preview = QtWidgets.QListWidget()
+        self.count = QtWidgets.QLabel()
+        preview_bar = QtWidgets.QHBoxLayout()
+        preview_bar.addWidget(self.count, 1)
+        for label, slot in (("Refresh", self._refresh), ("Select", self._select)):
+            button = QtWidgets.QPushButton(label)
+            button.clicked.connect(slot)
+            preview_bar.addWidget(button)
+
+        ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        ok_cancel.accepted.connect(self.accept)
+        ok_cancel.rejected.connect(self.reject)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(QtWidgets.QLabel("Entries"))
+        layout.addWidget(self.table, 1)
+        layout.addLayout(buttons)
+        layout.addWidget(QtWidgets.QLabel("Preview: what it selects now"))
+        layout.addWidget(self.preview, 1)
+        layout.addLayout(preview_bar)
+        layout.addWidget(ok_cancel)
+        self._refresh()
+
+    def _refresh(self):
+        self.table.clear()
+        for index, entry in enumerate(self.entries):
+            found = items.find(entry)
+            row = QtWidgets.QTreeWidgetItem(
+                self.table, [self.TYPE_LABELS.get(entry["type"], entry["type"]), entry["value"], str(len(found))]
+            )
+            row.setData(0, PATH_ROLE, index)
+            if not found:
+                for column in range(3):
+                    row.setForeground(column, FAILED_COLOR)
+                row.setToolTip(1, "Finds nothing in the scene now")
+        objects, _empty = items.resolve(self.entries)
+        self.preview.clear()
+        self.preview.addItems(objects)
+        self.count.setText(f"{len(objects)} object{'' if len(objects) == 1 else 's'}")
+
+    def _add_selected(self):
+        names = items.picked_names()
+        if not names:
+            _warn("Nothing selected to add.")
+            return
+        self.entries = items.add_picked(self.entries, names)
+        self._refresh()
+
+    def _ask_pattern(self, current=""):
+        text, ok = QtWidgets.QInputDialog.getText(
+            self, "Pattern", "Name pattern (Maya wildcards, e.g. *_geo; separate several with spaces):", text=current
+        )
+        return text.strip() if ok else ""
+
+    def _ask_set(self, current=None):
+        sets = items.scene_sets()
+        if current and current not in sets:
+            sets.insert(0, current)
+        if not sets:
+            _warn("No selection sets in the scene.")
+            return ""
+        index = sets.index(current) if current in sets else 0
+        name, ok = QtWidgets.QInputDialog.getItem(self, "Set", "Selection set:", sets, index, False)
+        return name if ok else ""
+
+    def _add_pattern(self):
+        text = self._ask_pattern()
+        if text:
+            self.entries.append({"type": items.PATTERN, "value": text})
+            self._refresh()
+
+    def _add_set(self):
+        name = self._ask_set()
+        if name:
+            self.entries.append({"type": items.SET, "value": name})
+            self._refresh()
+
+    def _edit_row(self, row, _column):
+        entry = self.entries[row.data(0, PATH_ROLE)]
+        if entry["type"] == items.PATTERN:
+            value = self._ask_pattern(entry["value"])
+        elif entry["type"] == items.SET:
+            value = self._ask_set(entry["value"])
+        else:
+            return
+        if value:
+            entry["value"] = value
+            self._refresh()
+
+    def _remove(self):
+        gone = {row.data(0, PATH_ROLE) for row in self.table.selectedItems()}
+        self.entries = [e for i, e in enumerate(self.entries) if i not in gone]
+        self._refresh()
+
+    def _select(self):
+        objects, _empty = items.resolve(self.entries)
+        if not objects:
+            _warn("Nothing to select: the entries find nothing in the scene.")
+            return
+        cmds.select(objects, replace=True)

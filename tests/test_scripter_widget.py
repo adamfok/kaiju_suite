@@ -109,6 +109,11 @@ def test_every_item_kind_has_an_icon(probe):
     assert probe["kinds_with_icons"] == probe["new_kinds"]
 
 
+def test_new_menu_offers_a_selection_item_with_its_icon(probe):
+    assert "Selection" in probe["new_kinds"]
+    assert "scripter_selection.svg" in probe["icon_files"]
+
+
 def test_item_icons_draw_something(probe):
     for kind, icon in probe["kind_icons"].items():
         assert not icon["null"], kind

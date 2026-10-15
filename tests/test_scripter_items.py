@@ -220,3 +220,169 @@ def test_export_refuses_formats_it_cant_write(tmp_path):
     with pytest.raises(ValueError, match="Can't export"):
         logic.create_file_item(items.EXPORT_FILE, str(tmp_path), "rig", str(tmp_path / "rig.xyz"))
     assert logic.scan(str(tmp_path)) == []
+
+
+# -- selection --------------------------------------------------------------
+
+
+def _picked(*names):
+    return [{"type": items.PICKED, "value": n} for n in names]
+
+
+def test_new_selection_item_saves_the_selection_as_picked_entries(tmp_path, new_scene):
+    a = cmds.createNode("transform", name="body_geo")
+    b = cmds.createNode("transform", name="hair_geo")
+
+    path = logic.create_selection_item(str(tmp_path), "hero", [a, b])
+
+    assert path == os.path.join(str(tmp_path), "hero.sel")
+    assert items.read_entries(path) == _picked("body_geo", "hair_geo")
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.SELECTION, "Selection")
+    assert not versions.is_versioned(path)
+
+
+def test_new_selection_item_with_nothing_selected_starts_empty(tmp_path, new_scene):
+    path = logic.create_selection_item(str(tmp_path), "hero", [])
+    assert items.read_entries(path) == []
+
+
+def test_entries_round_trip(tmp_path):
+    path = logic.create_selection_item(str(tmp_path), "hero", [])
+    entries = [
+        {"type": items.PICKED, "value": "body_geo"},
+        {"type": items.PATTERN, "value": "*_geo"},
+        {"type": items.SET, "value": "render_set"},
+    ]
+    items.write_entries(path, entries)
+    assert items.read_entries(path) == entries
+
+
+def test_add_picked_keeps_order_and_skips_ones_already_there():
+    entries = _picked("a")
+    assert items.add_picked(entries, ["b", "a", "c", "b"]) == _picked("a", "b", "c")
+
+
+def test_picked_names_are_the_shortest_unique_ones(new_scene):
+    for group in ("L_arm", "R_arm"):
+        cmds.createNode("transform", name="hand_geo", parent=cmds.createNode("transform", name=group))
+    cmds.createNode("transform", name="body_geo")
+    cmds.select("body_geo", "|L_arm|hand_geo")
+
+    assert items.picked_names() == ["body_geo", "L_arm|hand_geo"]
+
+
+def test_picked_entry_finds_its_object_and_components(new_scene):
+    cube = cmds.polyCube(name="body_geo")[0]
+    assert items.find({"type": items.PICKED, "value": cube}) == ["body_geo"]
+    assert items.find({"type": items.PICKED, "value": "body_geo.f[0:2]"}) == ["body_geo.f[0:2]"]
+    assert items.find({"type": items.PICKED, "value": "gone"}) == []
+
+
+def test_picked_entry_still_finds_an_object_after_reparenting(new_scene):
+    node = cmds.createNode("transform", name="body_geo")
+    cmds.parent(node, cmds.createNode("transform", name="grp"))
+    assert items.find({"type": items.PICKED, "value": "body_geo"}) == ["body_geo"]
+
+
+def test_pattern_entry_uses_maya_wildcards(new_scene):
+    for name in ("body_geo", "hair_geo", "body_ctl"):
+        cmds.createNode("transform", name=name)
+    assert sorted(items.find({"type": items.PATTERN, "value": "*_geo"})) == ["body_geo", "hair_geo"]
+    assert sorted(items.find({"type": items.PATTERN, "value": "body_* hair_?eo"})) == [
+        "body_ctl",
+        "body_geo",
+        "hair_geo",
+    ]
+    assert items.find({"type": items.PATTERN, "value": "*_nothing"}) == []
+
+
+def test_set_entry_expands_nested_sets(new_scene):
+    a, b, c = (cmds.createNode("transform", name=n) for n in ("a", "b", "c"))
+    inner = cmds.sets(b, c, name="inner_set")
+    cmds.sets(a, inner, name="outer_set")
+
+    assert sorted(items.find({"type": items.SET, "value": "outer_set"})) == ["a", "b", "c"]
+    assert items.find({"type": items.SET, "value": "missing_set"}) == []
+    assert items.find({"type": items.SET, "value": "a"}) == []
+
+
+def test_set_entry_keeps_components(new_scene):
+    cube = cmds.polyCube(name="body_geo")[0]
+    cmds.sets(f"{cube}.f[0:1]", name="faces_set")
+    assert items.find({"type": items.SET, "value": "faces_set"}) == ["body_geo.f[0:1]"]
+
+
+def test_resolve_combines_in_entry_order_without_repeats(new_scene):
+    for name in ("c_geo", "a_geo", "b_geo"):
+        cmds.createNode("transform", name=name)
+    entries = _picked("c_geo") + [{"type": items.PATTERN, "value": "*_geo"}] + _picked("a_geo")
+
+    objects, empty = items.resolve(entries)
+
+    assert objects[0] == "c_geo"
+    assert sorted(objects) == ["a_geo", "b_geo", "c_geo"]
+    assert empty == []
+
+
+def test_resolve_reports_entries_that_find_nothing(new_scene):
+    cmds.createNode("transform", name="a_geo")
+    entries = _picked("a_geo", "gone") + [{"type": items.SET, "value": "no_set"}]
+    assert items.resolve(entries) == (["a_geo"], entries[1:])
+
+
+def test_running_a_selection_item_replaces_the_selection_in_order(tmp_path, new_scene):
+    for name in ("first", "second", "other"):
+        cmds.createNode("transform", name=name)
+    path = logic.create_selection_item(str(tmp_path), "hero", ["second", "first"])
+    cmds.select("other")
+
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.ls(selection=True) == ["second", "first"]
+
+
+def test_running_a_selection_item_finds_objects_made_by_earlier_steps(tmp_path, new_scene):
+    make = tmp_path / "make.py"
+    make.write_text("from maya import cmds\ncmds.createNode('transform', name='new_geo')\n")
+    path = logic.create_selection_item(str(tmp_path), "geo", [])
+    items.write_entries(path, [{"type": items.PATTERN, "value": "*_geo"}])
+
+    assert logic.Runner().run([str(make), path]) == logic.DONE
+    assert cmds.ls(selection=True) == ["new_geo"]
+
+
+def test_selection_item_fails_naming_the_entries_that_found_nothing(tmp_path, new_scene):
+    cmds.createNode("transform", name="here")
+    path = logic.create_selection_item(str(tmp_path), "hero", ["here"])
+    items.write_entries(path, _picked("here", "gone") + [{"type": items.SET, "value": "no_set"}])
+    cmds.select(clear=True)
+    runner = logic.Runner()
+
+    assert runner.run([path]) == logic.FAILED
+    message = runner.status(path)[1]
+    assert "gone" in message and "set: no_set" in message and "here," not in message
+    assert cmds.ls(selection=True) == []
+
+
+def test_empty_selection_item_fails(tmp_path, new_scene):
+    path = logic.create_selection_item(str(tmp_path), "hero", [])
+    runner = logic.Runner()
+    assert runner.run([path]) == logic.FAILED
+    assert "no entries" in runner.status(path)[1].lower()
+
+
+def test_summary_lists_the_entries(tmp_path):
+    entries = _picked("body_geo") + [
+        {"type": items.PATTERN, "value": "*_eye_geo"},
+        {"type": items.SET, "value": "render_set"},
+    ]
+    assert items.summary(entries) == "body_geo, *_eye_geo, set: render_set"
+    assert items.summary([]) == "No entries. Double-click to add some."
+    many = _picked(*(f"n{i}" for i in range(12)))
+    assert items.summary(many).endswith("n9 ...and 2 more")
+
+
+def test_scene_sets_lists_selection_sets_only(new_scene):
+    cmds.sets(cmds.createNode("transform"), name="render_set")
+    cmds.sets(name="empty_set", empty=True)
+    assert items.scene_sets() == ["empty_set", "render_set"]
