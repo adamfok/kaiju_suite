@@ -24,6 +24,7 @@ from kaiju_suite.core.undo import undo_chunk
 from kaiju_suite.tools.scripter import items, versions
 from kaiju_suite.tools.scripter.items import (  # noqa: F401 (re-exported)
     BREAKPOINT,
+    DELTAMUSH,
     EXPORT_FILE,
     EXTENSIONS,
     FOLDER,
