@@ -3,9 +3,9 @@
 - **Script** (``.py``): run in ``__main__``, like the Script Editor.
 - **Folder**, **Separator** (``.sep``) and **Breakpoint** (``.brk``): see
   :mod:`.logic`; they don't run themselves.
-- **Joints** (``.jnt``), **Skin** (``.skin``) and **Mesh** (``.mesh``): data
-  published from the selection with :mod:`kaiju_suite.datatypes`, and
-  applied back when run. Versioned like scripts. A kind with a tool in
+- **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``) and
+  **ControlShape** (``.ctrl``): data published from the selection with
+  :mod:`kaiju_suite.datatypes`, and applied back when run. Versioned like scripts. A kind with a tool in
   :data:`TOOLS` opens it on double-click, with the item's objects selected
   (:func:`open_in_tool`).
 - **Import File** (``.import``) and **Export File** (``.export``): hold one
@@ -31,7 +31,7 @@ from maya import cmds
 from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.datatypes import joints, mesh, skin
+from kaiju_suite.datatypes import controlshape, joints, mesh, skin
 from kaiju_suite.tools.scripter import versions
 
 SCRIPT = "Script"
@@ -44,6 +44,7 @@ MESH = "Mesh"
 IMPORT_FILE = "Import File"
 EXPORT_FILE = "Export File"
 SELECTION = "Selection"
+CONTROLSHAPE = "ControlShape"
 
 EXTENSIONS = {
     SCRIPT: ".py",
@@ -55,16 +56,17 @@ EXTENSIONS = {
     IMPORT_FILE: ".import",
     EXPORT_FILE: ".export",
     SELECTION: ".sel",
+    CONTROLSHAPE: controlshape.EXTENSION,
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 # Data published from the selection, by kind.
-DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
+DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, CONTROLSHAPE: controlshape}
 # The tool each data kind opens on double-click, by its registry name.
-TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool"}
+TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", CONTROLSHAPE: "ControlShape Tool"}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
-RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)
+RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, CONTROLSHAPE)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {

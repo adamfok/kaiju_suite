@@ -715,3 +715,75 @@ def test_publish_qc_runs_the_joint_checks_on_the_joints(tmp_path, new_scene):
     found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long(hip)))
 
     assert found["rotate"] == ["hip: rotate is (30, 0, 0)"]
+
+
+# -- ControlShape items ------------------------------------------------------
+
+
+def _controlshape_ctrl(name="ctrl", color=17):
+    node = cmds.rename(cmds.circle(normal=(0, 1, 0), constructionHistory=False)[0], name)
+    shape = cmds.rename(cmds.listRelatives(node, shapes=True, fullPath=True)[0], f"{name}Shape")
+    if color:
+        cmds.setAttr(f"{node}|{shape}.overrideEnabled", True)
+        cmds.setAttr(f"{node}|{shape}.overrideColor", color)
+    return node
+
+
+def test_new_controlshape_item_publishes_the_selection_as_v001(tmp_path, new_scene):
+    ctrl = _controlshape_ctrl()
+
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(ctrl))
+
+    assert path == os.path.join(str(tmp_path), "ctrls.ctrl")
+    assert versions.is_versioned(path) and versions.label(path) == "v001"
+    assert items.describe(path) == ["1 control", "1 curve shape", "Controls: ctrl"]
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.CONTROLSHAPE, "ControlShape")
+    assert items.CONTROLSHAPE in items.RUNNABLE
+
+
+def test_running_a_controlshape_item_replaces_the_shapes_as_one_undo_step(tmp_path, new_scene):
+    ctrl = _controlshape_ctrl()
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(ctrl))
+    cmds.delete(cmds.listRelatives(ctrl, shapes=True, fullPath=True))
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.listRelatives(ctrl, shapes=True) == ["ctrlShape"]
+
+    cmds.undo()
+    assert not cmds.listRelatives(ctrl, shapes=True)
+
+
+def test_new_controlshape_item_needs_curve_shapes(tmp_path, new_scene):
+    bare = cmds.createNode("transform", name="bare")
+    with pytest.raises(ValueError, match="bare"):
+        logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(bare))
+    assert logic.scan(str(tmp_path)) == []
+
+
+def test_select_saved_selects_the_controls(tmp_path, new_scene):
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(_controlshape_ctrl()))
+    cmds.select(clear=True)
+
+    assert items.select_saved(path) == "Selected 1 object from ctrls.ctrl"
+    assert cmds.ls(selection=True) == ["ctrl"]
+
+
+def test_controlshape_items_open_the_controlshape_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.CONTROLSHAPE) == "ControlShape Tool"
+    assert registry.find(items.tool_for(items.CONTROLSHAPE)) is not None
+
+
+def test_publish_qc_runs_the_controlshape_checks_on_the_controls(tmp_path, new_scene):
+    ctrl = _controlshape_ctrl()
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(ctrl))
+    plain = _controlshape_ctrl("plain", color=0)
+
+    found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long([ctrl, plain])))
+
+    assert list(found) == ["no_shapes", "shape_names", "color", "duplicate_names", "rational"]
+    assert found["color"] == ["plain: no color"]

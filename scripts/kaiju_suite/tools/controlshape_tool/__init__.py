@@ -9,5 +9,5 @@ TOOL = {
     "name": "ControlShape Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Control shape library; create, replace, edit, mirror and color control shapes.",
+    "description": "QC controls; control shape library; create, replace, edit, mirror and color control shapes.",
 }
