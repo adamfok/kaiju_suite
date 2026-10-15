@@ -28,6 +28,8 @@ DEFAULT_WIDTHS = (60, 90)
 STATUS_WIDTH = 28
 # Columns the header's right-click menu can hide, by label.
 HIDEABLE = {"Type": TYPE}
+# The Type column's text and header sit at the right.
+TYPE_ALIGNMENT = QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
 
 DISABLED_COLOR = QtGui.QColor(115, 115, 115)
 # Version column when the item isn't at its newest version.
@@ -188,6 +190,7 @@ class _Tree(QtWidgets.QTreeWidget):
         # Double-click opens a folder in the file browser; its arrow expands it.
         self.setExpandsOnDoubleClick(False)
         self.setHeaderLabels(["Name", "Version", "Type", ""])
+        self.headerItem().setTextAlignment(TYPE, TYPE_ALIGNMENT)
         header = self.header()
         header.setSectionsMovable(False)
         header.setStretchLastSection(False)
@@ -410,6 +413,7 @@ class ScripterWindow(ToolWindow):
             if entry.kind == logic.SEPARATOR:
                 item.setText(VERSION, logic.SEPARATOR_TEXT)
             item.setToolTip(TYPE, entry.name)
+            item.setTextAlignment(TYPE, TYPE_ALIGNMENT)
             item.setData(0, PATH_ROLE, entry.path)
             if entry.kind in items.FILE_KINDS:
                 self._show_target(item)

@@ -339,6 +339,63 @@ def test_hiding_type_keeps_its_saved_width(header_probe):
     assert header_probe["width_after_reopen"] == 140
 
 
+# The Type column's text, and its header, are aligned to the right.
+_TYPE_ALIGN_PROBE = r"""
+import json, os, sys, tempfile
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtCore, QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import logic, widget
+
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+
+root = tempfile.mkdtemp()
+logic.create_item(logic.SCRIPT, root, "setup")
+logic.create_item(logic.FOLDER, root, "rig")
+
+
+class Stand(QtWidgets.QWidget):
+    _add_entries = widget.ScripterWindow._add_entries
+    _show_version = widget.ScripterWindow._show_version
+    _show_status = staticmethod(lambda item: None)
+
+
+stand = Stand()
+stand.tree = widget._Tree(stand)
+stand._watcher = QtCore.QFileSystemWatcher()
+stand._add_entries(stand.tree.invisibleRootItem(), logic.scan(root))
+
+Align = QtCore.Qt.AlignmentFlag
+
+
+def right(alignment):
+    return bool(QtCore.Qt.Alignment(alignment) & Align.AlignRight)
+
+
+rows = [stand.tree.topLevelItem(i) for i in range(stand.tree.topLevelItemCount())]
+print(json.dumps({
+    "cells": {row.text(widget.NAME): right(row.textAlignment(widget.TYPE)) for row in rows},
+    "name_cells": [right(row.textAlignment(widget.NAME)) for row in rows],
+    "header": right(stand.tree.headerItem().textAlignment(widget.TYPE)),
+}))
+"""
+
+
+@pytest.fixture(scope="module")
+def type_align_probe():
+    done = subprocess.run([sys.executable, "-c", _TYPE_ALIGN_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_type_column_is_right_aligned(type_align_probe):
+    assert type_align_probe["cells"] and all(type_align_probe["cells"].values())
+    assert type_align_probe["header"] is True
+    assert not any(type_align_probe["name_cells"])
+
+
 # Selecting an item gives its folder a grey background, so you can tell where
 # it lives; the grey moves with the selection.
 _PARENT_PROBE = r"""

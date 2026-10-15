@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Scripter: the **Type** column and its header are aligned to the right
 - Scripter: the **Version** column is now a dropdown. A published item's version cell shows an arrow; click it to list the item's versions, newest first with their descriptions, the one it's at ticked. Pick one to restore it (it asks first if that would lose changes not published yet). Right-click **Versions...** still works
 - Scripter: new icons for ControlShape (a move control), NurbsCurve (a Spline IK curve with joints), NurbsSurface (a patch in perspective), ProximityWrap (one mesh wrapped around another) and Pose (a posed rig with its joints marked)
 - Scripter: new **Loft** item (`.loft`, right-click **New ▸ Loft**, after NurbsSurface) for lofted NURBS surfaces such as ribbons. **New** and **Publish...** save the selected surfaces' loft settings and input curves (by name, in order) as the next version; **Run** rebuilds each loft from those curves with live history, so the surface follows them. A surface that's already in the scene keeps its node and everything connected to it (follicles, constraints, skin) and only gets new history; otherwise it's created under its saved parent. Lofts whose curves are missing are skipped with a warning; a curve name shared by several nodes stops the Run before anything changes. Lofts from isoparms can't be published. Double-clicking an item selects its surfaces and opens the Loft Tool; **Publish...** runs the loft checks first, with **Publish Anyway** and **Cancel**
