@@ -504,6 +504,7 @@ out = {
     "labels": labels,
     "buttons": buttons,
     "modal": dialog.isModal(),
+    "add_buttons": [[b.toolTip(), b.icon().isNull(), b.autoRaise()] for b in dialog.add_buttons],
     "rows": [row(0), row(1)],
     "preview_header": [
         w for w in (dialog.preview_row.itemAt(i).widget() for i in range(dialog.preview_row.count())) if w
@@ -606,8 +607,16 @@ def test_selection_editor_does_not_block_maya(selection_dialog_probe):
     assert not selection_dialog_probe["modal"]
 
 
-def test_selection_editor_buttons_are_only_ok_and_cancel(selection_dialog_probe):
-    assert sorted(selection_dialog_probe["buttons"]) == ["Cancel", "OK"]
+def test_selection_editor_text_buttons_are_only_ok_and_cancel(selection_dialog_probe):
+    assert sorted(b for b in selection_dialog_probe["buttons"] if b) == ["Cancel", "OK"]
+
+
+def test_selection_editor_has_icon_buttons_to_add_entries(selection_dialog_probe):
+    assert selection_dialog_probe["add_buttons"] == [
+        ["Add Selected", False, True],
+        ["Add Pattern", False, True],
+        ["Add Selection Set", False, True],
+    ]
 
 
 def test_entries_empty_space_menu_adds(selection_dialog_probe):

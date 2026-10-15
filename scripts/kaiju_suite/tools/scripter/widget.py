@@ -841,12 +841,35 @@ class SelectionDialog(QtWidgets.QDialog):
         # The open window editing a Selected entry's objects, if any.
         self.objects_window = None
 
+        add_row = QtWidgets.QHBoxLayout()
+        self.add_buttons = []
+        for tip, icon_file, slot in (
+            ("Add Selected", "scripter_add_selected.svg", self._add_selected),
+            ("Add Pattern", "scripter_add_pattern.svg", self._add_pattern),
+            ("Add Selection Set", "scripter_add_set.svg", self._add_set),
+        ):
+            button = QtWidgets.QToolButton()
+            button.setIcon(icons.same_when_selected(icons.icon(icon_file)))
+            button.setToolTip(tip)
+            button.setAutoRaise(True)
+            button.clicked.connect(slot)
+            add_row.addWidget(button)
+            self.add_buttons.append(button)
+        add_row.addStretch(1)
+
         layout = QtWidgets.QVBoxLayout(self)
+        layout.addLayout(add_row)
         layout.addWidget(self.table, 1)
         layout.addLayout(self.preview_row)
         layout.addWidget(self.preview, 1)
         layout.addWidget(ok_cancel)
         self._rebuild()
+
+    def _lock(self, locked):
+        """Hold the entries (list, add buttons and OK) while a Selected
+        entry's objects window is open."""
+        for widget in [self.table, self.ok_cancel, *self.add_buttons]:
+            widget.setEnabled(not locked)
 
     def accept(self):
         self.on_save(self.entries)
@@ -981,14 +1004,12 @@ class SelectionDialog(QtWidgets.QDialog):
 
         def closed():
             self.objects_window = None
-            self.table.setEnabled(True)
-            self.ok_cancel.setEnabled(True)
+            self._lock(False)
             self._refresh()
 
         self.objects_window = SelectedObjectsDialog(self, entry["value"], save)
         self.objects_window.finished.connect(closed)
-        self.table.setEnabled(False)
-        self.ok_cancel.setEnabled(False)
+        self._lock(True)
         self.objects_window.show()
 
     def remove_selected(self):
