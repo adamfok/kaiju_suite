@@ -5,13 +5,24 @@ leaves the vertex as the deformers below made it, 1 smooths it fully.
 :func:`add` starts them at 0 so you paint in only the area you need, with
 Maya's Paint Attributes tool on :func:`paint_attribute`. Every edit goes
 through undoable Maya commands, so each function is one undo step.
+
+The QC tab runs the deltaMush checks
+(:data:`kaiju_suite.datatypes.deltamush.CHECKS`) on the selected meshes
+with :func:`run_qc`, with options saved per user and shared with Scripter's
+Publish; :func:`select_problem` selects what a problem points at.
 """
 
 from maya import cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
+from kaiju_suite import datatypes
+from kaiju_suite.core import checks
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.datatypes import deltamush as deltamush_data
+
+# The checks the QC tab runs (see run_qc).
+QC_CHECKS = deltamush_data.CHECKS
 
 
 def _shape(transform):
@@ -145,3 +156,31 @@ def mirror_weights(node, mesh, positive_to_negative=True):
 def affected(node, mesh):
     """The vertices of ``mesh`` the deltaMush acts on (weight above 0)."""
     return [f"{mesh}.vtx[{v}]" for v, w in enumerate(weights(node, mesh)) if w > 1e-6]
+
+
+# -- QC ---------------------------------------------------------------------
+
+
+def qc_settings():
+    """The QC options this user saved (defaults for the rest); Scripter's
+    Publish of a DeltaMush item uses the same ones."""
+    return datatypes.qc_settings(deltamush_data)
+
+
+def save_qc_setting(key, option, value):
+    """Save one QC option for this user."""
+    datatypes.save_qc_setting(deltamush_data, key, option, value)
+
+
+def run_qc(selection, settings=None):
+    """Run the deltaMush checks on the meshes in ``selection`` (long names;
+    a shape or component stands for its mesh). Returns ``(check, problems)``
+    pairs. Changes nothing. Raises ``ValueError`` if no meshes are selected."""
+    if not selection or not meshes(selection):
+        raise ValueError("No meshes selected. Select the meshes to check.")
+    return datatypes.run_qc(deltamush_data, selection, settings)
+
+
+def select_problem(problem):
+    """Select what ``problem`` points at (a mesh or a deltaMush) that's still in the scene."""
+    return checks.select_problem(problem)

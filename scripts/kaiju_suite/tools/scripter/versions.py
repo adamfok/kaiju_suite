@@ -27,6 +27,7 @@ DESCRIPTIONS_FILE = "descriptions.json"
 VERSIONED_EXTENSIONS = (".py", ".jnt", ".skin", ".mesh", ".curve", ".anim", ".pose", ".ctrl")
 VERSIONED_EXTENSIONS += (".bshp",)  # BlendShapes
 VERSIONED_EXTENSIONS += (".pwrap",)  # ProximityWrap items
+VERSIONED_EXTENSIONS += (".dmsh",)  # DeltaMush items
 
 NO_DESCRIPTION = "(no description)"
 

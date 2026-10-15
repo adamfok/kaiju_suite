@@ -157,3 +157,46 @@ def test_components_of_keeps_only_that_meshs_components(new_scene):
     found = logic.components_of(a, cmds.ls(selection=True))
 
     assert cmds.ls(found, flatten=True) == cmds.ls([f"{a}.vtx[0]", f"{a}.vtx[1]", f"{a}.f[1]"], flatten=True)
+
+
+# -- QC tab -----------------------------------------------------------------
+
+
+def test_qc_runs_the_deltamush_checks_on_the_selected_meshes(new_scene):
+    body, head = _plane("body"), _plane("head")
+    logic.add([body], weight=1.0)
+
+    found = {check.key: problems for check, problems in logic.run_qc([body, head])}
+
+    assert list(found) == ["missing", "below_skin", "disabled", "empty_weights", "duplicate_names"]
+    assert found["missing"] == ["head: no deltaMush"]
+
+
+def test_qc_needs_meshes(new_scene):
+    group = cmds.createNode("transform", name="grp")
+
+    with pytest.raises(ValueError, match="No meshes selected"):
+        logic.run_qc(cmds.ls(group, long=True))
+    with pytest.raises(ValueError, match="No meshes selected"):
+        logic.run_qc([])
+
+
+def test_qc_options_are_saved_for_publish_too(new_scene, monkeypatch):
+    from kaiju_suite import datatypes
+    from kaiju_suite.datatypes import deltamush
+
+    saved = []
+    monkeypatch.setattr(datatypes, "save_qc_setting", lambda *a: saved.append(a))
+
+    logic.save_qc_setting("missing", "enabled", True)
+
+    assert saved == [(deltamush, "missing", "enabled", True)]
+    assert logic.qc_settings() == datatypes.qc_settings(deltamush)
+
+
+def test_select_problem_selects_the_mesh(new_scene):
+    body = _plane("body")
+    found = dict((check.key, problems) for check, problems in logic.run_qc([body]))
+
+    assert logic.select_problem(found["missing"][0]) == ["body"]
+    assert cmds.ls(selection=True) == ["body"]
