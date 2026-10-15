@@ -16,6 +16,8 @@ import sys
 import traceback
 from dataclasses import dataclass, field
 
+from maya import cmds
+
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
@@ -437,6 +439,21 @@ def steps_for(paths):
             steps.append(path)
     cache = {}
     return sorted(dict.fromkeys(steps), key=lambda p: _sort_key(p, cache))
+
+
+def runs_a_folder(paths):
+    """Whether running ``paths`` runs a whole folder."""
+    return any(kind_of(path) == FOLDER for path in paths)
+
+
+def scene_is_new():
+    """Whether the scene is a fresh, untitled one with no changes."""
+    return not cmds.file(query=True, sceneName=True) and not cmds.file(query=True, modified=True)
+
+
+def start_new_scene():
+    """Start a new scene, dropping any unsaved changes."""
+    cmds.file(new=True, force=True)
 
 
 class Runner:

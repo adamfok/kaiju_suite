@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Scripter: running a folder when the scene isn't new (it has a file name or unsaved changes) first asks whether to start a new scene. **New Scene** starts one (dropping unsaved changes) and runs; **Run in This Scene** runs as before; **Cancel** runs nothing. Running only scripts or other items, or **Continue** from a breakpoint, doesn't ask
 - Scripter: right-click **Select Objects** on a Joints, Skin or Mesh item selects the objects it was published from (the joints, or the meshes for Skin and Mesh), and names any missing from the scene or matching several nodes
 - Scripter: **Publish...** on a Joints, Skin or Mesh item with nothing selected asks whether to update it from the objects saved in it instead ("Nothing is selected. Update leg.skin from the 1 object saved in it instead?"). Yes then asks for the description as usual and publishes the next version from those objects. If some of them are missing from the scene, a window names them and nothing is published
 - Scripter: **Publish...** checks for changes before asking anything. If the item (or the selection, or its saved objects) holds the same content as its current version, a message says "Nothing to publish: skeleton.jnt is the same as v001" and no dialog opens, instead of a "No changes to publish" error after you've typed a description. A selection that can't be published is also reported before the description is asked for
