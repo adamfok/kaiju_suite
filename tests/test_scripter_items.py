@@ -627,8 +627,15 @@ def test_skin_items_open_the_skincluster_tool():
     assert registry.find(items.tool_for(items.SKIN)) is not None
 
 
+def test_joints_items_open_the_joint_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.JOINTS) == "Joint Tool"
+    assert registry.find(items.tool_for(items.JOINTS)) is not None
+
+
 def test_kinds_without_a_tool_have_none():
-    for kind in (items.JOINTS, items.MESH, items.SCRIPT, items.SELECTION):
+    for kind in (items.MESH, items.SCRIPT, items.SELECTION):
         assert items.tool_for(kind) is None
 
 
@@ -684,6 +691,17 @@ def test_publish_qc_runs_the_skin_checks_on_the_objects(tmp_path, new_scene):
 
 
 def test_publish_qc_is_empty_for_kinds_without_checks(tmp_path, new_scene):
-    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
+    cube = cmds.polyCube(name="box", constructionHistory=False)[0]
+    path = logic.create_data_item(items.MESH, str(tmp_path), "body", _long(cube))
 
-    assert items.publish_qc(path, _long("hip")) == []
+    assert items.publish_qc(path, _long(cube)) == []
+
+
+def test_publish_qc_runs_the_joint_checks_on_the_joints(tmp_path, new_scene):
+    hip = _chain()[0]
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(hip))
+    cmds.setAttr(f"{hip}.rotateX", 30)
+
+    found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long(hip)))
+
+    assert found["rotate"] == ["hip: rotate is (30, 0, 0)"]

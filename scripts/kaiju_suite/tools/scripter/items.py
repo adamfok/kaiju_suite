@@ -61,7 +61,7 @@ _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 # Data published from the selection, by kind.
 DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
 # The tool each data kind opens on double-click, by its registry name.
-TOOLS = {SKIN: "SkinCluster Tool"}
+TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool"}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
 RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)

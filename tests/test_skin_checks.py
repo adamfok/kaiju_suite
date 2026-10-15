@@ -186,9 +186,9 @@ def test_run_qc_uses_the_saved_options(new_scene, clean_qc_settings):
 
 
 def test_a_datatype_without_checks_has_no_qc(new_scene):
-    from kaiju_suite.datatypes import joints
+    from kaiju_suite.datatypes import mesh
 
-    assert datatypes.run_qc(joints, []) == []
+    assert datatypes.run_qc(mesh, []) == []
 
 
 def test_failed_keeps_only_checks_that_found_something(new_scene, clean_qc_settings):
