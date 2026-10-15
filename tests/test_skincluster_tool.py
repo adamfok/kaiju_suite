@@ -1,6 +1,7 @@
 import pytest
 from maya import cmds
 
+from kaiju_suite.datatypes import skin
 from kaiju_suite.tools.skincluster_tool import logic
 
 
@@ -446,3 +447,87 @@ def test_import_weights_is_one_undo_step(new_scene, tmp_path):
     assert _all_weights(plane) != before
     cmds.undo()
     assert _all_weights(plane) == before
+
+
+# -- QC tab -----------------------------------------------------------------
+
+
+def test_qc_runs_the_skin_checks_on_the_selected_meshes(new_scene):
+    src, _ = _skinned_source()
+    bare = _plane("bare")
+    cmds.select(src, bare)
+
+    found = {check.key: problems for check, problems in logic.run_qc(cmds.ls(selection=True, long=True))}
+
+    assert list(found) == ["skinned", "normalized", "influence_count", "small_weights", "unused"]
+    assert found["skinned"] == ["bare: no skinCluster"]
+
+
+def test_qc_uses_the_settings_given(new_scene):
+    src, _ = _skinned_source()
+    settings = logic.qc_defaults()
+    settings["unused"]["enabled"] = False
+
+    found = [check.key for check, _ in logic.run_qc(cmds.ls(src, long=True), settings)]
+
+    assert "unused" not in found
+
+
+def test_qc_needs_meshes(new_scene):
+    joint = _joint("j", 0)
+
+    with pytest.raises(ValueError, match="No meshes selected"):
+        logic.run_qc(cmds.ls(joint, long=True))
+
+
+def test_qc_refuses_bad_settings(new_scene):
+    src, _ = _skinned_source()
+
+    with pytest.raises(ValueError, match="max_influences"):
+        logic.run_qc(cmds.ls(src, long=True), {"influence_count": {"max_influences": "four"}})
+
+
+def test_qc_settings_are_saved_per_user(new_scene):
+    logic.save_qc_setting("influence_count", "max_influences", 6)
+    try:
+        assert logic.qc_settings()["influence_count"]["max_influences"] == 6
+    finally:
+        cmds.optionVar(remove="kaiju_suite_datatype_skin_qc_influence_count_max_influences")
+
+
+def test_select_problem_selects_what_it_points_at(new_scene):
+    src, cluster = _skinned_source()
+    cmds.skinPercent(cluster, f"{src}.vtx[0]", transformValue=[("left", 0.9995), ("right", 0.0005)])
+    [(_, [problem])] = logic.run_qc(cmds.ls(src, long=True), {
+        key: {"enabled": key == "small_weights"} for key in logic.qc_defaults()
+    })
+
+    assert logic.select_problem(problem) == ["src.vtx[0]"]
+    assert cmds.ls(selection=True) == ["src.vtx[0]"]
+
+
+def test_select_problem_skips_what_is_gone(new_scene):
+    from kaiju_suite.core.checks import Problem
+
+    _plane("here")
+    selected = logic.select_problem(Problem("x", ["here", "gone"]))
+
+    assert selected == ["here"]
+    assert cmds.ls(selection=True) == ["here"]
+
+
+def test_qc_with_nothing_selected_checks_nothing(new_scene):
+    _skinned_source()
+
+    with pytest.raises(ValueError, match="No meshes selected"):
+        logic.run_qc([])
+
+
+def test_qc_settings_are_the_ones_scripter_publish_uses(new_scene):
+    from kaiju_suite import datatypes
+
+    logic.save_qc_setting("small_weights", "threshold", 0.05)
+    try:
+        assert datatypes.qc_settings(skin)["small_weights"]["threshold"] == 0.05
+    finally:
+        cmds.optionVar(remove="kaiju_suite_datatype_skin_qc_small_weights_threshold")

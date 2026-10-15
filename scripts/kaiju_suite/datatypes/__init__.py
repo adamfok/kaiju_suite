@@ -14,6 +14,10 @@ file header's ``kaiju`` value), ``EXTENSION`` and these functions:
 - ``describe(payload)``: info lines about a payload.
 - ``nodes(payload)``: the names ``gather`` would take to gather it again.
 - ``compare_view(payload)``: the payload as a side-by-side compare shows it.
+- ``CHECKS`` (optional): QC checks (:class:`kaiju_suite.core.checks.Check`,
+  each ``fn(nodes, **options)``), shown in the datatype's tool and run
+  before Scripter publishes. :func:`run_qc` runs them with the settings
+  saved per user (:func:`qc_settings`), shared by the tool and Scripter.
 
 :func:`save` and :func:`load` write and apply one module's files. The file
 format is :mod:`kaiju_suite.core.datafile`'s.
@@ -25,7 +29,7 @@ Assembler, ``ui``, ``rigging`` or Qt. Warnings go through
 
 from maya import cmds
 
-from kaiju_suite.core import matching
+from kaiju_suite.core import checks, matching
 from kaiju_suite.core.datafile import FORMAT, DataFormatError, read, write  # noqa: F401 (re-exported)
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.nodes import unique_name  # noqa: F401 (re-exported)
@@ -63,6 +67,47 @@ def warning(message):
 def report(info, message):
     """Pass ``message`` to ``info``, or to the log if there's no ``info``."""
     (info or log.info)(message)
+
+
+# -- QC ---------------------------------------------------------------------
+
+
+def _qc_key(module):
+    return f"datatype_{module.KIND}"
+
+
+def qc_checks(module):
+    """``module``'s QC checks; empty if it has none."""
+    return tuple(getattr(module, "CHECKS", ()))
+
+
+def qc_settings(module):
+    """``module``'s QC options as this user saved them (defaults for the
+    rest), with every check on: checks can't be turned off."""
+    settings = checks.saved_settings(_qc_key(module), qc_checks(module))
+    for values in settings.values():
+        values["enabled"] = True
+    return settings
+
+
+def save_qc_setting(module, key, option, value):
+    """Save one of ``module``'s QC options for this user."""
+    checks.save_setting(_qc_key(module), key, option, value)
+
+
+def run_qc(module, nodes, settings=None):
+    """Run ``module``'s QC checks on ``nodes`` (long names), with
+    ``settings`` or the saved ones (every check, with the saved options). Returns ``(check, problems)`` pairs;
+    empty if ``module`` has no checks. Changes nothing."""
+    found = qc_checks(module)
+    if not found:
+        return []
+    return checks.run(qc_settings(module) if settings is None else settings, found, nodes=nodes)
+
+
+def qc_failed(results):
+    """The ``(check, problems)`` pairs of :func:`run_qc` that found something."""
+    return [(check, problems) for check, problems in results if problems]
 
 
 # -- nodes ------------------------------------------------------------------
