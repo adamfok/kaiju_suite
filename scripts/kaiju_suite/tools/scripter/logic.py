@@ -350,6 +350,62 @@ def place(paths, directory, index):
     return new_paths
 
 
+def _copy_name(directory, name, is_dir):
+    """``name`` if it's free in ``directory``, else ``<name>_copy``,
+    ``<name>_copy_2``... (before a file's extension)."""
+    stem, ext = (name, "") if is_dir else os.path.splitext(name)
+    candidate, n = name, 1
+    while os.path.exists(os.path.join(directory, candidate)):
+        candidate = f"{stem}_copy{'' if n == 1 else f'_{n}'}{ext}"
+        n += 1
+    return candidate
+
+
+def paste(paths, directory, index=None):
+    """Copy ``paths`` into ``directory`` at ``index`` (as in :func:`place`),
+    in the given order. A name already taken there gets ``_copy`` added.
+    Copies keep their disabled state and versions; a folder comes with
+    everything in it. An Import or Export File copy points to the same file
+    (files inside a copied folder point to their copies). Everything is
+    checked before anything is copied. Returns the new paths."""
+    directory = os.path.normpath(directory)
+    srcs = _top_level(paths)
+    for src in srcs:
+        if not os.path.exists(src):
+            raise FileNotFoundError(src)
+        if directory == src or directory.startswith(src + os.sep):
+            raise ValueError("Can't paste a folder into itself.")
+
+    current = _ordered_names(directory)
+    anchor = _anchor(current, index, set())
+    new_paths = []
+    for src in srcs:
+        is_dir = os.path.isdir(src)
+        new = os.path.join(directory, _copy_name(directory, os.path.basename(src), is_dir))
+        if is_dir:
+            shutil.copytree(src, new)
+        else:
+            shutil.copy2(src, new)
+            versions.copy_history(src, new)
+            if kind_of(src) in items.FILE_KINDS:
+                _keep_target(src, new)
+        if not is_enabled(src):
+            set_enabled([new], False)
+        new_paths.append(new)
+    _insert_order(directory, current, [os.path.basename(p) for p in new_paths], anchor)
+    return new_paths
+
+
+def _keep_target(src, new):
+    """Point the File item ``new``, copied from ``src``, to ``src``'s file:
+    a path stored relative to ``src``'s folder doesn't hold in another one."""
+    try:
+        target = items.target(src)
+    except ValueError:  # no file set yet: the copy has none either
+        return
+    items.set_target(new, target)
+
+
 def delete_paths(paths):
     """Delete items and folders (with everything in them). If any is
     missing, nothing is deleted and FileNotFoundError is raised."""
