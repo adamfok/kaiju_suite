@@ -19,7 +19,7 @@ UTILITIES = {
     "ControlShape": "ControlShape Tool",
     "Constraints": "Constraint Tool",
     "Deformers": "Deformer Tool",
-    "Wrap": "Wrap Tool",
+    "Wrap": "ProximityWrap Tool",
     "Rig Module": "Rig Module Editor",
 }
 
@@ -44,7 +44,7 @@ def test_there_is_no_scene_tool():
 ELSEWHERE = {}
 
 # Tools that were removed; nothing should register them any more.
-REMOVED = ["Rig Validator", "Offset & Snap Tool", "Attribute Manager", "Space Switch Tool", "Selection Sets"]
+REMOVED = ["Rig Validator", "Offset & Snap Tool", "Attribute Manager", "Space Switch Tool", "Selection Sets", "Wrap Tool"]
 
 
 @pytest.mark.parametrize("name", REMOVED)

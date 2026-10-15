@@ -235,7 +235,7 @@ def test_double_click_does_not_also_expand_or_collapse(folder_probe):
 def test_new_menu_shows_each_kinds_icon(folder_probe):
     # The same icon the item gets in the tree, so the menu previews it.
     assert sorted(folder_probe["new_icons"]) == sorted(
-        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh"]
+        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh", "ProximityWrap"]
     )
     assert all(folder_probe["new_icons"].values()), folder_probe["new_icons"]
 
@@ -1060,7 +1060,7 @@ from kaiju_suite.tools.scripter import widget
 
 root = tempfile.mkdtemp()
 paths = {}
-for name in ("leg.skin", "skeleton.jnt", "body.mesh"):
+for name in ("leg.skin", "skeleton.jnt", "body.mesh", "shirt.pwrap"):
     paths[name] = os.path.join(root, name)
     open(paths[name], "w").close()
 
@@ -1133,6 +1133,11 @@ def test_double_click_on_a_mesh_item_opens_the_mesh_tool(data_probe):
 
 def test_double_click_on_a_joints_item_opens_the_joint_tool(data_probe):
     assert data_probe["double_click"]["skeleton.jnt"] == [["tool", "skeleton.jnt"]]
+
+
+def test_double_click_on_a_proximitywrap_item_opens_its_tool(data_probe):
+    assert data_probe["double_click"]["shirt.pwrap"] == [["tool", "shirt.pwrap"]]
+    assert "Info..." in data_probe["menus"]["shirt.pwrap"]
 
 
 @pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt", "body.mesh"])
