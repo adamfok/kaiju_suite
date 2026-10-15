@@ -5,6 +5,7 @@ from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected, short_name
 from kaiju_suite.tools.blendshape_tool import logic
 from kaiju_suite.ui.base_window import ToolWindow
+from kaiju_suite.ui.qc_tab import QCTab
 
 SETTINGS_KEY = "blendshape_tool"
 
@@ -102,9 +103,31 @@ class BlendShapeToolWindow(ToolWindow):
         reader.addWidget(set_cone, 3, 0, 1, 2)
         reader.addWidget(drive, 3, 2, 1, 2)
 
+        tabs = QtWidgets.QTabWidget()
+        qc = QCTab(logic.QC_CHECKS, logic.qc_settings(), logic.save_qc_setting, self._run_qc, logic.select_problem)
+        tabs.addTab(qc, "QC")
+        utilities = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(utilities)
         for box in (sculpt_box, targets_box, reader_box):
-            self.layout.addWidget(box)
+            layout.addWidget(box)
+        layout.addStretch()
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setWidget(utilities)
+        tabs.addTab(scroll, "Utilities")
+        tabs.setCurrentIndex(settings.get(SETTINGS_KEY, "tab", 0))
+        tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
+        self.layout.addWidget(tabs)
         self._refresh_readers()
+
+    def _run_qc(self):
+        """The QC results for the selection, or ``None`` after warning why not."""
+        try:
+            return logic.run_qc(selected())
+        except ValueError as e:
+            _warn(str(e))
+            return None
 
     # -- loading --------------------------------------------------------------
 

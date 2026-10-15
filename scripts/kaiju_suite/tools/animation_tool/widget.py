@@ -5,6 +5,7 @@ from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
 from kaiju_suite.tools.animation_tool import logic
 from kaiju_suite.ui.base_window import ToolWindow
+from kaiju_suite.ui.qc_tab import QCTab
 
 SETTINGS_KEY = "animation_tool"
 
@@ -88,11 +89,32 @@ class AnimationToolWindow(ToolWindow):
         self.status = QtWidgets.QLabel()
         self.status.setWordWrap(True)
 
-        self.layout.addWidget(mirror_box)
-        self.layout.addWidget(switch_box)
-        self.layout.addWidget(reset_box)
-        self.layout.addWidget(self.status)
-        self.layout.addStretch()
+        tabs = QtWidgets.QTabWidget()
+        qc = QCTab(logic.QC_CHECKS, logic.qc_settings(), logic.save_qc_setting, self._run_qc, logic.select_problem)
+        tabs.addTab(qc, "QC")
+        utilities = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(utilities)
+        layout.addWidget(mirror_box)
+        layout.addWidget(switch_box)
+        layout.addWidget(reset_box)
+        layout.addWidget(self.status)
+        layout.addStretch()
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setWidget(utilities)
+        tabs.addTab(scroll, "Utilities")
+        tabs.setCurrentIndex(settings.get(SETTINGS_KEY, "tab", 0))
+        tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
+        self.layout.addWidget(tabs)
+
+    def _run_qc(self):
+        """The QC results for the selection, or ``None`` after warning why not."""
+        try:
+            return logic.run_qc(selected())
+        except ValueError as e:
+            _warn(str(e))
+            return None
 
     def _nodes(self):
         nodes = selected()
