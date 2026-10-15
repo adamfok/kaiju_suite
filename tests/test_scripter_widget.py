@@ -545,13 +545,14 @@ out["objects_window"] = {
     "modal": objects_window.isModal(),
     "rows": object_rows(),
     "missing_red": objects_list.item(1).foreground().color().getRgb()[:3] == widget.FAILED_COLOR.getRgb()[:3],
-    "empty_menu": actions(objects_window.menu(None)),
-    "row_menu": actions(objects_window.menu(objects_list.item(0))),
+    "buttons": [[b.toolTip(), b.icon().isNull(), b.autoRaise()] for b in objects_window.buttons],
+    "has_menu": objects_list.contextMenuPolicy() == QtCore.Qt.ContextMenuPolicy.CustomContextMenu,
+    "remove_enabled_with_nothing_picked": objects_window.remove_button.isEnabled(),
     "entries_locked": not table.isEnabled(),
 }
-objects_list.clearSelection()
 objects_list.item(0).setSelected(True)
 out["objects_window"]["pick"] = selected[-1]
+out["objects_window"]["remove_enabled_with_a_pick"] = objects_window.remove_button.isEnabled()
 objects_window.add_selected()
 out["objects_window"]["added"] = object_rows()
 objects_list.clearSelection()
@@ -663,10 +664,20 @@ def test_double_clicking_a_selected_entry_opens_its_objects(selection_dialog_pro
     assert window["entries_locked"]
 
 
-def test_objects_window_menus(selection_dialog_probe):
+def test_objects_window_has_icon_buttons_instead_of_a_menu(selection_dialog_probe):
     window = selection_dialog_probe["objects_window"]
-    assert window["empty_menu"] == ["Add Selected", "Replace with Selected"]
-    assert window["row_menu"] == ["Remove"]
+    assert window["buttons"] == [
+        ["Add Selected", False, True],
+        ["Replace with Selected", False, True],
+        ["Remove", False, True],
+    ]
+    assert not window["has_menu"]
+
+
+def test_objects_window_remove_needs_a_picked_object(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert not window["remove_enabled_with_nothing_picked"]
+    assert window["remove_enabled_with_a_pick"]
 
 
 def test_objects_window_picks_adds_and_removes(selection_dialog_probe):

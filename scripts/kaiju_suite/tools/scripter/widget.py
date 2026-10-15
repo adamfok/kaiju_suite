@@ -1022,8 +1022,9 @@ class SelectedObjectsDialog(QtWidgets.QDialog):
     """Edit the objects of one Selected entry. It isn't modal, so you can
     select objects in Maya while it's open; OK calls ``on_save`` with them.
 
-    Right-click empty space to add the scene selection or replace them with
-    it, or an object to remove it. Picking objects selects them in the scene."""
+    The icon buttons at the top add the scene selection, replace the objects
+    with it, or remove the picked objects. Picking objects selects them in
+    the scene."""
 
     def __init__(self, parent, names, on_save):
         super().__init__(parent)
@@ -1035,10 +1036,23 @@ class SelectedObjectsDialog(QtWidgets.QDialog):
         self.list = QtWidgets.QListWidget()
         self.list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.list.itemSelectionChanged.connect(self._select_picked)
-        self.list.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-        self.list.customContextMenuRequested.connect(
-            lambda pos: self.menu(self.list.itemAt(pos)).exec(self.list.viewport().mapToGlobal(pos))
-        )
+
+        button_row = QtWidgets.QHBoxLayout()
+        self.buttons = []
+        for tip, icon_file, slot in (
+            ("Add Selected", "scripter_add_selected.svg", self.add_selected),
+            ("Replace with Selected", "scripter_replace_selected.svg", self.replace_with_selected),
+            ("Remove", "scripter_remove.svg", self.remove_selected),
+        ):
+            button = QtWidgets.QToolButton()
+            button.setIcon(icons.same_when_selected(icons.icon(icon_file)))
+            button.setToolTip(tip)
+            button.setAutoRaise(True)
+            button.clicked.connect(slot)
+            button_row.addWidget(button)
+            self.buttons.append(button)
+        button_row.addStretch(1)
+        self.remove_button = self.buttons[-1]
 
         ok_cancel = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
@@ -1047,6 +1061,7 @@ class SelectedObjectsDialog(QtWidgets.QDialog):
         ok_cancel.rejected.connect(self.reject)
 
         layout = QtWidgets.QVBoxLayout(self)
+        layout.addLayout(button_row)
         layout.addWidget(self.list, 1)
         layout.addWidget(ok_cancel)
         self._fill()
@@ -1058,20 +1073,6 @@ class SelectedObjectsDialog(QtWidgets.QDialog):
         self.on_save(self.names)
         super().accept()
 
-    def menu(self, item):
-        """Right-click menu: adding on empty space, Remove on an object."""
-        menu = QtWidgets.QMenu(self)
-        if item is None:
-            menu.addAction("Add Selected", self.add_selected)
-            menu.addAction("Replace with Selected", self.replace_with_selected)
-        else:
-            if not item.isSelected():
-                with QtCore.QSignalBlocker(self.list):
-                    self.list.clearSelection()
-                    item.setSelected(True)
-            menu.addAction("Remove", self.remove_selected)
-        return menu
-
     def _fill(self):
         with QtCore.QSignalBlocker(self.list):
             self.list.clear()
@@ -1080,8 +1081,10 @@ class SelectedObjectsDialog(QtWidgets.QDialog):
                 if items.missing({"type": items.SELECTED, "value": [name]}):
                     item.setForeground(FAILED_COLOR)
                     item.setToolTip("Not in the scene now")
+        self.remove_button.setEnabled(False)
 
     def _select_picked(self):
+        self.remove_button.setEnabled(bool(self.list.selectedItems()))
         picked = [item.text() for item in self.list.selectedItems() if item.foreground().color() != FAILED_COLOR]
         if picked:
             cmds.select(picked, replace=True)
