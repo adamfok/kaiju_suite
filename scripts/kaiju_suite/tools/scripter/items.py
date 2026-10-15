@@ -11,6 +11,11 @@
   file is inside it (see :mod:`kaiju_suite.core.paths`). Import File imports
   any file Maya can import, into the root namespace; Export File exports
   the selection, overwriting the file. Not versioned.
+- **Selection** (``.sel``): a list of entries, as ``{"entries": [...]}``,
+  each ``{"type": ..., "value": ...}``: selected objects (a list of their
+  shortest unique names, or components), a name pattern (Maya wildcards, searched on every
+  run) or a selection set (its members read on every run). Running it
+  replaces the selection with what they find. Not versioned.
 
 No Qt here.
 """
@@ -22,6 +27,7 @@ from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.core import paths
+from kaiju_suite.core.undo import undoable
 from kaiju_suite.datatypes import joints, mesh, skin
 from kaiju_suite.tools.scripter import versions
 
@@ -34,6 +40,7 @@ SKIN = "Skin"
 MESH = "Mesh"
 IMPORT_FILE = "Import File"
 EXPORT_FILE = "Export File"
+SELECTION = "Selection"
 
 EXTENSIONS = {
     SCRIPT: ".py",
@@ -44,6 +51,7 @@ EXTENSIONS = {
     MESH: mesh.EXTENSION,
     IMPORT_FILE: ".import",
     EXPORT_FILE: ".export",
+    SELECTION: ".sel",
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
@@ -51,7 +59,7 @@ _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
-RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE)
+RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {
@@ -84,6 +92,8 @@ def run(path):
         import_file(target(path))
     elif kind == EXPORT_FILE:
         export_selected(target(path))
+    elif kind == SELECTION:
+        select_entries(read_entries(path))
     else:
         raise ValueError(f"Not something Kaiju Scripter runs: {os.path.basename(path)}")
 
@@ -213,3 +223,209 @@ def export_selected(file_path):
     os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
     cmds.file(file_path, exportSelected=True, type=file_type, force=True)
     return file_path
+
+
+# -- Selection --------------------------------------------------------------
+
+SELECTED = "selected"
+PATTERN = "pattern"
+SET = "set"
+# What a pattern entry's "node_type" can be; "*" (or none) is any node.
+# Geo, Nurbs Curve, Nurbs Surface and Locator find transforms with that shape.
+ANY_TYPE = "*"
+_SHAPE_TYPES = {"Geo": "mesh", "Nurbs Curve": "nurbsCurve", "Nurbs Surface": "nurbsSurface", "Locator": "locator"}
+NODE_TYPES = (ANY_TYPE, "Transform", "Joint", *_SHAPE_TYPES, "Constraint")
+# How many names a summary lists before "...and N more".
+MAX_SUMMARY = 10
+
+
+def read_entries(path):
+    """The entries of the Selection item at ``path``; ``[]`` for a new, empty file."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    if not text.strip():
+        return []
+    try:
+        return list(json.loads(text)["entries"])
+    except (ValueError, KeyError, TypeError):
+        raise ValueError(f"{os.path.basename(path)} isn't a valid Selection item.") from None
+
+
+def write_entries(path, entries):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"entries": list(entries)}, f, indent=2)
+
+
+def selected_names():
+    """The scene selection as a Selected entry saves it: the shortest unique names."""
+    return cmds.ls(selection=True) or []
+
+
+def add_selected(entries, names):
+    """``entries`` with one Selected entry added holding ``names`` (each
+    once); unchanged when there are none."""
+    names = list(dict.fromkeys(names))
+    return list(entries) + ([{"type": SELECTED, "value": names}] if names else [])
+
+
+def _names(entry):
+    """What an entry lists by name: its objects, patterns or set."""
+    if entry["type"] == SELECTED:
+        return list(entry["value"])
+    if entry["type"] == SET:
+        return [f"set: {entry['value']}"]
+    node_type = entry.get("node_type", ANY_TYPE)
+    return [entry["value"] if node_type == ANY_TYPE else f"{entry['value']} ({node_type})"]
+
+
+def entry_label(entry):
+    """How an entry reads in a list, e.g. ``body_geo, hair_geo``, ``*_geo``, ``set: render_set``."""
+    return ", ".join(_names(entry))
+
+
+def summary(entries):
+    """One line naming what ``entries`` hold, for a tooltip."""
+    if not entries:
+        return "No entries. Double-click to add some."
+    names = [name for entry in entries for name in _names(entry)]
+    text = ", ".join(names[:MAX_SUMMARY])
+    if len(names) > MAX_SUMMARY:
+        text += f" ...and {len(names) - MAX_SUMMARY} more"
+    return text
+
+
+def _set_members(name, seen):
+    if name in seen or cmds.nodeType(name) not in ("objectSet",):
+        return []
+    seen.add(name)
+    found = []
+    for member in cmds.sets(name, query=True) or []:
+        if "." not in member and cmds.nodeType(member) == "objectSet":
+            found.extend(_set_members(member, seen))
+        else:
+            found.append(member)
+    return found
+
+
+def _ls(names):
+    """``names`` as they are in the scene now, leaving out intermediate objects."""
+    if not names:
+        return []
+    try:
+        found = cmds.ls(names) or []
+    except RuntimeError:
+        return []
+    nodes = [name for name in found if "." not in name]
+    intermediate = set(cmds.ls(nodes, intermediateObjects=True) or []) if nodes else set()
+    return [name for name in found if name not in intermediate]
+
+
+def lookup(entry):
+    """``(found, missing)`` for ``entry``: what it finds in the scene now, and
+    what it can't find (a Selected entry's missing objects, or the entry's
+    label when it finds nothing)."""
+    kind, value = entry["type"], entry["value"]
+    if kind == SELECTED:
+        found, missing = [], []
+        for name in value:
+            here = _ls([name])
+            found.extend(here)
+            if not here:
+                missing.append(name)
+        return found, missing
+    if kind == SET:
+        found = _ls(_set_members(value, set()) if cmds.objExists(value) else [])
+    else:
+        found = _of_type(_ls(value.split()), entry.get("node_type", ANY_TYPE))
+    return found, ([] if found else [entry_label(entry)])
+
+
+def _of_type(found, node_type):
+    """The nodes in ``found`` of ``node_type`` (one of :data:`NODE_TYPES`), in order."""
+    if node_type == ANY_TYPE:
+        return found
+    nodes = [name for name in found if "." not in name]
+    if not nodes:
+        return []
+    if node_type == "Transform":
+        keep = cmds.ls(nodes, exactType="transform")
+    elif node_type == "Joint":
+        keep = cmds.ls(nodes, type="joint")
+    elif node_type == "Constraint":
+        keep = cmds.ls(nodes, type="constraint")
+    elif node_type in _SHAPE_TYPES:
+        shape = _SHAPE_TYPES[node_type]
+        keep = [
+            name
+            for name in cmds.ls(nodes, type="transform")
+            if cmds.listRelatives(name, shapes=True, noIntermediate=True, type=shape)
+        ]
+    else:
+        raise ValueError(f"Unknown node type: {node_type}")
+    keep = set(keep or [])
+    return [name for name in nodes if name in keep]
+
+
+def find(entry):
+    """What ``entry`` finds in the scene now, as shortest unique names.
+    Intermediate objects (e.g. a deformed mesh's ``...ShapeOrig``) are left out."""
+    return lookup(entry)[0]
+
+
+def missing(entry):
+    """What ``entry`` can't find in the scene now (see :func:`lookup`)."""
+    return lookup(entry)[1]
+
+
+def resolve(entries):
+    """``(objects, missing)``: everything ``entries`` find, in entry order and
+    without repeats, and what they can't find."""
+    objects, missed = [], []
+    for entry in entries:
+        found, gone = lookup(entry)
+        objects.extend(found)
+        missed.extend(gone)
+    return list(dict.fromkeys(objects)), missed
+
+
+def select_entries(entries):
+    """Replace the selection with what ``entries`` find. Raises, selecting
+    nothing new, if there are none or anything is missing."""
+    if not entries:
+        raise ValueError("This Selection has no entries. Double-click it to add some.")
+    objects, missed = resolve(entries)
+    if missed:
+        raise ValueError("Found nothing for: " + ", ".join(missed))
+    cmds.select(objects, replace=True)
+    return objects
+
+
+def scene_sets():
+    """The scene's selection sets, by name: not shading groups, deformer sets
+    or Maya's default sets."""
+    found = []
+    for name in cmds.ls(exactType="objectSet") or []:
+        if name in ("defaultLightSet", "defaultObjectSet") or cmds.listConnections(f"{name}.usedBy"):
+            continue
+        found.append(name)
+    return sorted(found)
+
+
+@undoable
+def create_set(name, members):
+    """Make a selection set named ``name`` holding ``members``, as one undo
+    step. Returns its name, which Maya changes if ``name`` is taken."""
+    name = name.strip()
+    if not name:
+        raise ValueError("Please provide a name for the set.")
+    if not members:
+        raise ValueError("Nothing selected to make a set from.")
+    return cmds.sets(members, name=name)
+
+
+@undoable
+def delete_set(name):
+    """Delete the selection set ``name`` (not its members), as one undo step."""
+    if name not in scene_sets():
+        raise ValueError(f"Not a selection set: {name}")
+    cmds.delete(name)

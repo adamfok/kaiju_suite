@@ -55,6 +55,7 @@ ICONS = {
     logic.JOINTS: "scripter_joints.svg",
     logic.SKIN: "scripter_skin.svg",
     logic.MESH: "scripter_mesh.svg",
+    logic.SELECTION: "scripter_selection.svg",
 }
 # The right-click New menu, in order.
 NEW_KINDS = (
@@ -64,12 +65,13 @@ NEW_KINDS = (
     logic.BREAKPOINT,
     logic.IMPORT_FILE,
     logic.EXPORT_FILE,
+    logic.SELECTION,
     logic.JOINTS,
     logic.SKIN,
     logic.MESH,
 )
 # Dividers in the New menu after these kinds.
-NEW_MENU_BREAKS = (logic.BREAKPOINT, logic.EXPORT_FILE)
+NEW_MENU_BREAKS = (logic.BREAKPOINT, logic.SELECTION)
 IMPORT_FILTER = (
     "All Files (*);;Maya Scenes (*.ma *.mb);;FBX (*.fbx);;OBJ (*.obj);;Alembic (*.abc)"
 )
@@ -363,6 +365,8 @@ class ScripterWindow(ToolWindow):
             item.setData(0, PATH_ROLE, entry.path)
             if entry.kind in items.FILE_KINDS:
                 self._show_target(item)
+            elif entry.kind == logic.SELECTION:
+                self._show_entries(item)
             item.setIcon(0, kind_icon(entry.kind))
             color = row_color(entry.kind, self.tree.palette())
             if color:
@@ -503,6 +507,30 @@ class ScripterWindow(ToolWindow):
         if not item.toolTip(0):
             item.setToolTip(0, text)
 
+    def _show_entries(self, item):
+        """Name tooltip of a Selection: a summary of its entries."""
+        path = item.data(0, PATH_ROLE)
+        try:
+            text = items.summary(items.read_entries(path))
+        except (OSError, ValueError) as e:
+            text = str(e)
+        if not item.toolTip(0):
+            item.setToolTip(0, text)
+
+    def _edit_selection(self, path):
+        entries = self.attempt(lambda: items.read_entries(path))
+        if entries is None:
+            return
+
+        def save(edited):
+            self.attempt(lambda: items.write_entries(path, edited))
+            self.populate()
+
+        # Not modal, so you can select objects in Maya while it's open.
+        dialog = SelectionDialog(self, os.path.splitext(os.path.basename(path))[0], entries, save)
+        dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.show()
+
     def _on_double_click(self, item, _column):
         path = item.data(0, PATH_ROLE)
         kind = logic.kind_of(path) if path else None
@@ -514,6 +542,8 @@ class ScripterWindow(ToolWindow):
                 QtWidgets.QMessageBox.information(self, os.path.basename(path), "\n".join(lines))
         elif kind in items.FILE_KINDS:
             self._change_target(path)
+        elif kind == logic.SELECTION:
+            self._edit_selection(path)
         elif kind == logic.FOLDER:
             self.attempt(lambda: _open_in_file_browser(path))
 
@@ -614,6 +644,9 @@ class ScripterWindow(ToolWindow):
                 return
             default = os.path.splitext(os.path.basename(target))[0]
             create = lambda name: logic.create_file_item(kind, directory, name, target, index)  # noqa: E731
+        elif kind == logic.SELECTION:
+            selection = items.selected_names()
+            create = lambda name: logic.create_selection_item(directory, name, selection, index)  # noqa: E731
         else:
             create = lambda name: logic.create_item(kind, directory, name, index)  # noqa: E731
         name, ok = QtWidgets.QInputDialog.getText(self, f"New {kind}", "Name:", text=default)
@@ -623,6 +656,8 @@ class ScripterWindow(ToolWindow):
         self.populate()
         if path and kind == logic.SCRIPT:
             self.attempt(lambda: script_editor.open_in_script_editor(path))
+        elif path and kind == logic.SELECTION:
+            self._edit_selection(path)
 
     def _rename_current(self):
         item = self.tree.currentItem()
@@ -739,3 +774,517 @@ class VersionsDialog(QtWidgets.QDialog):
         self.owner.attempt(lambda: versions.restore(self.path, number))
         self.owner.populate()
         self._fill()
+
+
+class _EntryList(QtWidgets.QTreeWidget):
+    """The Selection editor's entries: clicking empty space clears the selection."""
+
+    def mousePressEvent(self, event):
+        if self.itemAt(event.position().toPoint()) is None:
+            self.clearSelection()
+        super().mousePressEvent(event)
+
+
+class _PreviewList(QtWidgets.QListWidget):
+    """The Selection editor's preview: double-click anywhere calls ``on_double_click``."""
+
+    def __init__(self, on_double_click):
+        super().__init__()
+        self.on_double_click = on_double_click
+
+    def mouseDoubleClickEvent(self, event):
+        self.on_double_click()
+        event.accept()
+
+
+class SelectionDialog(QtWidgets.QDialog):
+    """Edit a Selection item's entries and preview what they find now. It
+    isn't modal; OK calls ``on_save`` with the edited entries.
+
+    Right-click empty space in the entries list to add an entry, or an entry
+    to remove it; double-click one to change it. Picking objects in the
+    preview selects them in the scene."""
+
+    TYPE_LABELS = {items.SELECTED: "Selected", items.PATTERN: "Pattern", items.SET: "Set"}
+
+    def __init__(self, window, name, entries, on_save):
+        super().__init__(window)
+        self.entries = [dict(e) for e in entries]
+        self.on_save = on_save
+        self.setWindowTitle(f"Selection: {name}")
+        self.resize(460, 520)
+
+        self.table = _EntryList()
+        self.table.setHeaderLabels(["Type", "Entry", "Found"])
+        self.table.setRootIsDecorated(False)
+        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(
+            lambda pos: self.entry_menu(self.table.itemAt(pos)).exec(self.table.viewport().mapToGlobal(pos))
+        )
+        self.table.itemDoubleClicked.connect(self._edit_row)
+        self.table.itemSelectionChanged.connect(self._refresh)
+        # Entry takes the width left by Type and Found; long entries end in "...".
+        header = self.table.header()
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.Fixed)
+        header.resizeSection(0, 70)
+        header.resizeSection(2, 50)
+        self.table.setTextElideMode(QtCore.Qt.TextElideMode.ElideRight)
+
+        # The preview shows what the selected entries find, or all of them
+        # when none is selected; the objects it lists are self.previewed.
+        self.previewed = []
+        self.preview = _PreviewList(self.select_all)
+        self.preview.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.preview.setToolTip("Pick objects to select them in the scene; double-click to select them all")
+        self.preview.itemSelectionChanged.connect(self._select_picked)
+        self.preview_label = QtWidgets.QLabel("Preview:")
+        self.count = QtWidgets.QLabel()
+        self.preview_row = QtWidgets.QHBoxLayout()
+        self.preview_row.addWidget(self.preview_label)
+        self.preview_row.addWidget(self.count)
+        self.preview_row.addStretch(1)
+
+        ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        ok_cancel.accepted.connect(self.accept)
+        ok_cancel.rejected.connect(self.reject)
+        self.ok_cancel = ok_cancel
+        # The open window editing a Selected entry's objects, or picking a
+        # set, if any. The entries wait while one is open.
+        self.objects_window = None
+        self.set_window = None
+
+        add_row = QtWidgets.QHBoxLayout()
+        self.add_buttons = []
+        for tip, icon_file, slot in (
+            ("Add Selected", "scripter_add_selected.svg", self._add_selected),
+            ("Add Pattern", "scripter_add_pattern.svg", self._add_pattern),
+            ("Add Selection Set", "scripter_add_set.svg", self._add_set),
+        ):
+            button = QtWidgets.QToolButton()
+            button.setIcon(icons.same_when_selected(icons.icon(icon_file)))
+            button.setToolTip(tip)
+            button.setAutoRaise(True)
+            button.clicked.connect(slot)
+            add_row.addWidget(button)
+            self.add_buttons.append(button)
+        add_row.addStretch(1)
+        self.delete_button = QtWidgets.QToolButton()
+        self.delete_button.setIcon(icons.same_when_selected(icons.icon("scripter_delete.svg")))
+        self.delete_button.setToolTip("Remove")
+        self.delete_button.setAutoRaise(True)
+        self.delete_button.clicked.connect(self.remove_selected)
+        add_row.addWidget(self.delete_button)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addLayout(add_row)
+        layout.addWidget(self.table, 1)
+        layout.addLayout(self.preview_row)
+        layout.addWidget(self.preview, 1)
+        layout.addWidget(ok_cancel)
+        self._rebuild()
+
+    def _lock(self, locked):
+        """Hold the entries (list, add buttons and OK) while a Selected
+        entry's objects window is open."""
+        for widget in [self.table, self.ok_cancel, *self.add_buttons]:
+            widget.setEnabled(not locked)
+        self.delete_button.setEnabled(not locked and bool(self.table.selectedItems()))
+
+    def accept(self):
+        self.on_save(self.entries)
+        super().accept()
+
+    def entry_menu(self, row):
+        """The entries list's right-click menu: adding on empty space, Remove on an entry."""
+        menu = QtWidgets.QMenu(self)
+        if row is None:
+            menu.addAction("Add Selected", self._add_selected)
+            menu.addAction("Add Pattern...", self._add_pattern)
+            menu.addAction("Add Selection Set...", self._add_set)
+        else:
+            if not row.isSelected():
+                self.table.clearSelection()
+                row.setSelected(True)
+            menu.addAction("Remove", self.remove_selected)
+        return menu
+
+    def _rebuild(self):
+        """Fill the entries list again after it was edited."""
+        with QtCore.QSignalBlocker(self.table):
+            self.table.clear()
+            for index, entry in enumerate(self.entries):
+                label = entry["value"] if entry["type"] == items.SET else items.entry_label(entry)
+                row = QtWidgets.QTreeWidgetItem(self.table, [self.TYPE_LABELS.get(entry["type"], entry["type"]), label, ""])
+                row.setData(0, PATH_ROLE, index)
+        self._refresh()
+
+    def _refresh(self):
+        """Look the entries up in the scene again: their counts, and the preview."""
+        default = self.table.palette().color(QtGui.QPalette.ColorRole.Text)
+        chosen = []
+        for i in range(self.table.topLevelItemCount()):
+            row = self.table.topLevelItem(i)
+            entry = self.entries[row.data(0, PATH_ROLE)]
+            found, missing = items.lookup(entry)
+            row.setText(2, str(len(found)))
+            for column in range(3):
+                row.setForeground(column, FAILED_COLOR if missing else default)
+            row.setToolTip(1, f"Not in the scene now: {', '.join(missing)}" if missing else items.entry_label(entry))
+            if row.isSelected():
+                chosen.append(entry)
+        self.delete_button.setEnabled(self.table.isEnabled() and bool(chosen))
+        self.previewed, _missing = items.resolve(chosen or self.entries)
+        # Filling the preview mustn't change the scene selection.
+        with QtCore.QSignalBlocker(self.preview):
+            self.preview.clear()
+            self.preview.addItems(self.previewed)
+        self.count.setText(f"{len(self.previewed)} object{'' if len(self.previewed) == 1 else 's'}")
+
+    def _select_picked(self):
+        """Select the objects picked in the preview in the scene."""
+        picked = [item.text() for item in self.preview.selectedItems()]
+        if picked:
+            cmds.select(picked, replace=True)
+
+    def select_all(self):
+        """Pick every object in the preview, selecting them all in the scene."""
+        if not self.previewed:
+            _warn("Nothing to select: the preview is empty.")
+            return
+        with QtCore.QSignalBlocker(self.preview):
+            self.preview.selectAll()
+        cmds.select(self.previewed, replace=True)
+
+    def _add_selected(self):
+        names = items.selected_names()
+        if not names:
+            _warn("Nothing selected to add.")
+            return
+        self.entries = items.add_selected(self.entries, names)
+        self._rebuild()
+
+    def _ask_pattern(self, entry=None):
+        """``(pattern, node_type)`` for a new or edited pattern entry; ``None`` if cancelled."""
+        dialog = PatternDialog(self, *((entry["value"], entry.get("node_type", items.ANY_TYPE)) if entry else ()))
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return None
+        pattern, node_type = dialog.values()
+        return (pattern, node_type) if pattern else None
+
+    def _ask_set(self, on_pick, current=None):
+        """Open the Selection Set picker (not modal); its OK calls ``on_pick`` with the set's name."""
+        self._open_child("set_window", SetDialog(self, current, on_pick))
+
+    def _add_pattern(self):
+        answer = self._ask_pattern()
+        if answer:
+            self.entries.append({"type": items.PATTERN, "value": answer[0], "node_type": answer[1]})
+            self._rebuild()
+
+    def _add_set(self):
+        def add(name):
+            self.entries.append({"type": items.SET, "value": name})
+            self._rebuild()
+
+        self._ask_set(add)
+
+    def _edit_row(self, row, _column):
+        """Change an entry: a Selected one in a window of its objects, a
+        pattern or set by asking for its new value."""
+        entry = self.entries[row.data(0, PATH_ROLE)]
+        if entry["type"] == items.SELECTED:
+            self._edit_objects(entry)
+            return
+        if entry["type"] == items.PATTERN:
+            answer = self._ask_pattern(entry)
+            if answer:
+                entry["value"], entry["node_type"] = answer
+                self._rebuild()
+            return
+        if entry["type"] == items.SET:
+
+            def change(name):
+                entry["value"] = name
+                self._rebuild()
+
+            self._ask_set(change, entry["value"])
+
+    def _edit_objects(self, entry):
+        """Open a window on a Selected entry's objects. The entries list and
+        OK wait until it closes; its OK puts the objects back in the entry."""
+
+        def save(names):
+            entry["value"] = names
+            self._rebuild()
+
+        self._open_child("objects_window", SelectedObjectsDialog(self, entry["value"], save))
+
+    def _open_child(self, attr, window):
+        """Show ``window`` (not modal) as ``self.<attr>``, holding the entries until it closes."""
+
+        def closed():
+            setattr(self, attr, None)
+            self._lock(False)
+            self._refresh()
+
+        setattr(self, attr, window)
+        window.finished.connect(closed)
+        self._lock(True)
+        window.show()
+
+    def remove_selected(self):
+        gone = {row.data(0, PATH_ROLE) for row in self.table.selectedItems()}
+        self.entries = [e for i, e in enumerate(self.entries) if i not in gone]
+        self._rebuild()
+
+
+class SelectedObjectsDialog(QtWidgets.QDialog):
+    """Edit the objects of one Selected entry. It isn't modal, so you can
+    select objects in Maya while it's open; OK calls ``on_save`` with them.
+
+    The icon buttons at the top add the scene selection, replace the objects
+    with it, or remove the picked objects. Picking objects selects them in
+    the scene."""
+
+    def __init__(self, parent, names, on_save):
+        super().__init__(parent)
+        self.names = list(names)
+        self.on_save = on_save
+        self.setWindowTitle("Selected Objects")
+        self.resize(320, 400)
+
+        self.list = QtWidgets.QListWidget()
+        self.list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.list.itemSelectionChanged.connect(self._select_picked)
+
+        button_row = QtWidgets.QHBoxLayout()
+        self.buttons = []
+        for tip, icon_file, slot in (
+            ("Add Selected", "scripter_add_selected.svg", self.add_selected),
+            ("Replace with Selected", "scripter_replace_selected.svg", self.replace_with_selected),
+            ("Remove", "scripter_remove.svg", self.remove_selected),
+        ):
+            button = QtWidgets.QToolButton()
+            button.setIcon(icons.same_when_selected(icons.icon(icon_file)))
+            button.setToolTip(tip)
+            button.setAutoRaise(True)
+            button.clicked.connect(slot)
+            button_row.addWidget(button)
+            self.buttons.append(button)
+        button_row.addStretch(1)
+        self.remove_button = self.buttons[-1]
+
+        ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        ok_cancel.accepted.connect(self.accept)
+        ok_cancel.rejected.connect(self.reject)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addLayout(button_row)
+        layout.addWidget(self.list, 1)
+        layout.addWidget(ok_cancel)
+        self._fill()
+
+    def accept(self):
+        if not self.names:
+            _warn("An entry needs at least one object: add some, or remove the entry instead.")
+            return
+        self.on_save(self.names)
+        super().accept()
+
+    def _fill(self):
+        with QtCore.QSignalBlocker(self.list):
+            self.list.clear()
+            for name in self.names:
+                item = QtWidgets.QListWidgetItem(name, self.list)
+                if items.missing({"type": items.SELECTED, "value": [name]}):
+                    item.setForeground(FAILED_COLOR)
+                    item.setToolTip("Not in the scene now")
+        self.remove_button.setEnabled(False)
+
+    def _select_picked(self):
+        self.remove_button.setEnabled(bool(self.list.selectedItems()))
+        picked = [item.text() for item in self.list.selectedItems() if item.foreground().color() != FAILED_COLOR]
+        if picked:
+            cmds.select(picked, replace=True)
+
+    def _scene_selection(self):
+        names = items.selected_names()
+        if not names:
+            _warn("Nothing selected in the scene.")
+        return names
+
+    def add_selected(self):
+        names = self._scene_selection()
+        if names:
+            self.names = list(dict.fromkeys(self.names + names))
+            self._fill()
+
+    def replace_with_selected(self):
+        names = self._scene_selection()
+        if names:
+            self.names = list(dict.fromkeys(names))
+            self._fill()
+
+    def remove_selected(self):
+        gone = {item.text() for item in self.list.selectedItems()}
+        self.names = [name for name in self.names if name not in gone]
+        self._fill()
+
+
+class PatternDialog(QtWidgets.QDialog):
+    """Ask for a pattern entry's name pattern and the node type it finds."""
+
+    def __init__(self, parent, pattern="", node_type=items.ANY_TYPE):
+        super().__init__(parent)
+        self.setWindowTitle("Pattern")
+        self.pattern = QtWidgets.QLineEdit(pattern)
+        self.pattern.setPlaceholderText("*_geo")
+        self.pattern.setToolTip("Maya wildcards (* and ?); separate several patterns with spaces")
+        self.node_type = QtWidgets.QComboBox()
+        self.node_type.addItems(items.NODE_TYPES)
+        self.node_type.setCurrentText(node_type)
+        self.node_type.setToolTip("Geo, Nurbs Curve, Nurbs Surface and Locator find transforms with that shape")
+
+        ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        ok_cancel.accepted.connect(self.accept)
+        ok_cancel.rejected.connect(self.reject)
+
+        form = QtWidgets.QFormLayout(self)
+        form.addRow("Name:", self.pattern)
+        form.addRow("Type:", self.node_type)
+        form.addRow(ok_cancel)
+        self.resize(320, self.sizeHint().height())
+
+    def values(self):
+        """``[pattern, node_type]``, the pattern stripped of outer spaces."""
+        return [self.pattern.text().strip(), self.node_type.currentText()]
+
+
+class _SetList(QtWidgets.QListWidget):
+    """The Selection Set picker's list: calls ``on_click`` after every click in it."""
+
+    def __init__(self, on_click):
+        super().__init__()
+        self.on_click = on_click
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        # Later, not while the click is still being handled.
+        QtCore.QTimer.singleShot(0, self.on_click)
+
+
+class SetDialog(QtWidgets.QDialog):
+    """Pick a selection set for a set entry from a list of the scene's sets,
+    or make or delete one with the buttons above it. It isn't modal; OK, or
+    double-clicking a set, calls ``on_pick`` with the picked set's name.
+
+    The list reads the scene's sets again after each click in it and
+    each time the window is activated, so sets made or deleted in Maya show up."""
+
+    def __init__(self, parent, current, on_pick):
+        super().__init__(parent)
+        self.on_pick = on_pick
+        self.setWindowTitle("Selection Set")
+        self.new_button = QtWidgets.QToolButton()
+        self.new_button.setIcon(icons.same_when_selected(icons.icon("scripter_add_set.svg")))
+        self.new_button.setToolTip("New Selection Set from Selected")
+        self.new_button.setAutoRaise(True)
+        self.new_button.clicked.connect(self._new_set)
+        self.delete_button = QtWidgets.QToolButton()
+        self.delete_button.setIcon(icons.same_when_selected(icons.icon("scripter_delete_set.svg")))
+        self.delete_button.setToolTip("Delete Selection Set")
+        self.delete_button.setAutoRaise(True)
+        self.delete_button.clicked.connect(self._delete_set)
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addWidget(self.new_button)
+        button_row.addWidget(self.delete_button)
+        button_row.addStretch(1)
+
+        self.set_list = _SetList(self._fill)
+        self.set_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.set_list.itemSelectionChanged.connect(lambda: self.delete_button.setEnabled(bool(self.value())))
+        self.set_list.itemDoubleClicked.connect(lambda _item: self.accept())
+        # The entry's set when it's already missing from the scene, kept in the
+        # list so OK keeps it; a set deleted while this is open just goes.
+        self.current = current if current and current not in items.scene_sets() else None
+        self._fill(current)
+
+        self.ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        self.ok_cancel.accepted.connect(self.accept)
+        self.ok_cancel.rejected.connect(self.reject)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addLayout(button_row)
+        layout.addWidget(self.set_list, 1)
+        layout.addWidget(self.ok_cancel)
+        self.resize(300, 320)
+
+    def _fill(self, pick=None):
+        """List the scene's sets again and pick ``pick`` (by default, the
+        picked set) if it's still there."""
+        pick = self.value() if pick is None else pick
+        sets = items.scene_sets()
+        if self.current and self.current not in sets:
+            sets.insert(0, self.current)
+        scroll = self.set_list.verticalScrollBar().value()
+        with QtCore.QSignalBlocker(self.set_list):
+            self.set_list.clear()
+            self.set_list.addItems(sets)
+            for item in self.set_list.findItems(pick, QtCore.Qt.MatchFlag.MatchExactly) if pick else []:
+                item.setSelected(True)
+                self.set_list.setCurrentItem(item)
+        self.set_list.verticalScrollBar().setValue(scroll)
+        self.delete_button.setEnabled(bool(self.value()))
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QtCore.QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._fill()
+
+    def value(self):
+        """The picked set's name; ``""`` if none is picked."""
+        picked = self.set_list.selectedItems()
+        return picked[0].text() if picked else ""
+
+    def accept(self):
+        if self.value():
+            self.on_pick(self.value())
+        super().accept()
+
+    def _new_set(self):
+        members = items.selected_names()
+        if not members:
+            _warn("Nothing selected to make a set from.")
+            return
+        # Named after the entry's missing set, if any, so making it again fixes the entry.
+        default = self.current or "selection_set"
+        name, ok = QtWidgets.QInputDialog.getText(self, "New Selection Set", "Name:", text=default)
+        if not ok or not name.strip():
+            return
+        try:
+            made = items.create_set(name, members)
+        except (ValueError, RuntimeError) as e:
+            _warn(str(e))
+            return
+        self._fill(made)
+
+    def _delete_set(self):
+        """Delete the picked set from the scene (not its members), as one undo step."""
+        try:
+            items.delete_set(self.value())
+        except (ValueError, RuntimeError) as e:
+            _warn(str(e))
+            return
+        self._fill("")

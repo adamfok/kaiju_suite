@@ -220,3 +220,296 @@ def test_export_refuses_formats_it_cant_write(tmp_path):
     with pytest.raises(ValueError, match="Can't export"):
         logic.create_file_item(items.EXPORT_FILE, str(tmp_path), "rig", str(tmp_path / "rig.xyz"))
     assert logic.scan(str(tmp_path)) == []
+
+
+# -- selection --------------------------------------------------------------
+
+
+def _selected(*names):
+    return {"type": items.SELECTED, "value": list(names)}
+
+
+def test_new_selection_item_saves_the_selection_as_one_selected_entry(tmp_path, new_scene):
+    a = cmds.createNode("transform", name="body_geo")
+    b = cmds.createNode("transform", name="hair_geo")
+
+    path = logic.create_selection_item(str(tmp_path), "hero", [a, b])
+
+    assert path == os.path.join(str(tmp_path), "hero.sel")
+    assert items.read_entries(path) == [_selected("body_geo", "hair_geo")]
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.SELECTION, "Selection")
+    assert not versions.is_versioned(path)
+
+
+def test_new_selection_item_with_nothing_selected_starts_empty(tmp_path, new_scene):
+    path = logic.create_selection_item(str(tmp_path), "hero", [])
+    assert items.read_entries(path) == []
+
+
+def test_entries_round_trip(tmp_path):
+    path = logic.create_selection_item(str(tmp_path), "hero", [])
+    entries = [
+        _selected("body_geo", "hair_geo"),
+        {"type": items.PATTERN, "value": "*_geo"},
+        {"type": items.SET, "value": "render_set"},
+    ]
+    items.write_entries(path, entries)
+    assert items.read_entries(path) == entries
+
+
+def test_add_selected_adds_one_entry_for_all_the_names():
+    entries = [_selected("a")]
+    assert items.add_selected(entries, ["b", "a", "c", "b"]) == [_selected("a"), _selected("b", "a", "c")]
+    assert items.add_selected(entries, []) == [_selected("a")]
+
+
+def test_selected_names_are_the_shortest_unique_ones(new_scene):
+    for group in ("L_arm", "R_arm"):
+        cmds.createNode("transform", name="hand_geo", parent=cmds.createNode("transform", name=group))
+    cmds.createNode("transform", name="body_geo")
+    cmds.select("body_geo", "|L_arm|hand_geo")
+
+    assert items.selected_names() == ["body_geo", "L_arm|hand_geo"]
+
+
+def test_selected_entry_finds_its_objects_and_components_in_order(new_scene):
+    cmds.polyCube(name="body_geo")
+    cmds.createNode("transform", name="a_geo")
+    entry = _selected("body_geo", "body_geo.f[0:2]", "a_geo", "gone")
+    assert items.find(entry) == ["body_geo", "body_geo.f[0:2]", "a_geo"]
+    assert items.missing(entry) == ["gone"]
+
+
+def test_selected_entry_still_finds_an_object_after_reparenting(new_scene):
+    node = cmds.createNode("transform", name="body_geo")
+    cmds.parent(node, cmds.createNode("transform", name="grp"))
+    assert items.find(_selected("body_geo")) == ["body_geo"]
+
+
+def test_pattern_entry_uses_maya_wildcards(new_scene):
+    for name in ("body_geo", "hair_geo", "body_ctl"):
+        cmds.createNode("transform", name=name)
+    assert sorted(items.find({"type": items.PATTERN, "value": "*_geo"})) == ["body_geo", "hair_geo"]
+    assert sorted(items.find({"type": items.PATTERN, "value": "body_* hair_?eo"})) == [
+        "body_ctl",
+        "body_geo",
+        "hair_geo",
+    ]
+    nothing = {"type": items.PATTERN, "value": "*_nothing"}
+    assert items.find(nothing) == []
+    assert items.missing(nothing) == ["*_nothing"]
+
+
+def test_set_entry_expands_nested_sets(new_scene):
+    a, b, c = (cmds.createNode("transform", name=n) for n in ("a", "b", "c"))
+    inner = cmds.sets(b, c, name="inner_set")
+    cmds.sets(a, inner, name="outer_set")
+
+    assert sorted(items.find({"type": items.SET, "value": "outer_set"})) == ["a", "b", "c"]
+    assert items.find({"type": items.SET, "value": "missing_set"}) == []
+    assert items.missing({"type": items.SET, "value": "missing_set"}) == ["set: missing_set"]
+    assert items.find({"type": items.SET, "value": "a"}) == []
+
+
+def test_set_entry_keeps_components(new_scene):
+    cube = cmds.polyCube(name="body_geo")[0]
+    cmds.sets(f"{cube}.f[0:1]", name="faces_set")
+    assert items.find({"type": items.SET, "value": "faces_set"}) == ["body_geo.f[0:1]"]
+
+
+def test_resolve_combines_in_entry_order_without_repeats(new_scene):
+    for name in ("c_geo", "a_geo", "b_geo"):
+        cmds.createNode("transform", name=name)
+    entries = [_selected("c_geo"), {"type": items.PATTERN, "value": "*_geo"}, _selected("a_geo")]
+
+    objects, missing = items.resolve(entries)
+
+    assert objects[0] == "c_geo"
+    assert sorted(objects) == ["a_geo", "b_geo", "c_geo"]
+    assert missing == []
+
+
+def test_resolve_reports_what_is_missing(new_scene):
+    cmds.createNode("transform", name="a_geo")
+    entries = [_selected("a_geo", "gone"), {"type": items.SET, "value": "no_set"}]
+    assert items.resolve(entries) == (["a_geo"], ["gone", "set: no_set"])
+
+
+def test_running_a_selection_item_replaces_the_selection_in_order(tmp_path, new_scene):
+    for name in ("first", "second", "other"):
+        cmds.createNode("transform", name=name)
+    path = logic.create_selection_item(str(tmp_path), "hero", ["second", "first"])
+    cmds.select("other")
+
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.ls(selection=True) == ["second", "first"]
+
+
+def test_running_a_selection_item_finds_objects_made_by_earlier_steps(tmp_path, new_scene):
+    make = tmp_path / "make.py"
+    make.write_text("from maya import cmds\ncmds.createNode('transform', name='new_geo')\n")
+    path = logic.create_selection_item(str(tmp_path), "geo", [])
+    items.write_entries(path, [{"type": items.PATTERN, "value": "*_geo"}])
+
+    assert logic.Runner().run([str(make), path]) == logic.DONE
+    assert cmds.ls(selection=True) == ["new_geo"]
+
+
+def test_selection_item_fails_naming_what_is_missing(tmp_path, new_scene):
+    cmds.createNode("transform", name="here")
+    path = logic.create_selection_item(str(tmp_path), "hero", ["here"])
+    items.write_entries(path, [_selected("here", "gone"), {"type": items.SET, "value": "no_set"}])
+    cmds.select(clear=True)
+    runner = logic.Runner()
+
+    assert runner.run([path]) == logic.FAILED
+    message = runner.status(path)[1]
+    assert "gone" in message and "set: no_set" in message and "here" not in message
+    assert cmds.ls(selection=True) == []
+
+
+def test_empty_selection_item_fails(tmp_path, new_scene):
+    path = logic.create_selection_item(str(tmp_path), "hero", [])
+    runner = logic.Runner()
+    assert runner.run([path]) == logic.FAILED
+    assert "no entries" in runner.status(path)[1].lower()
+
+
+def test_entry_labels():
+    assert items.entry_label(_selected("body_geo", "hair_geo")) == "body_geo, hair_geo"
+    assert items.entry_label({"type": items.PATTERN, "value": "*_geo"}) == "*_geo"
+    assert items.entry_label({"type": items.SET, "value": "render_set"}) == "set: render_set"
+
+
+def test_summary_lists_the_entries_names(tmp_path):
+    entries = [
+        _selected("body_geo", "hair_geo"),
+        {"type": items.PATTERN, "value": "*_eye_geo"},
+        {"type": items.SET, "value": "render_set"},
+    ]
+    assert items.summary(entries) == "body_geo, hair_geo, *_eye_geo, set: render_set"
+    assert items.summary([]) == "No entries. Double-click to add some."
+    many = [_selected(*(f"n{i}" for i in range(12)))]
+    assert items.summary(many).endswith("n9 ...and 2 more")
+
+
+def test_scene_sets_lists_selection_sets_only(new_scene):
+    cmds.sets(cmds.createNode("transform"), name="render_set")
+    cmds.sets(name="empty_set", empty=True)
+    assert items.scene_sets() == ["empty_set", "render_set"]
+
+
+def test_entries_skip_intermediate_objects(new_scene):
+    cube = cmds.polyCube(name="body_geo")[0]
+    orig = cmds.createNode("mesh", name="body_geoShapeOrig", parent=cube)
+    cmds.setAttr(f"{orig}.intermediateObject", True)
+    cmds.sets(cube, orig, name="geo_set")
+
+    assert items.find({"type": items.PATTERN, "value": "body_geoShape*"}) == ["body_geoShape"]
+    assert items.find({"type": items.SET, "value": "geo_set"}) == ["body_geo"]
+    assert items.find(_selected("body_geoShapeOrig")) == []
+
+
+def _pattern(value, node_type=None):
+    entry = {"type": items.PATTERN, "value": value}
+    if node_type:
+        entry["node_type"] = node_type
+    return entry
+
+
+def test_pattern_node_types_offered():
+    assert items.NODE_TYPES[0] == "*"
+    assert {"Transform", "Joint", "Geo", "Nurbs Curve", "Nurbs Surface", "Locator", "Constraint"} <= set(
+        items.NODE_TYPES
+    )
+
+
+def test_pattern_node_type_filters_what_it_finds(new_scene):
+    cmds.polyCube(name="body_x")
+    cmds.circle(name="ctrl_x")
+    cmds.nurbsPlane(name="plane_x")
+    cmds.spaceLocator(name="loc_x")
+    cmds.createNode("transform", name="grp_x")
+    cmds.select(clear=True)
+    cmds.joint(name="jnt_x")
+    cmds.parentConstraint("loc_x", "grp_x", name="con_x")
+
+    def found(node_type):
+        return sorted(items.find(_pattern("*_x", node_type)))
+
+    assert found(None) == found("*") == ["body_x", "con_x", "ctrl_x", "grp_x", "jnt_x", "loc_x", "plane_x"]
+    assert found("Geo") == ["body_x"]
+    assert found("Nurbs Curve") == ["ctrl_x"]
+    assert found("Nurbs Surface") == ["plane_x"]
+    assert found("Locator") == ["loc_x"]
+    assert found("Joint") == ["jnt_x"]
+    assert found("Constraint") == ["con_x"]
+    # Plain transforms: groups and transforms with shapes, not joints or constraints.
+    assert found("Transform") == ["body_x", "ctrl_x", "grp_x", "loc_x", "plane_x"]
+
+
+def test_geo_ignores_intermediate_shapes(new_scene):
+    group = cmds.createNode("transform", name="only_orig_geo")
+    orig = cmds.createNode("mesh", name="only_orig_geoShapeOrig", parent=group)
+    cmds.setAttr(f"{orig}.intermediateObject", True)
+    assert items.find(_pattern("*_geo", "Geo")) == []
+
+
+def test_pattern_with_a_node_type_reads_with_it():
+    assert items.entry_label(_pattern("*_geo", "Geo")) == "*_geo (Geo)"
+    assert items.entry_label(_pattern("*_geo", "*")) == "*_geo"
+    assert items.entry_label(_pattern("*_geo")) == "*_geo"
+    assert items.missing(_pattern("*_none", "Joint")) == ["*_none (Joint)"]
+
+
+def test_create_set_makes_a_selection_set_as_one_undo_step(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    b = cmds.createNode("transform", name="b_geo")
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    name = items.create_set("render_set", [a, b])
+
+    assert name == "render_set"
+    assert name in items.scene_sets()
+    assert sorted(items.find({"type": items.SET, "value": name})) == ["a_geo", "b_geo"]
+    cmds.undo()
+    assert not cmds.objExists("render_set")
+
+
+def test_create_set_returns_the_name_maya_gave_it(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    cmds.sets(a, name="render_set")
+    assert items.create_set("render_set", [a]) == "render_set1"
+
+
+def test_create_set_needs_a_name_and_a_selection(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    with pytest.raises(ValueError, match="Nothing selected"):
+        items.create_set("render_set", [])
+    with pytest.raises(ValueError, match="name"):
+        items.create_set("  ", [a])
+    assert items.scene_sets() == []
+
+
+def test_delete_set_keeps_its_members_as_one_undo_step(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    cmds.sets(a, name="render_set")
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    items.delete_set("render_set")
+
+    assert not cmds.objExists("render_set") and cmds.objExists("a_geo")
+    cmds.undo()
+    assert items.find({"type": items.SET, "value": "render_set"}) == ["a_geo"]
+
+
+def test_delete_set_only_deletes_selection_sets(new_scene):
+    cmds.createNode("transform", name="a_geo")
+    with pytest.raises(ValueError, match="Not a selection set"):
+        items.delete_set("a_geo")
+    with pytest.raises(ValueError, match="Not a selection set"):
+        items.delete_set("initialShadingGroup")
+    assert cmds.objExists("a_geo")

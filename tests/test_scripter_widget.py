@@ -109,6 +109,11 @@ def test_every_item_kind_has_an_icon(probe):
     assert probe["kinds_with_icons"] == probe["new_kinds"]
 
 
+def test_new_menu_offers_a_selection_item_with_its_icon(probe):
+    assert "Selection" in probe["new_kinds"]
+    assert "scripter_selection.svg" in probe["icon_files"]
+
+
 def test_item_icons_draw_something(probe):
     for kind, icon in probe["kind_icons"].items():
         assert not icon["null"], kind
@@ -229,7 +234,7 @@ def test_double_click_does_not_also_expand_or_collapse(folder_probe):
 def test_new_menu_shows_each_kinds_icon(folder_probe):
     # The same icon the item gets in the tree, so the menu previews it.
     assert sorted(folder_probe["new_icons"]) == sorted(
-        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Joints", "Skin", "Mesh"]
+        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh"]
     )
     assert all(folder_probe["new_icons"].values()), folder_probe["new_icons"]
 
@@ -460,3 +465,472 @@ def test_long_folder_path_does_not_widen_the_path_box(folder_box_probe):
 
 def test_path_box_dropdown_is_wide_enough_for_full_paths(folder_box_probe):
     assert folder_box_probe["popup"] >= folder_box_probe["text"]
+
+
+_SELECTION_DIALOG_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtCore, QtWidgets
+from PySide6.QtTest import QTest
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import items, widget
+
+# A fake scene: what each entry finds, without Maya.
+SCENE = {"body_geo": ["body_geo"], "hair_geo": ["hair_geo"], "*_eye_geo": ["L_eye_geo", "R_eye_geo"],
+         "new_geo": ["new_geo"]}
+items.lookup = lambda entry: (
+    [found for name in items._names(entry) for found in SCENE.get(name, [])],
+    [name for name in items._names(entry) if not SCENE.get(name)],
+)
+scene_selection = ["new_geo"]
+items.selected_names = lambda: list(scene_selection)
+selected = []
+widget.cmds.select = lambda objects, replace=True: selected.append(list(objects))
+warnings = []
+widget._warn = warnings.append
+saved = []
+
+entries = [
+    {"type": items.SELECTED, "value": ["body_geo", "hair_geo"]},
+    {"type": items.PATTERN, "value": "*_eye_geo"},
+]
+dialog = widget.SelectionDialog(None, "hero", entries, saved.append)
+dialog.resize(400, 600)
+dialog.show()
+app.processEvents()
+table = dialog.table
+labels = [w.text() for w in dialog.findChildren(QtWidgets.QLabel)]
+buttons = [b.text() for b in dialog.findChildren(QtWidgets.QAbstractButton)]
+
+def preview():
+    return [dialog.preview.item(i).text() for i in range(dialog.preview.count())]
+
+def row(i):
+    return [table.topLevelItem(i).text(c) for c in range(3)]
+
+def click(i):
+    QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=table.visualItemRect(table.topLevelItem(i)).center())
+
+def actions(menu):
+    return [a.text() for a in menu.actions() if not a.isSeparator()]
+
+out = {
+    "labels": labels,
+    "buttons": buttons,
+    "modal": dialog.isModal(),
+    "add_buttons": [[b.toolTip(), b.icon().isNull(), b.autoRaise()] for b in dialog.add_buttons],
+    "delete_button": [dialog.delete_button.toolTip(), dialog.delete_button.icon().isNull(), dialog.delete_button.isEnabled()],
+    "delete_on_the_right": dialog.delete_button.geometry().left() > table.geometry().center().x()
+    and dialog.delete_button.geometry().bottom() < table.geometry().top(),
+    "rows": [row(0), row(1)],
+    "entry_fills": [table.header().sectionResizeMode(c) == QtWidgets.QHeaderView.ResizeMode.Stretch for c in range(3)],
+    "no_sideways_scroll": table.horizontalScrollBar().maximum() == 0,
+    "columns_fill_the_list": table.header().sectionSize(0) + table.header().sectionSize(1) + table.header().sectionSize(2)
+    == table.viewport().width(),
+    "preview_header": [
+        w for w in (dialog.preview_row.itemAt(i).widget() for i in range(dialog.preview_row.count())) if w
+    ] == [dialog.preview_label, dialog.count],
+    "all": [preview(), dialog.count.text()],
+    "empty_menu": actions(dialog.entry_menu(None)),
+    "row_menu": actions(dialog.entry_menu(table.topLevelItem(0))),
+    "preview_has_menu": dialog.preview.contextMenuPolicy() == QtCore.Qt.ContextMenuPolicy.CustomContextMenu,
+}
+table.clearSelection()
+SCENE["hair_geo"] = []
+click(0)
+out["selected_row"] = [preview(), dialog.count.text(), row(0)[2]]
+SCENE["hair_geo"] = ["hair_geo"]
+click(1)
+out["pattern_row"] = [preview(), dialog.count.text(), row(0)[2]]
+out["selected_by_clicking_rows"] = list(selected)
+
+# Picking preview rows selects those objects in the scene.
+dialog.preview.item(0).setSelected(True)
+dialog.preview.item(1).setSelected(True)
+out["preview_pick"] = selected[-1]
+QTest.mouseDClick(dialog.preview.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=QtCore.QPoint(10, dialog.preview.viewport().height() - 5))
+out["select_all"] = [selected[-1], len(dialog.preview.selectedItems())]
+selected.append(None)
+QTest.mouseDClick(dialog.preview.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=dialog.preview.visualItemRect(dialog.preview.item(0)).center())
+out["select_all_on_a_row"] = [selected[-1], len(dialog.preview.selectedItems())]
+
+QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=QtCore.QPoint(10, table.viewport().height() - 5))
+out["empty_click"] = [len(table.selectedItems()), preview()]
+
+# Double-clicking a Selected row opens a window for its objects; the row
+# changes only when that window's OK is pressed.
+SCENE["hair_geo"] = []
+dialog._edit_row(table.topLevelItem(0), 1)
+objects_window = dialog.objects_window
+objects_list = objects_window.list
+def object_rows():
+    return [objects_list.item(i).text() for i in range(objects_list.count())]
+out["objects_window"] = {
+    "modal": objects_window.isModal(),
+    "rows": object_rows(),
+    "missing_red": objects_list.item(1).foreground().color().getRgb()[:3] == widget.FAILED_COLOR.getRgb()[:3],
+    "buttons": [[b.toolTip(), b.icon().isNull(), b.autoRaise()] for b in objects_window.buttons],
+    "has_menu": objects_list.contextMenuPolicy() == QtCore.Qt.ContextMenuPolicy.CustomContextMenu,
+    "remove_enabled_with_nothing_picked": objects_window.remove_button.isEnabled(),
+    "entries_locked": not table.isEnabled(),
+}
+objects_list.item(0).setSelected(True)
+out["objects_window"]["pick"] = selected[-1]
+out["objects_window"]["remove_enabled_with_a_pick"] = objects_window.remove_button.isEnabled()
+objects_window.add_selected()
+out["objects_window"]["added"] = object_rows()
+objects_list.clearSelection()
+objects_list.item(0).setSelected(True)
+objects_window.remove_selected()
+out["objects_window"]["removed"] = object_rows()
+out["objects_window"]["row_before_ok"] = row(0)[:2]
+objects_window.reject()
+out["objects_window"]["after_cancel"] = [row(0), table.isEnabled()]
+
+dialog._edit_row(table.topLevelItem(0), 1)
+objects_window = dialog.objects_window
+objects_window.replace_with_selected()
+out["replaced"] = [objects_window.list.item(i).text() for i in range(objects_window.list.count())]
+scene_selection.clear()
+objects_window.add_selected()
+objects_window.replace_with_selected()
+out["nothing_selected_warns"] = len(warnings)
+objects_window.accept()
+out["repicked"] = [row(0), table.isEnabled()]
+SCENE["hair_geo"] = ["hair_geo"]
+
+table.topLevelItem(1).setSelected(True)
+out["delete_enabled_with_a_selection"] = dialog.delete_button.isEnabled()
+dialog.delete_button.click()
+out["after_remove"] = table.topLevelItemCount()
+dialog.accept()
+out["saved"] = saved
+
+new_pattern = widget.PatternDialog(None)
+types = new_pattern.node_type
+out["pattern_dialog"] = {
+    "types": [types.itemText(i) for i in range(types.count())],
+    "default": new_pattern.values(),
+}
+new_pattern.pattern.setText("  *_geo ")
+types.setCurrentText("Geo")
+out["pattern_dialog"]["picked"] = new_pattern.values()
+out["pattern_dialog"]["editing"] = widget.PatternDialog(None, "*_jnt", "Joint").values()
+
+# The Selection Set picker, and making a new set from the selection.
+scene_sets = ["anim_set", "render_set"]
+items.scene_sets = lambda: list(scene_sets)
+made = []
+def create_set(name, members):
+    made.append([name, members])
+    scene_sets.append(name + "1")
+    return name + "1"
+items.create_set = create_set
+deleted = []
+def delete_set(name):
+    deleted.append(name)
+    scene_sets.remove(name)
+items.delete_set = delete_set
+asked_names = []
+def get_text(*args, **kwargs):
+    asked_names.append(kwargs.get("text"))
+    return ("new_set", True)
+QtWidgets.QInputDialog.getText = staticmethod(get_text)
+
+def names(d):
+    return [d.set_list.item(i).text() for i in range(d.set_list.count())]
+
+def click_set(d, name):
+    item = d.set_list.findItems(name, QtCore.Qt.MatchFlag.MatchExactly)[0]
+    QTest.mouseClick(d.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=d.set_list.visualItemRect(item).center())
+    app.processEvents()
+
+picked_sets = []
+set_dialog = widget.SetDialog(None, "render_set", picked_sets.append)
+set_dialog.show()
+app.processEvents()
+set_list = set_dialog.set_list
+out["set_dialog"] = {
+    "title": set_dialog.windowTitle(),
+    "is_list": isinstance(set_list, QtWidgets.QListWidget) and not set_dialog.findChildren(QtWidgets.QComboBox),
+    "single": set_list.selectionMode() == QtWidgets.QAbstractItemView.SelectionMode.SingleSelection,
+    "sets": names(set_dialog),
+    "current": set_dialog.value(),
+    "new_button": [set_dialog.new_button.toolTip(), set_dialog.new_button.icon().isNull()],
+    "new_icon_is_add_set": set_dialog.new_button.icon().pixmap(16, 16).toImage()
+    == widget.icons.same_when_selected(widget.icons.icon("scripter_add_set.svg")).pixmap(16, 16).toImage(),
+    "delete_button": [set_dialog.delete_button.toolTip(), set_dialog.delete_button.icon().isNull()],
+    "delete_beside_new": set_dialog.layout().itemAt(0).layout().itemAt(1).widget() is set_dialog.delete_button,
+    "button_above_list": set_dialog.layout().itemAt(0).layout().itemAt(0).widget() is set_dialog.new_button
+    and set_dialog.layout().itemAt(1).widget() is set_list,
+}
+scene_selection[:] = ["a_geo", "b_geo"]
+set_dialog.new_button.click()
+out["set_dialog"]["made"] = made
+out["set_dialog"]["after_new"] = [names(set_dialog), set_dialog.value()]
+scene_selection.clear()
+before = len(warnings)
+set_dialog.new_button.click()
+out["set_dialog"]["nothing_selected_warns"] = [len(warnings) - before, len(made)]
+out["set_dialog"]["missing_current_kept"] = widget.SetDialog(None, "gone_set", print).value()
+out["set_dialog"]["default_name"] = asked_names[0]
+
+# A missing set's name is the default for a new set, which then replaces it.
+missing = widget.SetDialog(None, "gone_set", print)
+scene_selection[:] = ["a_geo"]
+QtWidgets.QInputDialog.getText = staticmethod(lambda *a, **k: (asked_names.append(k.get("text")), (k.get("text"), True))[1])
+def create_named(name, members):
+    scene_sets.append(name)
+    return name
+items.create_set = create_named
+missing.new_button.click()
+out["set_dialog"]["missing_default"] = asked_names[-1]
+out["set_dialog"]["after_remaking_missing"] = [names(missing), missing.value()]
+scene_sets.remove("gone_set")
+scene_selection.clear()
+items.create_set = create_set
+
+# Sets made or deleted in the scene show up when a set is clicked.
+scene_sets.append("fx_set")
+scene_sets.remove("render_set")
+click_set(set_dialog, "new_set1")
+out["set_dialog"]["reread_on_click"] = [names(set_dialog), set_dialog.value()]
+scene_sets.remove("anim_set")
+click_set(set_dialog, "anim_set")
+out["set_dialog"]["clicked_set_gone"] = [names(set_dialog), set_dialog.value()]
+scene_sets.insert(0, "anim_set")
+click_set(set_dialog, "fx_set")
+
+click_set(set_dialog, "anim_set")
+set_dialog.delete_button.click()
+out["set_dialog"]["deleted"] = [deleted, names(set_dialog)]
+set_list.clearSelection()
+out["set_dialog"]["delete_enabled_with_no_pick"] = set_dialog.delete_button.isEnabled()
+set_dialog.accept()
+out["set_dialog"]["empty_ok_picks_nothing"] = list(picked_sets)
+
+double_picked = []
+double = widget.SetDialog(None, None, double_picked.append)
+double.show()
+app.processEvents()
+item = double.set_list.findItems("fx_set", QtCore.Qt.MatchFlag.MatchExactly)[0]
+# As a real double-click arrives: a click (the list refills after it), then press and double-click.
+where = double.set_list.visualItemRect(item).center()
+QTest.mouseClick(double.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=where)
+app.processEvents()
+QTest.mousePress(double.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=where)
+QTest.mouseDClick(double.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=where)
+app.processEvents()
+out["set_dialog"]["double_click_picks"] = [double_picked, double.isVisible()]
+
+# Adding a set entry opens the picker without blocking Maya; the editor waits.
+scene_sets[:] = ["anim_set", "render_set"]
+saved2 = []
+editor = widget.SelectionDialog(None, "hero", [], saved2.append)
+editor._add_set()
+set_window = editor.set_window
+out["set_window"] = {"modal": set_window.isModal(), "visible": set_window.isVisible(), "editor_locked": not editor.table.isEnabled()}
+set_window.set_list.findItems("render_set", QtCore.Qt.MatchFlag.MatchExactly)[0].setSelected(True)
+set_window.accept()
+out["set_window"]["after_ok"] = [editor.entries, editor.table.isEnabled(), editor.set_window is None]
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def selection_dialog_probe():
+    done = subprocess.run(
+        [sys.executable, "-c", _SELECTION_DIALOG_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120
+    )
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_selection_editor_has_no_entries_label(selection_dialog_probe):
+    assert "Entries" not in selection_dialog_probe["labels"]
+
+
+def test_selection_editor_shows_selected_entries_as_one_row(selection_dialog_probe):
+    assert selection_dialog_probe["rows"] == [
+        ["Selected", "body_geo, hair_geo", "2"],
+        ["Pattern", "*_eye_geo", "2"],
+    ]
+
+
+def test_selection_editor_does_not_block_maya(selection_dialog_probe):
+    assert not selection_dialog_probe["modal"]
+
+
+def test_selection_editor_text_buttons_are_only_ok_and_cancel(selection_dialog_probe):
+    assert sorted(b for b in selection_dialog_probe["buttons"] if b) == ["Cancel", "OK"]
+
+
+def test_selection_editor_has_icon_buttons_to_add_entries(selection_dialog_probe):
+    assert selection_dialog_probe["add_buttons"] == [
+        ["Add Selected", False, True],
+        ["Add Pattern", False, True],
+        ["Add Selection Set", False, True],
+    ]
+
+
+def test_entries_empty_space_menu_adds(selection_dialog_probe):
+    assert selection_dialog_probe["empty_menu"] == ["Add Selected", "Add Pattern...", "Add Selection Set..."]
+
+
+def test_entry_menu_removes(selection_dialog_probe):
+    assert selection_dialog_probe["row_menu"] == ["Remove"]
+    assert selection_dialog_probe["after_remove"] == 1
+
+
+def test_selection_preview_is_labelled_with_its_count(selection_dialog_probe):
+    assert "Preview:" in selection_dialog_probe["labels"]
+    assert selection_dialog_probe["preview_header"]
+    assert selection_dialog_probe["all"] == [["body_geo", "hair_geo", "L_eye_geo", "R_eye_geo"], "4 objects"]
+
+
+def test_clicking_an_entry_refreshes_and_previews_just_it(selection_dialog_probe):
+    # The scene changed (hair_geo went away) before the row was clicked: its count updates.
+    assert selection_dialog_probe["selected_row"] == [["body_geo"], "1 object", "1"]
+    assert selection_dialog_probe["pattern_row"] == [["L_eye_geo", "R_eye_geo"], "2 objects", "2"]
+    # Refreshing the preview doesn't touch the scene selection.
+    assert selection_dialog_probe["selected_by_clicking_rows"] == []
+
+
+def test_picking_preview_rows_selects_them_in_the_scene(selection_dialog_probe):
+    assert selection_dialog_probe["preview_pick"] == ["L_eye_geo", "R_eye_geo"][:2]
+
+
+def test_double_clicking_the_preview_selects_all(selection_dialog_probe):
+    assert not selection_dialog_probe["preview_has_menu"]
+    assert selection_dialog_probe["select_all"] == [["L_eye_geo", "R_eye_geo"], 2]
+    assert selection_dialog_probe["select_all_on_a_row"] == [["L_eye_geo", "R_eye_geo"], 2]
+
+
+def test_clicking_empty_space_previews_everything(selection_dialog_probe):
+    assert selection_dialog_probe["empty_click"] == [0, ["body_geo", "hair_geo", "L_eye_geo", "R_eye_geo"]]
+
+
+def test_double_clicking_a_selected_entry_opens_its_objects(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert not window["modal"]
+    assert window["rows"] == ["body_geo", "hair_geo"]
+    assert window["missing_red"]
+    assert window["entries_locked"]
+
+
+def test_objects_window_has_icon_buttons_instead_of_a_menu(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert window["buttons"] == [
+        ["Add Selected", False, True],
+        ["Replace with Selected", False, True],
+        ["Remove", False, True],
+    ]
+    assert not window["has_menu"]
+
+
+def test_objects_window_remove_needs_a_picked_object(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert not window["remove_enabled_with_nothing_picked"]
+    assert window["remove_enabled_with_a_pick"]
+
+
+def test_objects_window_picks_adds_and_removes(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert window["pick"] == ["body_geo"]
+    assert window["added"] == ["body_geo", "hair_geo", "new_geo"]
+    assert window["removed"] == ["hair_geo", "new_geo"]
+
+
+def test_objects_window_changes_nothing_until_ok(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert window["row_before_ok"] == ["Selected", "body_geo, hair_geo"]
+    assert window["after_cancel"] == [["Selected", "body_geo, hair_geo", "1"], True]
+
+
+def test_objects_window_replace_and_ok(selection_dialog_probe):
+    assert selection_dialog_probe["replaced"] == ["new_geo"]
+    assert selection_dialog_probe["nothing_selected_warns"] == 2
+    assert selection_dialog_probe["repicked"] == [["Selected", "new_geo", "1"], True]
+
+
+def test_ok_saves_the_entries(selection_dialog_probe):
+    assert selection_dialog_probe["saved"] == [[{"type": "selected", "value": ["new_geo"]}]]
+
+
+def test_pattern_window_has_a_type_dropdown_defaulting_to_any(selection_dialog_probe):
+    from kaiju_suite.tools.scripter import items
+
+    window = selection_dialog_probe["pattern_dialog"]
+    assert window["types"] == list(items.NODE_TYPES)
+    assert window["default"] == ["", "*"]
+    assert window["picked"] == ["*_geo", "Geo"]
+    assert window["editing"] == ["*_jnt", "Joint"]
+
+
+def test_delete_button_at_the_top_right_removes_selected_entries(selection_dialog_probe):
+    assert selection_dialog_probe["delete_button"] == ["Remove", False, False]
+    assert selection_dialog_probe["delete_on_the_right"]
+    assert selection_dialog_probe["delete_enabled_with_a_selection"]
+    assert selection_dialog_probe["after_remove"] == 1
+
+
+def test_set_picker_is_titled_selection_set(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["title"] == "Selection Set"
+    assert window["is_list"] and window["single"]
+    assert window["sets"] == ["anim_set", "render_set"]
+    assert window["current"] == "render_set"
+    assert window["missing_current_kept"] == "gone_set"
+
+
+def test_set_picker_makes_a_new_set_from_the_selection(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["new_button"] == ["New Selection Set from Selected", False]
+    assert window["new_icon_is_add_set"]
+    assert window["button_above_list"]
+    assert window["made"] == [["new_set", ["a_geo", "b_geo"]]]
+    assert window["after_new"] == [["anim_set", "render_set", "new_set1"], "new_set1"]
+    assert window["nothing_selected_warns"] == [1, 1]
+
+
+def test_set_picker_deletes_the_picked_set(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["delete_button"] == ["Delete Selection Set", False]
+    assert window["delete_beside_new"]
+    assert window["deleted"] == [["anim_set"], ["new_set1", "fx_set"]]
+    assert not window["delete_enabled_with_no_pick"]
+    assert window["empty_ok_picks_nothing"] == []
+
+
+def test_set_picker_does_not_block_maya(selection_dialog_probe):
+    window = selection_dialog_probe["set_window"]
+    assert not window["modal"] and window["visible"]
+    assert window["editor_locked"]
+    assert window["after_ok"] == [[{"type": "set", "value": "render_set"}], True, True]
+
+
+def test_set_list_rereads_the_scene_when_a_set_is_clicked(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["reread_on_click"] == [["anim_set", "new_set1", "fx_set"], "new_set1"]
+    # Clicking a set someone just deleted: it goes, and nothing is picked.
+    assert window["clicked_set_gone"] == [["new_set1", "fx_set"], ""]
+
+
+def test_double_clicking_a_set_picks_it(selection_dialog_probe):
+    assert selection_dialog_probe["set_dialog"]["double_click_picks"] == [["fx_set"], False]
+
+
+def test_new_set_is_named_after_a_missing_set(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["default_name"] == "selection_set"
+    assert window["missing_default"] == "gone_set"
+    # Making it again lists it once, picked.
+    names, picked = window["after_remaking_missing"]
+    assert names.count("gone_set") == 1 and picked == "gone_set"
+
+
+def test_entry_column_fills_the_width(selection_dialog_probe):
+    assert selection_dialog_probe["entry_fills"] == [False, True, False]
+    assert selection_dialog_probe["no_sideways_scroll"]
+    assert selection_dialog_probe["columns_fill_the_list"]
