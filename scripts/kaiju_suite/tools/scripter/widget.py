@@ -6,11 +6,12 @@ import sys
 from maya import cmds
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from kaiju_suite.core import settings
+from kaiju_suite.core import checks, settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.tools.scripter import items, logic, script_editor, versions, vscode
 from kaiju_suite.ui import icons, status_icons
 from kaiju_suite.ui.base_window import ToolWindow
+from kaiju_suite.ui.qc_tab import QCResultsDialog
 
 log = get_logger(__name__)
 
@@ -561,16 +562,22 @@ class ScripterWindow(ToolWindow):
         kind = logic.kind_of(path) if path else None
         if kind == logic.SCRIPT:
             self.attempt(lambda: script_editor.open_in_script_editor(path))
+        elif items.tool_for(kind):
+            # Missing objects are warned about; the tool still opens.
+            self.attempt(lambda: items.open_in_tool(path))
         elif kind in items.DATATYPES:
-            lines = self.attempt(lambda: items.describe(path))
-            if lines is not None:
-                QtWidgets.QMessageBox.information(self, os.path.basename(path), "\n".join(lines))
+            self._show_info(path)
         elif kind in items.FILE_KINDS:
             self._change_target(path)
         elif kind == logic.SELECTION:
             self._edit_selection(path)
         elif kind == logic.FOLDER:
             self.attempt(lambda: _open_in_file_browser(path))
+
+    def _show_info(self, path):
+        lines = self.attempt(lambda: items.describe(path))
+        if lines is not None:
+            QtWidgets.QMessageBox.information(self, os.path.basename(path), "\n".join(lines))
 
     def _pick_file(self, kind, start):
         """Ask for an Import File's file (to open) or an Export File's (to
@@ -624,6 +631,7 @@ class ScripterWindow(ToolWindow):
             menu.addAction("Change File...", lambda: self._change_target(path))
         if kind in items.DATATYPES:
             menu.addAction("Select Objects", lambda: self._select_saved(path))
+            menu.addAction("Info...", lambda: self._show_info(path))
         if path and versions.is_versioned(path):
             menu.addSeparator()
             menu.addAction("Publish...", lambda: self._publish(path))
@@ -786,6 +794,8 @@ class ScripterWindow(ToolWindow):
             )
             if answer != Button.Yes:
                 return
+        if is_data and not self._passes_qc(path, objects):
+            return
         description, ok = QtWidgets.QInputDialog.getText(self, f"Publish {name}", "What changed? (optional)")
         if not ok:
             return
@@ -796,6 +806,27 @@ class ScripterWindow(ToolWindow):
         self.populate()
         if number:
             cmds.inViewMessage(assistMessage=f"Published {name} v{number:03d}", position="topCenter", fade=True)
+
+    def _passes_qc(self, path, objects):
+        """Run the item's QC checks on ``objects`` before publishing. True if
+        they all pass (or its kind has none), or the user picks Publish Anyway
+        in the dialog listing the problems."""
+        found = self.attempt(lambda: items.publish_qc(path, objects))
+        if found is None:
+            return False
+        count = sum(len(problems) for _, problems in found)
+        if not count:
+            return True
+        name = os.path.basename(path)
+        dialog = QCResultsDialog(
+            self,
+            f"QC: {name}",
+            f"QC found {count} problem{'s' if count != 1 else ''} in {name}.",
+            found,
+            "Publish Anyway",
+            checks.select_problem,
+        )
+        return dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted
 
 
 class VersionsDialog(QtWidgets.QDialog):

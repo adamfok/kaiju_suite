@@ -3,7 +3,13 @@
 Each :class:`Check` returns a list of problem messages, one per node, each
 starting with the node's name (e.g. ``pCube1: doesn't match ...``); an empty
 list means it found nothing. The Assembler's QC items run them as a build
-step. No Qt here.
+step. A message can be a :class:`Problem`, which also says what to select
+to see it (e.g. the vertices whose weights are off). No Qt here.
+
+The settings functions take another list of checks too (``checks=``), e.g.
+:data:`kaiju_suite.datatypes.skin.CHECKS`, whose checks take the nodes to
+look at: ``run(settings, skin.CHECKS, nodes=[...])``. A tool's QC tab keeps
+its settings with :func:`saved_settings` and :func:`save_setting`.
 
 Settings say which checks to run and with what options, keyed by check::
 
@@ -16,6 +22,8 @@ import re
 from dataclasses import dataclass, field
 
 from maya import cmds
+
+from kaiju_suite.core import settings as user_settings
 
 # Parts of letters and digits joined by underscores, at least two of them
 # (``L_arm_ctrl``, ``body_geo``): flags Maya's defaults (``pCube1``, ``joint1``).
@@ -50,6 +58,34 @@ class Check:
 
     def run(self, **options):
         return self.fn(**{**self.options, **options})
+
+
+class Problem(str):
+    """A problem message that also knows what to select to see it: nodes or
+    components, e.g. ``["body_geo.vtx[0:4]"]``. Reads as plain text anywhere
+    a message is expected."""
+
+    def __new__(cls, message, select=()):
+        problem = super().__new__(cls, message)
+        problem.select = list(select)
+        return problem
+
+
+def selection_of(problem):
+    """What to select to see ``problem``: its ``select`` if it's a
+    :class:`Problem`, else nothing."""
+    return list(getattr(problem, "select", []))
+
+
+def select_problem(problem):
+    """Select what ``problem`` points at (see :func:`selection_of`), leaving
+    out what's no longer in the scene. Returns what was selected."""
+    found = [name for name in selection_of(problem) if cmds.objExists(name)]
+    if found:
+        cmds.select(found, replace=True)
+    else:
+        cmds.select(clear=True)
+    return cmds.ls(selection=True) if found else []
 
 
 # -- helpers ----------------------------------------------------------------
@@ -154,9 +190,10 @@ CHECKS = (
 )
 
 
-def get(key):
-    """The check with ``key``; raises ``LookupError`` if there's none."""
-    for check in CHECKS:
+def get(key, checks=None):
+    """The check with ``key`` in ``checks`` (default :data:`CHECKS`); raises
+    ``LookupError`` if there's none."""
+    for check in checks or CHECKS:
         if check.key == key:
             return check
     raise LookupError(f"No check {key!r}")
@@ -165,29 +202,39 @@ def get(key):
 # -- settings ---------------------------------------------------------------
 
 
-def defaults():
+def defaults(checks=None):
     """Settings that turn every check on with its default options."""
-    return {check.key: {"enabled": True, **check.options} for check in CHECKS}
+    return {check.key: {"enabled": True, **check.options} for check in checks or CHECKS}
 
 
-def complete(settings):
+def complete(settings, checks=None):
     """``settings`` with missing checks and options filled in from :func:`defaults`."""
-    result = defaults()
+    result = defaults(checks)
     for key, values in (settings or {}).items():
         result.setdefault(key, {}).update(values)
     return result
 
 
-def settings_problems(settings):
+def _number_problem(key, option, value, default):
+    whole = isinstance(default, int)
+    if isinstance(value, bool) or not isinstance(value, int if whole else (int, float)):
+        return f"{key}: {option} must be {'a whole number' if whole else 'a number'}, not {value!r}"
+    if value < 0:
+        return f"{key}: {option} can't be negative"
+    return None
+
+
+def settings_problems(settings, checks=None):
     """What's wrong with ``settings``, as messages. Empty if they can be run."""
+    checks = checks or CHECKS
     if not isinstance(settings, dict):
         return [f"checks must be an object of check settings, not {settings!r}"]
     problems = []
     for key, values in settings.items():
         try:
-            check = get(key)
+            check = get(key, checks)
         except LookupError:
-            problems.append(f"no check {key!r}; use one of {', '.join(c.key for c in CHECKS)}")
+            problems.append(f"no check {key!r}; use one of {', '.join(c.key for c in checks)}")
             continue
         if not isinstance(values, dict):
             problems.append(f"{key} must be an object, not {values!r}")
@@ -206,19 +253,50 @@ def settings_problems(settings):
                         re.compile(value)
                     except re.error as e:
                         problems.append(f"{key}: pattern isn't a valid regular expression: {e}")
+            elif isinstance(check.options[option], (int, float)):
+                problem = _number_problem(key, option, value, check.options[option])
+                if problem:
+                    problems.append(problem)
     return problems
 
 
-def run(settings=None):
-    """Run the turned-on checks in ``settings`` (all, if ``None``), in order.
+def run(settings=None, checks=None, **inputs):
+    """Run the turned-on checks in ``settings`` (all, if ``None``), in order,
+    passing each ``inputs`` (e.g. ``nodes=``) along with its options.
 
     Returns ``(check, problems)`` pairs, one per check run. Changes nothing.
     """
-    settings = complete(settings)
+    checks = checks or CHECKS
+    settings = complete(settings, checks)
     found = []
-    for check in CHECKS:
+    for check in checks:
         values = dict(settings[check.key])
         if not values.pop("enabled", True):
             continue
-        found.append((check, check.run(**values)))
+        found.append((check, check.run(**inputs, **values)))
     return found
+
+
+# -- saved settings (a tool's QC tab) ------------------------------------------
+
+
+def _setting_name(key, option):
+    return f"qc_{key}_{option}"
+
+
+def saved_settings(tool, checks=None):
+    """The QC settings ``tool`` saved with :func:`save_setting` (per user, in
+    optionVars), each value read back as its default's type; defaults for
+    the rest."""
+    result = defaults(checks)
+    for key, values in result.items():
+        for option, default in values.items():
+            value = user_settings.get(tool, _setting_name(key, option))
+            if value is not None:
+                values[option] = type(default)(value)
+    return result
+
+
+def save_setting(tool, key, option, value):
+    """Save one QC option of ``tool`` (``"enabled"`` turns the check on or off)."""
+    user_settings.set(tool, _setting_name(key, option), value)

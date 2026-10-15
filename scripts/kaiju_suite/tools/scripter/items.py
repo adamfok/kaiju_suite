@@ -5,7 +5,9 @@
   :mod:`.logic`; they don't run themselves.
 - **Joints** (``.jnt``), **Skin** (``.skin``) and **Mesh** (``.mesh``): data
   published from the selection with :mod:`kaiju_suite.datatypes`, and
-  applied back when run. Versioned like scripts.
+  applied back when run. Versioned like scripts. A kind with a tool in
+  :data:`TOOLS` opens it on double-click, with the item's objects selected
+  (:func:`open_in_tool`).
 - **Import File** (``.import``) and **Export File** (``.export``): hold one
   path, as ``{"path": ...}``, stored relative to the item's folder when the
   file is inside it (see :mod:`kaiju_suite.core.paths`). Import File imports
@@ -26,7 +28,7 @@ import tempfile
 
 from maya import cmds
 
-from kaiju_suite import datatypes
+from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
 from kaiju_suite.datatypes import joints, mesh, skin
@@ -58,6 +60,8 @@ _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 # Data published from the selection, by kind.
 DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
+# The tool each data kind opens on double-click, by its registry name.
+TOOLS = {SKIN: "SkinCluster Tool"}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
 RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)
@@ -170,6 +174,13 @@ def unchanged_since(path, selection):
             return versions.unchanged_since(path, f.read())
 
 
+def publish_qc(path, objects):
+    """Run the QC checks of the data item at ``path``'s kind on ``objects``
+    (long names), with the settings saved in its tool. ``(check, problems)``
+    pairs; empty for kinds without checks."""
+    return datatypes.run_qc(DATATYPES[kind_of(path)], objects)
+
+
 def describe(path):
     """Info lines about a data item, e.g. ``["3 joints", "Roots: hip"]``."""
     module = DATATYPES[kind_of(path)]
@@ -197,6 +208,25 @@ def select_saved(path):
     if problems:
         cmds.warning(" ".join(problems))
         message += ". " + " ".join(problems)
+    return message
+
+
+def tool_for(kind):
+    """The name of the tool a ``kind`` item opens on double-click, or ``None``."""
+    return TOOLS.get(kind)
+
+
+def open_in_tool(path):
+    """Select the objects the data item at ``path`` was published from (see
+    :func:`select_saved`), then open its kind's tool, which works on the
+    selection. Returns :func:`select_saved`'s message. Raises
+    ``LookupError`` if the tool isn't installed."""
+    name = tool_for(kind_of(path))
+    tool = registry.find(name) if name else None
+    if tool is None:
+        raise LookupError(f"Can't find the {name or 'tool'} for {os.path.basename(path)}.")
+    message = select_saved(path)
+    tool["launch"]()
     return message
 
 

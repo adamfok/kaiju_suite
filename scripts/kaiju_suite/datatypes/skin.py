@@ -17,6 +17,11 @@ count changed since, applying gives each vertex the weights of the saved
 vertex closest to it and warns. Files from before points were saved still
 need the same vertex count.
 
+:data:`CHECKS` are QC checks on the skinClusters of given meshes (not
+skinned, weights not normalized, too many influences, tiny weights, unused
+influences), run with :func:`kaiju_suite.core.checks.run` by the
+SkinCluster Tool's QC tab. They change nothing.
+
 ``setWeights`` isn't on Maya's undo queue. Undo still reverts an apply
 (removing the new skinCluster takes its weights with it), but redo rebinds
 with Maya's default weights, not the saved ones: apply the file again
@@ -28,6 +33,7 @@ from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
 from kaiju_suite import datatypes
+from kaiju_suite.core.checks import Check, Problem
 from kaiju_suite.datatypes import mesh_shape, plural, short
 
 KIND = "skin"
@@ -61,16 +67,16 @@ def _all_vertices(count):
     return obj
 
 
-def _record(mesh):
+def _sparse_weights(mesh):
+    """``(cluster, influences, rows)`` for skinned ``mesh``: its skinCluster,
+    influence names in index order, and per vertex ``[influence index,
+    weight]`` pairs without zeros."""
     cluster = skin_cluster(mesh)
-    shape = mesh_shape(mesh)
     fn = _skin_fn(cluster)
-    path = _dag_path(shape)
+    path = _dag_path(mesh_shape(mesh))
     count = om.MFnMesh(path).numVertices
-    vertices = _all_vertices(count)
-
     influences = [short(p.fullPathName()) for p in fn.influenceObjects()]
-    weights, per_vertex = fn.getWeights(path, vertices)
+    weights, per_vertex = fn.getWeights(path, _all_vertices(count))
     sparse = []
     for v in range(count):
         row = []
@@ -79,6 +85,16 @@ def _record(mesh):
             if w:
                 row.append([i, w])
         sparse.append(row)
+    return cluster, influences, sparse
+
+
+def _record(mesh):
+    cluster, influences, sparse = _sparse_weights(mesh)
+    shape = mesh_shape(mesh)
+    fn = _skin_fn(cluster)
+    path = _dag_path(shape)
+    count = len(sparse)
+    vertices = _all_vertices(count)
 
     record = {
         "mesh": short(mesh),
@@ -266,3 +282,112 @@ def compare_view(payload):
     without the rest points (saved for remapping, not skin data)."""
     meshes = [{**_without(r, "points"), "weights": _weights_by_name(r)} for r in payload["meshes"]]
     return {**payload, "meshes": meshes}
+
+
+# -- QC checks --------------------------------------------------------------
+
+
+def vertex_ranges(mesh, indices):
+    """``mesh``'s vertices at ``indices`` (sorted), with runs folded into
+    ranges: ``["m.vtx[0:2]", "m.vtx[5]"]``."""
+    ranges = []
+    for i in indices:
+        if ranges and ranges[-1][1] == i - 1:
+            ranges[-1][1] = i
+        else:
+            ranges.append([i, i])
+    return [f"{mesh}.vtx[{a}]" if a == b else f"{mesh}.vtx[{a}:{b}]" for a, b in ranges]
+
+
+def _skinned_weights(nodes):
+    """``(name, influences, rows)`` for each skinned mesh among ``nodes``."""
+    found = []
+    for mesh in datatypes.meshes(nodes):
+        if skin_cluster(mesh):
+            _, influences, rows = _sparse_weights(mesh)
+            found.append((short(mesh), influences, rows))
+    return found
+
+
+def _vertex_problem(name, bad, what):
+    count = plural(len(bad), "vertex", "vertices")
+    return Problem(f"{name}: {count} {what}", vertex_ranges(name, bad))
+
+
+def _check_skinned(nodes):
+    return [Problem(f"{short(m)}: no skinCluster", [short(m)]) for m in datatypes.meshes(nodes) if not skin_cluster(m)]
+
+
+def _check_normalized(nodes, tolerance=0.001):
+    problems = []
+    for name, _, rows in _skinned_weights(nodes):
+        off = {v: abs(1 - sum(w for _, w in row)) for v, row in enumerate(rows)}
+        bad = [v for v, d in off.items() if d > tolerance]
+        if bad:
+            verb = "doesn't" if len(bad) == 1 else "don't"
+            furthest = max(off[v] for v in bad)
+            problems.append(_vertex_problem(name, bad, f"{verb} add up to 1 (furthest off by {furthest:.4g})"))
+    return problems
+
+
+def _check_influence_count(nodes, max_influences=4):
+    problems = []
+    for name, _, rows in _skinned_weights(nodes):
+        bad = [v for v, row in enumerate(rows) if len(row) > max_influences]
+        if bad:
+            most = max(len(rows[v]) for v in bad)
+            verb = "has" if len(bad) == 1 else "have"
+            problems.append(_vertex_problem(name, bad, f"{verb} more than {max_influences} influences (up to {most})"))
+    return problems
+
+
+def _check_small_weights(nodes, threshold=0.001):
+    problems = []
+    for name, _, rows in _skinned_weights(nodes):
+        bad = [v for v, row in enumerate(rows) if any(w < threshold for _, w in row)]
+        if bad:
+            verb = "has" if len(bad) == 1 else "have"
+            problems.append(_vertex_problem(name, bad, f"{verb} weights below {threshold:g}"))
+    return problems
+
+
+def _check_unused(nodes):
+    problems = []
+    for name, influences, rows in _skinned_weights(nodes):
+        used = {i for row in rows for i, _ in row}
+        unused = [n for i, n in enumerate(influences) if i not in used]
+        if unused:
+            problems.append(Problem(f"{name}: {plural(len(unused), 'unused influence')}: {', '.join(unused)}", unused))
+    return problems
+
+
+CHECKS = (
+    Check("skinned", "Not skinned", "Selected meshes with no skinCluster.", _check_skinned),
+    Check(
+        "normalized",
+        "Weights not normalized",
+        "Vertices whose weights don't add up to 1, give or take the tolerance.",
+        _check_normalized,
+        {"tolerance": 0.001},
+    ),
+    Check(
+        "influence_count",
+        "Too many influences",
+        "Vertices weighted to more influences than the limit (game engines often take 4).",
+        _check_influence_count,
+        {"max_influences": 4},
+    ),
+    Check(
+        "small_weights",
+        "Tiny weights",
+        "Vertices with a weight above 0 but below the threshold; Prune Weights removes them.",
+        _check_small_weights,
+        {"threshold": 0.001},
+    ),
+    Check(
+        "unused",
+        "Unused influences",
+        "Influences with no weight on any vertex; Remove Unused Influences removes them.",
+        _check_unused,
+    ),
+)

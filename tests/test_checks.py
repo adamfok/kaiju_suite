@@ -182,3 +182,91 @@ def test_settings_problems():
     assert checks.settings_problems({"naming": {"pattern": "("}})[0].startswith("naming: pattern isn't a valid regular expression")
     assert checks.settings_problems({"naming": {"colour": "red"}}) == ["naming: unknown option 'colour'"]
     assert checks.settings_problems({"naming": []}) == ["naming must be an object, not []"]
+
+
+# -- other check lists (a datatype's QC) -------------------------------------
+
+
+def _count_to(nodes, limit=2):
+    return [f"{n}: over {limit}" for n in nodes[limit:]]
+
+
+_OTHER = (
+    checks.Check("count", "Count", "More nodes than the limit.", _count_to, {"limit": 2}),
+    checks.Check("ratio", "Ratio", "A float option.", lambda nodes, tolerance=0.5: [], {"tolerance": 0.5}),
+)
+
+
+def test_settings_functions_take_another_check_list():
+    assert checks.defaults(_OTHER) == {"count": {"enabled": True, "limit": 2}, "ratio": {"enabled": True, "tolerance": 0.5}}
+    assert checks.complete({"count": {"limit": 5}}, _OTHER)["count"] == {"enabled": True, "limit": 5}
+    assert checks.get("ratio", _OTHER).label == "Ratio"
+    assert checks.settings_problems({"naming": {}}, _OTHER) == ["no check 'naming'; use one of count, ratio"]
+
+
+def test_run_passes_inputs_to_another_check_list():
+    found = checks.run({"count": {"limit": 1}}, _OTHER, nodes=["a", "b", "c"])
+
+    assert [(check.key, problems) for check, problems in found] == [
+        ("count", ["b: over 1", "c: over 1"]),
+        ("ratio", []),
+    ]
+
+
+def test_number_options_must_be_numbers_of_the_right_kind():
+    assert checks.settings_problems({"count": {"limit": 3}, "ratio": {"tolerance": 1}}, _OTHER) == []
+    assert checks.settings_problems({"count": {"limit": "3"}}, _OTHER) == ["count: limit must be a whole number, not '3'"]
+    assert checks.settings_problems({"count": {"limit": 1.5}}, _OTHER) == ["count: limit must be a whole number, not 1.5"]
+    assert checks.settings_problems({"count": {"limit": True}}, _OTHER) == ["count: limit must be a whole number, not True"]
+    assert checks.settings_problems({"ratio": {"tolerance": "x"}}, _OTHER) == ["ratio: tolerance must be a number, not 'x'"]
+    assert checks.settings_problems({"count": {"limit": -1}}, _OTHER) == ["count: limit can't be negative"]
+
+
+def test_a_problem_is_a_message_that_knows_what_to_select():
+    problem = checks.Problem("body_geo: 3 vertices", ["body_geo.vtx[0:2]"])
+
+    assert problem == "body_geo: 3 vertices"
+    assert problem.select == ["body_geo.vtx[0:2]"]
+    assert checks.Problem("plain").select == []
+    assert checks.selection_of("just text") == []
+    assert checks.selection_of(problem) == ["body_geo.vtx[0:2]"]
+
+
+# -- saved settings (a tool's QC tab) -----------------------------------------
+
+
+@pytest.fixture
+def clean_option_vars():
+    def clear():
+        for name in cmds.optionVar(list=True) or []:
+            if name.startswith("kaiju_suite_test_qc_"):
+                cmds.optionVar(remove=name)
+
+    clear()
+    yield
+    clear()
+
+
+def test_saved_settings_start_at_the_defaults(clean_option_vars):
+    assert checks.saved_settings("test_qc", _OTHER) == checks.defaults(_OTHER)
+
+
+def test_saved_settings_keep_what_was_saved_with_its_type(clean_option_vars):
+    checks.save_setting("test_qc", "count", "enabled", False)
+    checks.save_setting("test_qc", "count", "limit", 7)
+    checks.save_setting("test_qc", "ratio", "tolerance", 0.25)
+
+    settings = checks.saved_settings("test_qc", _OTHER)
+
+    assert settings == {"count": {"enabled": False, "limit": 7}, "ratio": {"enabled": True, "tolerance": 0.25}}
+    assert settings["count"]["enabled"] is False
+    assert checks.settings_problems(settings, _OTHER) == []
+
+
+def test_select_problem_selects_what_it_points_at_that_still_exists(new_scene):
+    cube = cmds.polyCube(name="here", constructionHistory=False)[0]
+
+    assert checks.select_problem(checks.Problem("x", [f"{cube}.vtx[0:1]", "gone"])) == ["here.vtx[0:1]"]
+    assert cmds.ls(selection=True) == ["here.vtx[0:1]"]
+    assert checks.select_problem("plain") == []
+    assert cmds.ls(selection=True) == []

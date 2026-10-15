@@ -7,8 +7,9 @@ from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
 from kaiju_suite.tools.skincluster_tool import logic
 from kaiju_suite.ui.base_window import ToolWindow
+from kaiju_suite.ui.qc_tab import QCTab
 
-SETTINGS_KEY = "skincluster_tool"
+SETTINGS_KEY = logic.SETTINGS_KEY
 _FAILED = object()
 _SKIN_FILTER = "Skin weights (*.skin)"
 
@@ -21,6 +22,26 @@ class SkinClusterToolWindow(ToolWindow):
     TITLE = "Kaiju SkinCluster Tool"
 
     def build_ui(self):
+        tabs = QtWidgets.QTabWidget()
+        qc = QCTab(logic.QC_CHECKS, logic.qc_settings(), logic.save_qc_setting, self._run_qc, logic.select_problem)
+        tabs.addTab(qc, "QC")
+        utilities = QtWidgets.QWidget()
+        self._build_utilities(QtWidgets.QVBoxLayout(utilities))
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setWidget(utilities)
+        tabs.addTab(scroll, "Utilities")
+        tabs.setCurrentIndex(settings.get(SETTINGS_KEY, "tab", 0))
+        tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
+        self.layout.addWidget(tabs)
+
+    def _run_qc(self):
+        """The QC results for the selection, or ``None`` after warning why not."""
+        found = self._run(logic.run_qc, selected())
+        return None if found is _FAILED else found
+
+    def _build_utilities(self, layout):
         # Copy
         copy_box = QtWidgets.QGroupBox("Copy Skin")
         copy = QtWidgets.QVBoxLayout(copy_box)
@@ -149,9 +170,9 @@ class SkinClusterToolWindow(ToolWindow):
         self.status.setWordWrap(True)
 
         for box in (copy_box, mirror_box, clean_box, weights_box, influences_box, files_box):
-            self.layout.addWidget(box)
-        self.layout.addWidget(self.status)
-        self.layout.addStretch()
+            layout.addWidget(box)
+        layout.addWidget(self.status)
+        layout.addStretch()
 
     def _meshes(self):
         meshes = logic.meshes(selected())

@@ -934,3 +934,207 @@ def test_entry_column_fills_the_width(selection_dialog_probe):
     assert selection_dialog_probe["entry_fills"] == [False, True, False]
     assert selection_dialog_probe["no_sideways_scroll"]
     assert selection_dialog_probe["columns_fill_the_list"]
+
+
+# Double-clicking a data item whose kind has a tool (Skin: the SkinCluster
+# Tool) opens it on the item's objects; other data items show their info,
+# which a right-click "Info..." also shows.
+_DATA_PROBE = r"""
+import json, os, sys, tempfile
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import widget
+
+root = tempfile.mkdtemp()
+paths = {}
+for name in ("leg.skin", "skeleton.jnt"):
+    paths[name] = os.path.join(root, name)
+    open(paths[name], "w").close()
+
+calls = []
+widget.items.open_in_tool = lambda path: calls.append(("tool", os.path.basename(path))) or "Selected 1 object"
+widget.items.describe = lambda path: calls.append(("describe", os.path.basename(path))) or ["info"]
+widget.QtWidgets.QMessageBox.information = staticmethod(lambda *a: calls.append(("box", a[1])))
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+widget.versions.is_versioned = lambda path: False
+
+
+class Stand(QtWidgets.QWidget):
+    root = root
+    runner = None
+    attempt = staticmethod(lambda fn: fn())
+    selected_paths = staticmethod(lambda: [])
+    _delete_selected = staticmethod(lambda: None)
+    _on_double_click = widget.ScripterWindow._on_double_click
+    _on_context_menu = widget.ScripterWindow._on_context_menu
+    _show_info = widget.ScripterWindow._show_info
+
+
+stand = Stand()
+stand.status = QtWidgets.QLabel()
+stand.tree = widget._Tree(stand)
+out = {"double_click": {}, "menus": {}}
+for name, path in paths.items():
+    item = QtWidgets.QTreeWidgetItem(stand.tree, [name])
+    item.setData(0, widget.PATH_ROLE, path)
+    calls.clear()
+    stand._on_double_click(item, 0)
+    out["double_click"][name] = list(calls)
+
+    menus = []
+
+    class RecordingMenu(QtWidgets.QMenu):
+        def exec(self, *_):
+            menus.append(self.actions())
+
+    real_menu = QtWidgets.QMenu
+    QtWidgets.QMenu = RecordingMenu
+    stand.tree.itemAt = lambda pos, item=item: item
+    stand._on_context_menu(stand.tree.rect().center())
+    QtWidgets.QMenu = real_menu
+    out["menus"][name] = [a.text() for a in menus[0]]
+    calls.clear()
+    [info] = [a for a in menus[0] if a.text() == "Info..."]
+    info.trigger()
+    out.setdefault("info", {})[name] = list(calls)
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def data_probe():
+    done = subprocess.run([sys.executable, "-c", _DATA_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_double_click_on_a_skin_item_opens_the_skincluster_tool(data_probe):
+    assert data_probe["double_click"]["leg.skin"] == [["tool", "leg.skin"]]
+
+
+def test_double_click_on_a_data_item_without_a_tool_shows_its_info(data_probe):
+    assert data_probe["double_click"]["skeleton.jnt"] == [["describe", "skeleton.jnt"], ["box", "skeleton.jnt"]]
+
+
+@pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt"])
+def test_data_items_have_right_click_info(data_probe, name):
+    assert "Info..." in data_probe["menus"][name]
+    assert data_probe["info"][name] == [["describe", name], ["box", name]]
+
+
+# Publish of a Skin item runs QC first: all passing goes straight on to the
+# description; problems show a dialog whose Publish Anyway goes on and whose
+# Cancel publishes nothing.
+_PUBLISH_PROBE = r"""
+import json, os, sys, tempfile
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.core.checks import Check, Problem
+from kaiju_suite.tools.scripter import widget
+
+root = tempfile.mkdtemp()
+paths = {}
+for name in ("leg.skin", "skeleton.jnt"):
+    paths[name] = os.path.join(root, name)
+    open(paths[name], "w").close()
+
+CHECK = Check("unused", "Unused influences", "No weight.", None)
+events = []
+qc = {"found": []}
+answer = {"value": QtWidgets.QDialog.DialogCode.Accepted}
+
+
+class FakeCmds:
+    @staticmethod
+    def ls(*a, **k):
+        return ["|leg"]
+
+    @staticmethod
+    def inViewMessage(**k):
+        events.append(["message", k["assistMessage"]])
+
+
+class FakeDialog:
+    def __init__(self, parent, title, message, found, go_label, on_pick):
+        events.append(["dialog", title, message, go_label, [str(p) for _, ps in found for p in ps]])
+
+    def exec(self):
+        return answer["value"]
+
+
+widget.cmds = FakeCmds
+widget.QCResultsDialog = FakeDialog
+widget.items.selection_problems = lambda kind, sel: []
+widget.items.unchanged_since = lambda path, objects: None
+widget.items.publish_qc = lambda path, objects: events.append(["qc", os.path.basename(path), objects]) or qc["found"]
+widget.items.publish_data = lambda path, objects, description: events.append(["publish", description]) or 2
+widget.QtWidgets.QInputDialog.getText = staticmethod(lambda *a: (events.append(["describe"]) or ("fixed", True)))
+
+
+class Stand(QtWidgets.QWidget):
+    root = root
+    attempt = staticmethod(lambda fn: fn())
+    populate = staticmethod(lambda: None)
+    _publish = widget.ScripterWindow._publish
+    _publish_source = widget.ScripterWindow._publish_source
+    _passes_qc = widget.ScripterWindow._passes_qc
+
+
+stand = Stand()
+out = {}
+cases = {
+    "passes": ("leg.skin", [(CHECK, [])], None),
+    "anyway": ("leg.skin", [(CHECK, [Problem("leg: 1 unused influence: knee", ["knee"])])], QtWidgets.QDialog.DialogCode.Accepted),
+    "cancel": ("leg.skin", [(CHECK, [Problem("leg: 1 unused influence: knee", ["knee"])])], QtWidgets.QDialog.DialogCode.Rejected),
+    "no_checks": ("skeleton.jnt", [], None),
+}
+for case, (name, found, choice) in cases.items():
+    events.clear()
+    qc["found"] = found
+    answer["value"] = choice
+    stand._publish(paths[name])
+    out[case] = list(events)
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def publish_probe():
+    done = subprocess.run([sys.executable, "-c", _PUBLISH_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_publish_with_qc_passing_goes_straight_on(publish_probe):
+    assert publish_probe["passes"] == [
+        ["qc", "leg.skin", ["|leg"]],
+        ["describe"],
+        ["publish", "fixed"],
+        ["message", "Published leg.skin v002"],
+    ]
+
+
+def test_publish_with_qc_problems_asks_and_publish_anyway_goes_on(publish_probe):
+    assert publish_probe["anyway"] == [
+        ["qc", "leg.skin", ["|leg"]],
+        ["dialog", "QC: leg.skin", "QC found 1 problem in leg.skin.", "Publish Anyway", ["leg: 1 unused influence: knee"]],
+        ["describe"],
+        ["publish", "fixed"],
+        ["message", "Published leg.skin v002"],
+    ]
+
+
+def test_publish_with_qc_problems_then_cancel_publishes_nothing(publish_probe):
+    assert publish_probe["cancel"] == [
+        ["qc", "leg.skin", ["|leg"]],
+        ["dialog", "QC: leg.skin", "QC found 1 problem in leg.skin.", "Publish Anyway", ["leg: 1 unused influence: knee"]],
+    ]
+
+
+def test_publish_of_a_kind_without_checks_shows_no_dialog(publish_probe):
+    assert [e[0] for e in publish_probe["no_checks"]] == ["qc", "describe", "publish", "message"]

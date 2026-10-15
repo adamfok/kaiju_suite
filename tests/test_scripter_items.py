@@ -608,3 +608,82 @@ def test_delete_set_only_deletes_selection_sets(new_scene):
     with pytest.raises(ValueError, match="Not a selection set"):
         items.delete_set("initialShadingGroup")
     assert cmds.objExists("a_geo")
+
+
+# -- double-click opens the datatype's tool ----------------------------------
+
+
+def _skin_item(tmp_path):
+    joints = _chain()
+    mesh = cmds.polyCylinder(name="leg", height=4, subdivisionsY=4, constructionHistory=False)[0]
+    cmds.skinCluster(*joints, mesh, toSelectedBones=True, name="leg_skin")
+    return logic.create_data_item(items.SKIN, str(tmp_path), "leg", _long(mesh))
+
+
+def test_skin_items_open_the_skincluster_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.SKIN) == "SkinCluster Tool"
+    assert registry.find(items.tool_for(items.SKIN)) is not None
+
+
+def test_kinds_without_a_tool_have_none():
+    for kind in (items.JOINTS, items.MESH, items.SCRIPT, items.SELECTION):
+        assert items.tool_for(kind) is None
+
+
+def test_open_in_tool_selects_the_saved_objects_then_launches_the_tool(tmp_path, new_scene, monkeypatch):
+    from kaiju_suite import registry
+
+    path = _skin_item(tmp_path)
+    cmds.select(clear=True)
+    calls = []
+    monkeypatch.setattr(
+        registry, "find", lambda name: {"name": name, "launch": lambda: calls.append((name, cmds.ls(selection=True)))}
+    )
+
+    message = items.open_in_tool(path)
+
+    assert calls == [("SkinCluster Tool", ["leg"])]
+    assert message == "Selected 1 object from leg.skin"
+
+
+def test_open_in_tool_still_launches_when_the_objects_are_gone(tmp_path, new_scene, monkeypatch):
+    from kaiju_suite import registry
+
+    path = _skin_item(tmp_path)
+    cmds.delete("leg")
+    calls = []
+    monkeypatch.setattr(registry, "find", lambda name: {"name": name, "launch": lambda: calls.append(name)})
+
+    message = items.open_in_tool(path)
+
+    assert calls == ["SkinCluster Tool"]
+    assert "Missing in the scene: leg" in message
+
+
+def test_open_in_tool_says_when_the_tool_is_missing(tmp_path, new_scene, monkeypatch):
+    from kaiju_suite import registry
+
+    path = _skin_item(tmp_path)
+    monkeypatch.setattr(registry, "find", lambda name: None)
+
+    with pytest.raises(LookupError, match="SkinCluster Tool"):
+        items.open_in_tool(path)
+
+
+# -- QC before publishing ----------------------------------------------------
+
+
+def test_publish_qc_runs_the_skin_checks_on_the_objects(tmp_path, new_scene):
+    path = _skin_item(tmp_path)
+
+    found = items.publish_qc(path, _long("leg"))
+
+    assert [check.key for check, _ in found] == ["skinned", "normalized", "influence_count", "small_weights", "unused"]
+
+
+def test_publish_qc_is_empty_for_kinds_without_checks(tmp_path, new_scene):
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
+
+    assert items.publish_qc(path, _long("hip")) == []
