@@ -1019,3 +1019,17 @@ def test_publish_qc_runs_the_surface_checks(tmp_path, new_scene):
 
     assert list(found) == ["names", "rational", "trimmed", "history"]
     assert found["rational"] == ["ribbon: 1 CV with weights (weights aren't saved)"]
+
+
+# Every data kind is registered the same way, so a new kind can't be left out
+# of a list.
+
+
+@pytest.mark.parametrize("kind", sorted(items.DATATYPES))
+def test_every_data_kind_runs_is_versioned_and_opens_a_tool(kind):
+    from kaiju_suite import registry
+
+    assert kind in items.RUNNABLE
+    assert items.EXTENSIONS[kind] == items.DATATYPES[kind].EXTENSION
+    assert items.EXTENSIONS[kind] in versions.VERSIONED_EXTENSIONS
+    assert registry.find(items.tool_for(kind)) is not None

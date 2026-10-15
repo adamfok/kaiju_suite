@@ -4,32 +4,25 @@
 - **Folder**, **Separator** (``.sep``) and **Breakpoint** (``.brk``): see
   :mod:`.logic`; they don't run themselves.
 - **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``),
-  **NurbsCurve** (``.curve``), **ControlShape** (``.ctrl``),
-  **ProximityWrap** (``.pwrap``, proximityWraps only), **DeltaMush** (``.dmsh``)
-  and **NurbsSurface** (``.surface``): data
+  **NurbsCurve** (``.curve``), **NurbsSurface** (``.surface``),
+  **ControlShape** (``.ctrl``), **DeltaMush** (``.dmsh``), **ProximityWrap**
+  (``.pwrap``, proximityWraps only), **BlendShapes** (``.bshp``, without pose
+  readers or target drivers), **Pose** (``.pose``, attribute values set back
+  with ``setAttr``, no keys) and **Animation** (``.anim``, keys): data
   published from the selection with :mod:`kaiju_suite.datatypes`, and
-  applied back when run. Versioned like scripts. A kind with a tool in
-  :data:`TOOLS` opens it on double-click, with the item's objects selected
+  applied back when run. Versioned like scripts. Each opens its tool in
+  :data:`TOOLS` on double-click, with the item's objects selected
   (:func:`open_in_tool`).
 - **Import File** (``.import``) and **Export File** (``.export``): hold one
   path, as ``{"path": ...}``, stored relative to the item's folder when the
   file is inside it (see :mod:`kaiju_suite.core.paths`). Import File imports
   any file Maya can import, into the root namespace; Export File exports
   the selection, overwriting the file. Not versioned.
-- **Pose** (``.pose``): the values of the selected nodes' keyable attributes,
-  published and run like Joints, set back with ``setAttr`` (no keys);
-  opens the Pose Tool on double-click.
 - **Selection** (``.sel``): a list of entries, as ``{"entries": [...]}``,
   each ``{"type": ..., "value": ...}``: selected objects (a list of their
   shortest unique names, or components), a name pattern (Maya wildcards, searched on every
   run) or a selection set (its members read on every run). Running it
   replaces the selection with what they find. Not versioned.
-- **Animation** (``.anim``): keys published from the selection, like the
-  data kinds above (:mod:`kaiju_suite.datatypes.animation`); opens the
-  Animation Tool on double-click.
-- **BlendShapes** (``.bshp``): the blendShapes on the selected meshes, a
-  data item like Joints, Skin and Mesh; double-click opens the BlendShape
-  Tool. Pose readers and target drivers aren't saved.
 
 No Qt here.
 """
@@ -43,9 +36,19 @@ from maya import cmds
 from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.datatypes import animation, blendshape, controlshape, deltamush, joints, mesh, nurbs_surface, pose, skin
+from kaiju_suite.datatypes import (
+    animation,
+    blendshape,
+    controlshape,
+    deltamush,
+    joints,
+    mesh,
+    nurbs_surface,
+    pose,
+    proximity_wrap,
+    skin,
+)
 from kaiju_suite.datatypes import curves as curve_data
-from kaiju_suite.datatypes import proximity_wrap
 from kaiju_suite.tools.scripter import versions
 
 SCRIPT = "Script"
@@ -89,24 +92,36 @@ EXTENSIONS = {
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 # Data published from the selection, by kind.
-DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, NURBS_CURVE: curve_data, ANIMATION: animation, POSE: pose, CONTROLSHAPE: controlshape}
-DATATYPES[BLENDSHAPES] = blendshape
-DATATYPES[PROXIMITY_WRAP] = proximity_wrap
-DATATYPES[DELTAMUSH] = deltamush
-DATATYPES[NURBS_SURFACE] = nurbs_surface
+DATATYPES = {
+    JOINTS: joints,
+    SKIN: skin,
+    MESH: mesh,
+    NURBS_CURVE: curve_data,
+    ANIMATION: animation,
+    POSE: pose,
+    CONTROLSHAPE: controlshape,
+    BLENDSHAPES: blendshape,
+    PROXIMITY_WRAP: proximity_wrap,
+    DELTAMUSH: deltamush,
+    NURBS_SURFACE: nurbs_surface,
+}
 # The tool each data kind opens on double-click, by its registry name.
-TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", NURBS_CURVE: "Curve Tool", ANIMATION: "Animation Tool", POSE: "Pose Tool", CONTROLSHAPE: "ControlShape Tool"}
-TOOLS[BLENDSHAPES] = "BlendShape Tool"
-TOOLS[PROXIMITY_WRAP] = "ProximityWrap Tool"
-TOOLS[DELTAMUSH] = "DeltaMush Tool"
-TOOLS[NURBS_SURFACE] = "Surface Tool"
+TOOLS = {
+    SKIN: "SkinCluster Tool",
+    JOINTS: "Joint Tool",
+    MESH: "Mesh Tool",
+    NURBS_CURVE: "Curve Tool",
+    ANIMATION: "Animation Tool",
+    POSE: "Pose Tool",
+    CONTROLSHAPE: "ControlShape Tool",
+    BLENDSHAPES: "BlendShape Tool",
+    PROXIMITY_WRAP: "ProximityWrap Tool",
+    DELTAMUSH: "DeltaMush Tool",
+    NURBS_SURFACE: "Surface Tool",
+}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
-RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, NURBS_CURVE, ANIMATION, POSE, CONTROLSHAPE)
-RUNNABLE += (BLENDSHAPES,)
-RUNNABLE += (PROXIMITY_WRAP,)
-RUNNABLE += (DELTAMUSH,)
-RUNNABLE += (NURBS_SURFACE,)
+RUNNABLE = (SCRIPT, IMPORT_FILE, EXPORT_FILE, SELECTION, *DATATYPES)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {

@@ -9,7 +9,7 @@ Tests need `mayapy` (they start `maya.standalone`), not system Python. The inter
 "<mayapy>" -m pytest tests -q -p no:cacheprovider
 ```
 
-Run the suite after every change. It takes about 5s.
+Run the suite after every change. It takes about 90s.
 
 ## Architecture rules (keep these)
 - Imports only go one way: `tools` → `ui` → `core`, `tools` → `rigging` → `core`, and `tools` → `datatypes` → `core`. `core` never imports `ui`, `rigging`, `datatypes` or `tools`; `rigging` and `datatypes` never import `ui`, `tools` or each other. Tools never import each other.
