@@ -11,6 +11,7 @@ from kaiju_suite.tools.assembler.products import (
     animation,
     blendshape,
     controlshape,
+    curves,
     deltamush,
     joints,
     material,
@@ -533,6 +534,19 @@ def test_control_shape(new_scene, tmp_path):
     _blocked(controlshape.PRODUCT, path, "hand_ctrl")
 
 
+def test_curves(new_scene, tmp_path):
+    spine = cmds.curve(name="spine_crv", degree=3, point=[(0, 0, 0), (1, 2, 0), (3, 1, 1), (4, 4, 2)])
+    path = _publish(curves.PRODUCT, tmp_path, spine)
+    assert curves.PRODUCT.nodes(data.read(path, "curves")) == ["spine_crv"]
+
+    cmds.setAttr(f"{spine}.cv[2]", 9, 9, 9)
+    assert _republish(curves.PRODUCT, path).endswith("v002")
+    assert [r["name"] for r in data.read(path, "curves")["curves"]] == ["spine_crv"]
+
+    cmds.rename(spine, "tail_crv")
+    _blocked(curves.PRODUCT, path, "spine_crv")
+
+
 def test_exactly_these_products_can_republish():
     names = {p.name for p in products.all_products() if p.can_republish}
     assert names == {
@@ -546,4 +560,5 @@ def test_exactly_these_products_can_republish():
         "Pose",
         "Animation",
         "ControlShape",
+        "Curves",
     }
