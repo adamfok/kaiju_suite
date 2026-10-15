@@ -114,6 +114,13 @@ def _modified(path, base):
     return not filecmp.cmp(path, base.path, shallow=False)
 
 
+def current_number(path):
+    """The number of the version ``path`` is at (or based on, if edited
+    since); ``None`` when never published."""
+    found = list_versions(path)
+    return _base(path, found).number if found else None
+
+
 def label(path):
     """The Version column: ``v002``, ``v002*`` when edited since, or blank
     when never published."""

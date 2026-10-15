@@ -108,6 +108,19 @@ def test_is_latest_only_at_the_newest_version(script):
     assert versions.label(script) == "v001*"
 
 
+def test_current_number_is_the_version_it_is_at(script):
+    assert versions.current_number(script) is None  # never published
+    versions.publish(script, "First")
+    _set(script, "print('two')\n")
+    versions.publish(script, "Second")
+    assert versions.current_number(script) == 2
+
+    versions.restore(script, 1)
+    assert versions.current_number(script) == 1
+    _set(script, "print('edited old')\n")
+    assert versions.current_number(script) == 1  # still based on it
+
+
 def test_restore_of_a_missing_version_raises(script):
     with pytest.raises(ValueError):
         versions.restore(script, 7)
