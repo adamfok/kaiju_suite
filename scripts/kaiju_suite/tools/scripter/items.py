@@ -5,7 +5,8 @@
   :mod:`.logic`; they don't run themselves.
 - **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``),
   **NurbsCurve** (``.curve``), **ControlShape** (``.ctrl``),
-  **ProximityWrap** (``.pwrap``, proximityWraps only) and **DeltaMush** (``.dmsh``): data
+  **ProximityWrap** (``.pwrap``, proximityWraps only), **DeltaMush** (``.dmsh``)
+  and **NurbsSurface** (``.surface``): data
   published from the selection with :mod:`kaiju_suite.datatypes`, and
   applied back when run. Versioned like scripts. A kind with a tool in
   :data:`TOOLS` opens it on double-click, with the item's objects selected
@@ -42,7 +43,7 @@ from maya import cmds
 from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.datatypes import animation, blendshape, controlshape, deltamush, joints, mesh, pose, skin
+from kaiju_suite.datatypes import animation, blendshape, controlshape, deltamush, joints, mesh, nurbs_surface, pose, skin
 from kaiju_suite.datatypes import curves as curve_data
 from kaiju_suite.datatypes import proximity_wrap
 from kaiju_suite.tools.scripter import versions
@@ -64,6 +65,7 @@ CONTROLSHAPE = "ControlShape"
 BLENDSHAPES = "BlendShapes"
 PROXIMITY_WRAP = "ProximityWrap"
 DELTAMUSH = "DeltaMush"
+NURBS_SURFACE = "NurbsSurface"
 
 EXTENSIONS = {
     SCRIPT: ".py",
@@ -82,6 +84,7 @@ EXTENSIONS = {
     BLENDSHAPES: blendshape.EXTENSION,
     PROXIMITY_WRAP: proximity_wrap.EXTENSION,
     DELTAMUSH: deltamush.EXTENSION,
+    NURBS_SURFACE: nurbs_surface.EXTENSION,
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
@@ -90,17 +93,20 @@ DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, NURBS_CURVE: curve_data, AN
 DATATYPES[BLENDSHAPES] = blendshape
 DATATYPES[PROXIMITY_WRAP] = proximity_wrap
 DATATYPES[DELTAMUSH] = deltamush
+DATATYPES[NURBS_SURFACE] = nurbs_surface
 # The tool each data kind opens on double-click, by its registry name.
 TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", NURBS_CURVE: "Curve Tool", ANIMATION: "Animation Tool", POSE: "Pose Tool", CONTROLSHAPE: "ControlShape Tool"}
 TOOLS[BLENDSHAPES] = "BlendShape Tool"
 TOOLS[PROXIMITY_WRAP] = "ProximityWrap Tool"
 TOOLS[DELTAMUSH] = "DeltaMush Tool"
+TOOLS[NURBS_SURFACE] = "Surface Tool"
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
 RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, NURBS_CURVE, ANIMATION, POSE, CONTROLSHAPE)
 RUNNABLE += (BLENDSHAPES,)
 RUNNABLE += (PROXIMITY_WRAP,)
 RUNNABLE += (DELTAMUSH,)
+RUNNABLE += (NURBS_SURFACE,)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {

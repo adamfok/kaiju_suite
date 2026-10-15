@@ -8,7 +8,7 @@ the number of the version the item was last published as or restored
 from (so the tree can show ``v002*`` once it's edited), and
 ``descriptions.json`` what each version changed, as ``{"3": "Fixed the knee"}``.
 
-Scripts and data items (Joints, Skin, Mesh, NurbsCurve, Animation) are versioned. No Qt here.
+Scripts and data items (Joints, Skin, Mesh, NurbsCurve, Animation, NurbsSurface) are versioned. No Qt here.
 """
 
 import filecmp
@@ -28,6 +28,7 @@ VERSIONED_EXTENSIONS = (".py", ".jnt", ".skin", ".mesh", ".curve", ".anim", ".po
 VERSIONED_EXTENSIONS += (".bshp",)  # BlendShapes
 VERSIONED_EXTENSIONS += (".pwrap",)  # ProximityWrap items
 VERSIONED_EXTENSIONS += (".dmsh",)  # DeltaMush items
+VERSIONED_EXTENSIONS += (".surface",)  # NurbsSurface items
 
 NO_DESCRIPTION = "(no description)"
 
