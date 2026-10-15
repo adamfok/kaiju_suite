@@ -856,6 +856,12 @@ class SelectionDialog(QtWidgets.QDialog):
             add_row.addWidget(button)
             self.add_buttons.append(button)
         add_row.addStretch(1)
+        self.delete_button = QtWidgets.QToolButton()
+        self.delete_button.setIcon(icons.same_when_selected(icons.icon("scripter_delete.svg")))
+        self.delete_button.setToolTip("Remove")
+        self.delete_button.setAutoRaise(True)
+        self.delete_button.clicked.connect(self.remove_selected)
+        add_row.addWidget(self.delete_button)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(add_row)
@@ -870,6 +876,7 @@ class SelectionDialog(QtWidgets.QDialog):
         entry's objects window is open."""
         for widget in [self.table, self.ok_cancel, *self.add_buttons]:
             widget.setEnabled(not locked)
+        self.delete_button.setEnabled(not locked and bool(self.table.selectedItems()))
 
     def accept(self):
         self.on_save(self.entries)
@@ -918,6 +925,7 @@ class SelectionDialog(QtWidgets.QDialog):
             row.setToolTip(1, f"Not in the scene now: {', '.join(missing)}" if missing else items.entry_label(entry))
             if row.isSelected():
                 chosen.append(entry)
+        self.delete_button.setEnabled(self.table.isEnabled() and bool(chosen))
         self.previewed, _missing = items.resolve(chosen or self.entries)
         # Filling the preview mustn't change the scene selection.
         with QtCore.QSignalBlocker(self.preview):

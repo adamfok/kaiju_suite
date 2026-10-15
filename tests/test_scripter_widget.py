@@ -505,6 +505,9 @@ out = {
     "buttons": buttons,
     "modal": dialog.isModal(),
     "add_buttons": [[b.toolTip(), b.icon().isNull(), b.autoRaise()] for b in dialog.add_buttons],
+    "delete_button": [dialog.delete_button.toolTip(), dialog.delete_button.icon().isNull(), dialog.delete_button.isEnabled()],
+    "delete_on_the_right": dialog.delete_button.geometry().left() > table.geometry().center().x()
+    and dialog.delete_button.geometry().bottom() < table.geometry().top(),
     "rows": [row(0), row(1)],
     "preview_header": [
         w for w in (dialog.preview_row.itemAt(i).widget() for i in range(dialog.preview_row.count())) if w
@@ -576,7 +579,8 @@ out["repicked"] = [row(0), table.isEnabled()]
 SCENE["hair_geo"] = ["hair_geo"]
 
 table.topLevelItem(1).setSelected(True)
-dialog.remove_selected()
+out["delete_enabled_with_a_selection"] = dialog.delete_button.isEnabled()
+dialog.delete_button.click()
 out["after_remove"] = table.topLevelItemCount()
 dialog.accept()
 out["saved"] = saved
@@ -722,3 +726,10 @@ def test_pattern_window_has_a_type_dropdown_defaulting_to_any(selection_dialog_p
     assert window["default"] == ["", "*"]
     assert window["picked"] == ["*_geo", "Geo"]
     assert window["editing"] == ["*_jnt", "Joint"]
+
+
+def test_delete_button_at_the_top_right_removes_selected_entries(selection_dialog_probe):
+    assert selection_dialog_probe["delete_button"] == ["Remove", False, False]
+    assert selection_dialog_probe["delete_on_the_right"]
+    assert selection_dialog_probe["delete_enabled_with_a_selection"]
+    assert selection_dialog_probe["after_remove"] == 1
