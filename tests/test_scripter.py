@@ -356,6 +356,22 @@ def test_continue_only_on_the_paused_breakpoint(tmp_path, ran):
         runner.continue_run(other)
 
 
+def test_running_only_a_breakpoint_does_nothing_and_keeps_the_pause(tmp_path, ran):
+    a, stop, b = _with_breakpoint(tmp_path)
+    runner = logic.Runner()
+    runner.run([str(tmp_path)])
+    ran.clear()
+
+    assert runner.run([stop]) is None
+
+    assert ran == []
+    assert runner.paused_at == stop
+    assert runner.status(a) == (logic.RAN, "")
+    assert runner.status(stop) == (logic.PAUSED, "")
+    assert runner.continue_run(stop) == logic.DONE
+    assert ran == ["b"]
+
+
 def test_a_new_run_drops_the_pause_and_the_old_statuses(tmp_path, ran):
     a, stop, b = _with_breakpoint(tmp_path)
     runner = logic.Runner()

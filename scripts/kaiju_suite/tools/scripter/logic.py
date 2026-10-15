@@ -460,13 +460,17 @@ class Runner:
         """Run ``paths`` (see :func:`steps_for`) as one undo step. Clears
         the last run's statuses and pause first. Stops at the first failure
         or enabled breakpoint. Returns :data:`DONE`, :data:`FAILED` or
-        :data:`PAUSED`."""
+        :data:`PAUSED`; ``None`` when there's nothing to run (such as only
+        breakpoints selected), which leaves the last run's pause alone."""
         if not paths:
             raise ValueError("Select items to run.")
+        steps = steps_for(paths)
+        if not steps:
+            return None
         self._status = {}
         self._remaining = []
         self.paused_at = None
-        return self._run(steps_for(paths))
+        return self._run(steps)
 
     def continue_run(self, path):
         """Carry on a run paused at the breakpoint ``path``, reading the
