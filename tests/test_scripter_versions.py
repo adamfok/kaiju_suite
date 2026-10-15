@@ -49,6 +49,17 @@ def test_publishing_without_changes_is_refused(script):
         versions.publish(script, "Again")
 
 
+def test_unchanged_since_names_the_version_publish_would_repeat(script):
+    assert versions.unchanged_since(script) is None  # never published: there's something to publish
+    versions.publish(script, "First")
+    assert versions.unchanged_since(script) == 1
+    _set(script, "print('edited')\n")
+    assert versions.unchanged_since(script) is None
+    versions.publish(script, "Second")
+    versions.restore(script, 1)
+    assert versions.unchanged_since(script) == 1  # the version it's at, not the newest
+
+
 def test_the_label_shows_the_version_and_unpublished_edits(script):
     versions.publish(script, "First")
     assert versions.label(script) == "v001"

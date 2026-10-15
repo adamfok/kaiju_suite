@@ -22,6 +22,7 @@ No Qt here.
 
 import json
 import os
+import tempfile
 
 from maya import cmds
 
@@ -144,21 +145,59 @@ def publish_data(path, selection, description=""):
     if problems:
         raise ValueError(" ".join(problems))
     payload = DATATYPES[kind].gather(selection)
-    with open(path, encoding="utf-8") as f:
+    # As bytes: putting it back must not change its line endings, or it reads as edited.
+    with open(path, "rb") as f:
         before = f.read()
     datatypes.write(path, DATATYPES[kind].KIND, payload)
     try:
         return versions.publish(path, description)
     except ValueError:
-        with open(path, "w", encoding="utf-8") as f:
+        with open(path, "wb") as f:
             f.write(before)
         raise
+
+
+def unchanged_since(path, selection):
+    """The number of the version the data item at ``path`` is at, if
+    publishing ``selection`` (long names) would save the same data; otherwise
+    ``None``. Writes nothing next to the item. Raises if the selection can't
+    be gathered."""
+    module = DATATYPES[kind_of(path)]
+    payload = module.gather(selection)
+    with tempfile.TemporaryDirectory() as scratch:
+        draft = datatypes.write(os.path.join(scratch, os.path.basename(path)), module.KIND, payload)
+        with open(draft, "rb") as f:
+            return versions.unchanged_since(path, f.read())
 
 
 def describe(path):
     """Info lines about a data item, e.g. ``["3 joints", "Roots: hip"]``."""
     module = DATATYPES[kind_of(path)]
     return module.describe(datatypes.read(path, module.KIND))
+
+
+def saved_objects(path):
+    """``(paths, problems)``: the long paths of the objects the data item at
+    ``path`` was published from, and messages naming the ones missing from
+    the scene or matching several nodes. Publishing ``paths`` updates the
+    item from the same objects."""
+    module = DATATYPES[kind_of(path)]
+    return datatypes.resolve_nodes(module.nodes(datatypes.read(path, module.KIND)))
+
+
+def select_saved(path):
+    """Select the objects the data item at ``path`` was published from.
+    Returns a message that names the ones it couldn't find, and warns about them."""
+    found, problems = saved_objects(path)
+    if found:
+        cmds.select(found, replace=True)
+    else:
+        cmds.select(clear=True)
+    message = f"Selected {datatypes.plural(len(found), 'object')} from {os.path.basename(path)}"
+    if problems:
+        cmds.warning(" ".join(problems))
+        message += ". " + " ".join(problems)
+    return message
 
 
 # -- Import File, Export File -----------------------------------------------
