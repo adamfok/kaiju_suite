@@ -8,7 +8,7 @@ the number of the version the item was last published as or restored
 from (so the tree can show ``v002*`` once it's edited), and
 ``descriptions.json`` what each version changed, as ``{"3": "Fixed the knee"}``.
 
-Scripts and data items (Joints, Skin, Mesh, NurbsCurve, Animation, NurbsSurface) are versioned. No Qt here.
+Scripts and data items (see .items) are versioned. No Qt here.
 """
 
 import filecmp
@@ -23,12 +23,22 @@ HIDDEN_DIR = ".scripter"
 VERSIONS_DIR = "versions"
 BASE_FILE = "base"
 DESCRIPTIONS_FILE = "descriptions.json"
-# Scripts, and Joints, Skin, Mesh, NurbsCurve, Animation, Pose and ControlShape items (see .items).
-VERSIONED_EXTENSIONS = (".py", ".jnt", ".skin", ".mesh", ".curve", ".anim", ".pose", ".ctrl")
-VERSIONED_EXTENSIONS += (".bshp",)  # BlendShapes
-VERSIONED_EXTENSIONS += (".pwrap",)  # ProximityWrap items
-VERSIONED_EXTENSIONS += (".dmsh",)  # DeltaMush items
-VERSIONED_EXTENSIONS += (".surface",)  # NurbsSurface items
+# Scripts and every data item kind (items.DATATYPES; .items imports this
+# module, so the extensions are spelled out here).
+VERSIONED_EXTENSIONS = (
+    ".py",
+    ".jnt",
+    ".skin",
+    ".mesh",
+    ".curve",
+    ".anim",
+    ".pose",
+    ".ctrl",
+    ".bshp",
+    ".pwrap",
+    ".dmsh",
+    ".surface",
+)
 
 NO_DESCRIPTION = "(no description)"
 
