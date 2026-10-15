@@ -915,3 +915,64 @@ def test_publish_qc_runs_the_controlshape_checks_on_the_controls(tmp_path, new_s
 
     assert list(found) == ["no_shapes", "shape_names", "color", "duplicate_names", "rational"]
     assert found["color"] == ["plain: no color"]
+
+
+# -- ProximityWrap ------------------------------------------------------------
+
+
+def _proximity_item(tmp_path):
+    body = cmds.polySphere(name="body", radius=1, sx=8, sy=8, ch=False)[0]
+    shirt = cmds.polyCylinder(name="shirt", radius=1.1, height=1, sx=8, sy=2, ch=False)[0]
+    node = cmds.proximityWrap(shirt, name="shirt_pwrap")[0]
+    cmds.proximityWrap(node, edit=True, addDrivers=cmds.listRelatives(body, shapes=True, fullPath=True))
+    return logic.create_data_item(items.PROXIMITY_WRAP, str(tmp_path), "shirt", _long(shirt))
+
+
+def test_proximitywrap_item_round_trip(tmp_path, new_scene):
+    path = _proximity_item(tmp_path)
+
+    assert path == os.path.join(str(tmp_path), "shirt.pwrap")
+    assert versions.is_versioned(path) and versions.label(path) == "v001"
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.PROXIMITY_WRAP, "ProximityWrap")
+    assert items.describe(path) == ["1 proximityWrap", "Meshes: shirt", "Drivers: body"]
+
+    cmds.delete("shirt_pwrap")
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.ls(type="proximityWrap") == ["shirt_pwrap"]
+    cmds.undo()
+    assert not cmds.ls(type="proximityWrap")
+
+
+def test_new_proximitywrap_item_needs_a_proximity_wrap(tmp_path, new_scene):
+    cube = cmds.polyCube(name="box", constructionHistory=False)[0]
+    with pytest.raises(ValueError, match="No proximityWrap on: box"):
+        logic.create_data_item(items.PROXIMITY_WRAP, str(tmp_path), "box", _long(cube))
+    assert logic.scan(str(tmp_path)) == []
+
+
+def test_proximitywrap_items_open_the_proximitywrap_tool(tmp_path, new_scene, monkeypatch):
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.PROXIMITY_WRAP) == "ProximityWrap Tool"
+    assert registry.find(items.tool_for(items.PROXIMITY_WRAP)) is not None
+    path = _proximity_item(tmp_path)
+    cmds.select(clear=True)
+    calls = []
+    monkeypatch.setattr(registry, "find", lambda name: {"launch": lambda: calls.append(cmds.ls(selection=True))})
+
+    items.open_in_tool(path)
+
+    assert calls == [["shirt"]]
+
+
+def test_publish_qc_runs_the_proximity_wrap_checks(tmp_path, new_scene):
+    path = _proximity_item(tmp_path)
+    cmds.setAttr("shirt_pwrap.envelope", 0)
+
+    found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long("shirt")))
+
+    assert list(found) == ["no_proximity", "missing_driver", "below_skin", "disabled", "duplicate_names"]
+    assert found["disabled"] == ["shirt_pwrap: envelope is 0"]

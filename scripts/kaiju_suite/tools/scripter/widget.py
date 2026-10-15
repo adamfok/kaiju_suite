@@ -62,6 +62,7 @@ ICONS = {
     logic.POSE: "scripter_pose.svg",
     logic.CONTROLSHAPE: "scripter_controlshape.svg",
     logic.BLENDSHAPES: "scripter_blendshapes.svg",
+    items.PROXIMITY_WRAP: "scripter_proximity_wrap.svg",
 }
 # The right-click New menu, in order.
 NEW_KINDS = (
@@ -80,6 +81,7 @@ NEW_KINDS = (
     logic.POSE,
     logic.CONTROLSHAPE,
     logic.BLENDSHAPES,
+    items.PROXIMITY_WRAP,
 )
 # Dividers in the New menu after these kinds.
 NEW_MENU_BREAKS = (logic.BREAKPOINT, logic.SELECTION)

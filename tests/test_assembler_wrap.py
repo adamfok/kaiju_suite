@@ -101,7 +101,7 @@ def test_wrap_is_discovered_and_owns_wrap(tmp_path):
     assert wrap.PRODUCT.kind == "wrap"
     assert wrap.PRODUCT.extensions == (".wrap",)
     assert wrap.PRODUCT.runnable and wrap.PRODUCT.versioned
-    assert wrap.PRODUCT.utility == "Wrap Tool"
+    assert wrap.PRODUCT.utility == "ProximityWrap Tool"
     path = wrap.PRODUCT.creators[0].fn(str(tmp_path), "clothes", None)
     assert path == str(tmp_path / "clothes.wrap") and os.path.getsize(path) == 0
     assert products.product_for(path) is wrap.PRODUCT

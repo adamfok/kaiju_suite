@@ -195,7 +195,7 @@ def test_right_click_info_shows_what_is_in_it(probe):
     assert probe["info"] == [["describe", "face.bshp"], ["box", "face.bshp"]]
 
 
-def test_the_new_menu_offers_blendshapes_last_with_its_icon(probe):
-    assert probe["new"][-1] == "BlendShapes"
+def test_the_new_menu_offers_blendshapes_with_its_icon(probe):
+    assert "BlendShapes" in probe["new"]
     assert probe["icon"] == "scripter_blendshapes.svg"
     assert not probe["icon_null"]
