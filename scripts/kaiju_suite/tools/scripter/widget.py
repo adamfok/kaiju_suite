@@ -788,6 +788,7 @@ class SelectionDialog(QtWidgets.QDialog):
         self.table.setRootIsDecorated(False)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.itemDoubleClicked.connect(self._edit_row)
+        self.table.itemSelectionChanged.connect(self._refresh)
         self.table.setColumnWidth(0, 70)
         self.table.setColumnWidth(1, 260)
 
@@ -802,14 +803,24 @@ class SelectionDialog(QtWidgets.QDialog):
             button.clicked.connect(slot)
             buttons.addWidget(button)
 
+        # The preview shows what the selected entries find, or all of them
+        # when none is selected; the objects it lists are self.previewed.
+        self.previewed = []
         self.preview = QtWidgets.QListWidget()
+        self.preview.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
+        self.preview.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.preview_label = QtWidgets.QLabel("Preview:")
         self.count = QtWidgets.QLabel()
-        preview_bar = QtWidgets.QHBoxLayout()
-        preview_bar.addWidget(self.count, 1)
-        for label, slot in (("Refresh", self._refresh), ("Select", self._select)):
-            button = QtWidgets.QPushButton(label)
-            button.clicked.connect(slot)
-            preview_bar.addWidget(button)
+        self.select_button = QtWidgets.QToolButton()
+        self.select_button.setIcon(kind_icon(logic.SELECTION))
+        self.select_button.setToolTip("Select the objects in the preview")
+        self.select_button.setAutoRaise(True)
+        self.select_button.clicked.connect(self._select)
+        self.preview_row = QtWidgets.QHBoxLayout()
+        self.preview_row.addWidget(self.preview_label)
+        self.preview_row.addWidget(self.count)
+        self.preview_row.addWidget(self.select_button)
+        self.preview_row.addStretch(1)
 
         ok_cancel = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
@@ -821,28 +832,38 @@ class SelectionDialog(QtWidgets.QDialog):
         layout.addWidget(QtWidgets.QLabel("Entries"))
         layout.addWidget(self.table, 1)
         layout.addLayout(buttons)
-        layout.addWidget(QtWidgets.QLabel("Preview: what it selects now"))
+        layout.addLayout(self.preview_row)
         layout.addWidget(self.preview, 1)
-        layout.addLayout(preview_bar)
         layout.addWidget(ok_cancel)
+        self._rebuild()
+
+    def _rebuild(self):
+        """Fill the entries list again after it was edited."""
+        with QtCore.QSignalBlocker(self.table):
+            self.table.clear()
+            for index, entry in enumerate(self.entries):
+                row = QtWidgets.QTreeWidgetItem(self.table, [self.TYPE_LABELS.get(entry["type"], entry["type"]), entry["value"], ""])
+                row.setData(0, PATH_ROLE, index)
         self._refresh()
 
     def _refresh(self):
-        self.table.clear()
-        for index, entry in enumerate(self.entries):
+        """Look the entries up in the scene again: their counts, and the preview."""
+        default = self.table.palette().color(QtGui.QPalette.ColorRole.Text)
+        chosen = []
+        for i in range(self.table.topLevelItemCount()):
+            row = self.table.topLevelItem(i)
+            entry = self.entries[row.data(0, PATH_ROLE)]
             found = items.find(entry)
-            row = QtWidgets.QTreeWidgetItem(
-                self.table, [self.TYPE_LABELS.get(entry["type"], entry["type"]), entry["value"], str(len(found))]
-            )
-            row.setData(0, PATH_ROLE, index)
-            if not found:
-                for column in range(3):
-                    row.setForeground(column, FAILED_COLOR)
-                row.setToolTip(1, "Finds nothing in the scene now")
-        objects, _empty = items.resolve(self.entries)
+            row.setText(2, str(len(found)))
+            for column in range(3):
+                row.setForeground(column, default if found else FAILED_COLOR)
+            row.setToolTip(1, "" if found else "Finds nothing in the scene now")
+            if row.isSelected():
+                chosen.append(entry)
+        self.previewed, _empty = items.resolve(chosen or self.entries)
         self.preview.clear()
-        self.preview.addItems(objects)
-        self.count.setText(f"{len(objects)} object{'' if len(objects) == 1 else 's'}")
+        self.preview.addItems(self.previewed)
+        self.count.setText(f"{len(self.previewed)} object{'' if len(self.previewed) == 1 else 's'}")
 
     def _add_selected(self):
         names = items.picked_names()
@@ -850,7 +871,7 @@ class SelectionDialog(QtWidgets.QDialog):
             _warn("Nothing selected to add.")
             return
         self.entries = items.add_picked(self.entries, names)
-        self._refresh()
+        self._rebuild()
 
     def _ask_pattern(self, current=""):
         text, ok = QtWidgets.QInputDialog.getText(
@@ -873,13 +894,13 @@ class SelectionDialog(QtWidgets.QDialog):
         text = self._ask_pattern()
         if text:
             self.entries.append({"type": items.PATTERN, "value": text})
-            self._refresh()
+            self._rebuild()
 
     def _add_set(self):
         name = self._ask_set()
         if name:
             self.entries.append({"type": items.SET, "value": name})
-            self._refresh()
+            self._rebuild()
 
     def _edit_row(self, row, _column):
         entry = self.entries[row.data(0, PATH_ROLE)]
@@ -891,16 +912,15 @@ class SelectionDialog(QtWidgets.QDialog):
             return
         if value:
             entry["value"] = value
-            self._refresh()
+            self._rebuild()
 
     def _remove(self):
         gone = {row.data(0, PATH_ROLE) for row in self.table.selectedItems()}
         self.entries = [e for i, e in enumerate(self.entries) if i not in gone]
-        self._refresh()
+        self._rebuild()
 
     def _select(self):
-        objects, _empty = items.resolve(self.entries)
-        if not objects:
-            _warn("Nothing to select: the entries find nothing in the scene.")
+        if not self.previewed:
+            _warn("Nothing to select: the preview is empty.")
             return
-        cmds.select(objects, replace=True)
+        cmds.select(self.previewed, replace=True)

@@ -297,18 +297,22 @@ def _set_members(name, seen):
 
 
 def find(entry):
-    """What ``entry`` finds in the scene now, as shortest unique names."""
+    """What ``entry`` finds in the scene now, as shortest unique names.
+    Intermediate objects (e.g. a deformed mesh's ``...ShapeOrig``) are left out."""
     kind, value = entry["type"], entry["value"]
     if kind == SET:
-        if not cmds.objExists(value):
-            return []
-        members = _set_members(value, set())
-        return cmds.ls(members) if members else []
-    names = value.split() if kind == PATTERN else [value]
+        names = _set_members(value, set()) if cmds.objExists(value) else []
+    else:
+        names = value.split() if kind == PATTERN else [value]
+    if not names:
+        return []
     try:
-        return cmds.ls(names) or []
+        found = cmds.ls(names) or []
     except RuntimeError:
         return []
+    nodes = [name for name in found if "." not in name]
+    intermediate = set(cmds.ls(nodes, intermediateObjects=True) or []) if nodes else set()
+    return [name for name in found if name not in intermediate]
 
 
 def resolve(entries):

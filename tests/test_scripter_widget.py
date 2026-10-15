@@ -450,3 +450,83 @@ def test_long_folder_path_does_not_widen_the_path_box(folder_box_probe):
 
 def test_path_box_dropdown_is_wide_enough_for_full_paths(folder_box_probe):
     assert folder_box_probe["popup"] >= folder_box_probe["text"]
+
+
+_SELECTION_DIALOG_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import items, widget
+
+# A fake scene: what each entry finds, without Maya.
+SCENE = {"body_geo": ["body_geo"], "*_eye_geo": ["L_eye_geo", "R_eye_geo"]}
+items.find = lambda entry: list(SCENE.get(entry["value"], []))
+selected = []
+widget.cmds.select = lambda objects, replace=True: selected.append(list(objects))
+
+entries = [{"type": items.PICKED, "value": "body_geo"}, {"type": items.PATTERN, "value": "*_eye_geo"}]
+dialog = widget.SelectionDialog(None, "hero", entries)
+labels = [w.text() for w in dialog.findChildren(QtWidgets.QLabel)]
+buttons = [b.text() for b in dialog.findChildren(QtWidgets.QAbstractButton)]
+
+def preview():
+    return [dialog.preview.item(i).text() for i in range(dialog.preview.count())]
+
+out = {
+    "labels": labels,
+    "buttons": buttons,
+    "preview_selectable": dialog.preview.selectionMode() != QtWidgets.QAbstractItemView.SelectionMode.NoSelection,
+    "select_has_icon": not dialog.select_button.icon().isNull(),
+    "count_and_select_beside_preview": [
+        w for w in (dialog.preview_row.itemAt(i).widget() for i in range(dialog.preview_row.count())) if w
+    ] == [dialog.preview_label, dialog.count, dialog.select_button],
+    "all": (preview(), dialog.count.text()),
+}
+SCENE["body_geo"] = []
+dialog.table.topLevelItem(0).setSelected(True)
+out["picked_row"] = (preview(), dialog.count.text(), dialog.table.topLevelItem(0).text(2))
+SCENE["body_geo"] = ["body_geo"]
+dialog.table.clearSelection()
+dialog.table.topLevelItem(1).setSelected(True)
+out["pattern_row"] = (preview(), dialog.count.text(), dialog.table.topLevelItem(0).text(2))
+dialog.select_button.click()
+out["selected"] = selected
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def selection_dialog_probe():
+    done = subprocess.run(
+        [sys.executable, "-c", _SELECTION_DIALOG_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120
+    )
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_selection_preview_is_labelled_with_its_count(selection_dialog_probe):
+    assert "Preview:" in selection_dialog_probe["labels"]
+    assert not any("what it selects" in label for label in selection_dialog_probe["labels"])
+    assert selection_dialog_probe["count_and_select_beside_preview"]
+    assert selection_dialog_probe["all"] == [["body_geo", "L_eye_geo", "R_eye_geo"], "3 objects"]
+
+
+def test_selection_preview_rows_cant_be_selected(selection_dialog_probe):
+    assert not selection_dialog_probe["preview_selectable"]
+
+
+def test_selection_select_is_an_icon_button_and_there_is_no_refresh(selection_dialog_probe):
+    assert selection_dialog_probe["select_has_icon"]
+    assert "Refresh" not in selection_dialog_probe["buttons"]
+
+
+def test_selecting_entries_refreshes_and_previews_just_them(selection_dialog_probe):
+    # The scene changed (body_geo went away) before the row was clicked: its count updates.
+    assert selection_dialog_probe["picked_row"] == [[], "0 objects", "0"]
+    assert selection_dialog_probe["pattern_row"] == [["L_eye_geo", "R_eye_geo"], "2 objects", "1"]
+
+
+def test_select_button_selects_what_the_preview_shows(selection_dialog_probe):
+    assert selection_dialog_probe["selected"] == [["L_eye_geo", "R_eye_geo"]]

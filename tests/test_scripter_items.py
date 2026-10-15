@@ -386,3 +386,14 @@ def test_scene_sets_lists_selection_sets_only(new_scene):
     cmds.sets(cmds.createNode("transform"), name="render_set")
     cmds.sets(name="empty_set", empty=True)
     assert items.scene_sets() == ["empty_set", "render_set"]
+
+
+def test_entries_skip_intermediate_objects(new_scene):
+    cube = cmds.polyCube(name="body_geo")[0]
+    orig = cmds.createNode("mesh", name="body_geoShapeOrig", parent=cube)
+    cmds.setAttr(f"{orig}.intermediateObject", True)
+    cmds.sets(cube, orig, name="geo_set")
+
+    assert items.find({"type": items.PATTERN, "value": "body_geoShape*"}) == ["body_geoShape"]
+    assert items.find({"type": items.SET, "value": "geo_set"}) == ["body_geo"]
+    assert items.find({"type": items.PICKED, "value": "body_geoShapeOrig"}) == []
