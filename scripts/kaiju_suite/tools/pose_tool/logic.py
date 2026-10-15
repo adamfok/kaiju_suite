@@ -1,4 +1,4 @@
-"""Pose Tool: mirror, flip and reset poses. No Qt here.
+"""Pose Tool: QC poses; mirror, flip and reset them. No Qt here.
 
 Sides and the mirroring math are in :mod:`kaiju_suite.core.mirror` (across
 X; a node with no side mirrors onto itself). Scale and every other keyable
@@ -7,15 +7,28 @@ attribute are copied as they are.
 Only keyable, unlocked attributes of the source are copied; on the target,
 attributes that are missing, locked or driven by a connection other than
 their own keys are skipped and reported.
+
+The QC tab runs the pose checks (:data:`kaiju_suite.datatypes.pose.CHECKS`)
+on the selected nodes with :func:`run_qc`, with options saved per user and
+shared with Scripter's Publish; :func:`select_problem` selects what a
+problem points at.
 """
 
 from collections import namedtuple
 
 from maya import cmds
 
+from kaiju_suite import datatypes
+from kaiju_suite.core import checks
 from kaiju_suite.core import mirror as mirroring
 from kaiju_suite.core.mirror import opposite, opposites  # noqa: F401  (part of this tool's API)
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.datatypes import pose as pose_data
+
+# Per-user settings (optionVars) are kept under this name.
+SETTINGS_KEY = "pose_tool"
+# The checks the QC tab runs (see run_qc).
+QC_CHECKS = pose_data.CHECKS
 
 Result = namedtuple("Result", "changed skipped")
 
@@ -119,3 +132,31 @@ def reset(nodes):
                 defaults[attr] = default[0]
         changes.append((node, defaults))
     return Result([node for node, _ in changes], _set_all(changes))
+
+
+# -- QC ---------------------------------------------------------------------
+
+
+def qc_settings():
+    """The QC options this user saved (defaults for the rest); Scripter's
+    Publish of a Pose item uses the same ones."""
+    return datatypes.qc_settings(pose_data)
+
+
+def save_qc_setting(key, option, value):
+    """Save one QC option for this user."""
+    datatypes.save_qc_setting(pose_data, key, option, value)
+
+
+def run_qc(selection, settings=None):
+    """Run the pose checks on the nodes in ``selection`` (long names).
+    Returns ``(check, problems)`` pairs. Changes nothing. Raises
+    ``ValueError`` if nothing is selected."""
+    if not selection:
+        raise ValueError("Nothing selected. Select the nodes to check.")
+    return datatypes.run_qc(pose_data, selection, settings)
+
+
+def select_problem(problem):
+    """Select the nodes ``problem`` points at that are still in the scene."""
+    return checks.select_problem(problem)

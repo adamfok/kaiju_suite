@@ -30,6 +30,7 @@ from kaiju_suite.tools.scripter.items import (  # noqa: F401 (re-exported)
     IMPORT_FILE,
     JOINTS,
     MESH,
+    POSE,
     SCRIPT,
     SELECTION,
     SEPARATOR,

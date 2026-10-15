@@ -1,9 +1,13 @@
 from maya import cmds
 from PySide6 import QtWidgets
 
+from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
 from kaiju_suite.tools.pose_tool import logic
 from kaiju_suite.ui.base_window import ToolWindow
+from kaiju_suite.ui.qc_tab import QCTab
+
+SETTINGS_KEY = logic.SETTINGS_KEY
 
 
 def _warn(message):
@@ -14,6 +18,24 @@ class PoseToolWindow(ToolWindow):
     TITLE = "Kaiju Pose Tool"
 
     def build_ui(self):
+        tabs = QtWidgets.QTabWidget()
+        qc = QCTab(logic.QC_CHECKS, logic.qc_settings(), logic.save_qc_setting, self._run_qc, logic.select_problem)
+        tabs.addTab(qc, "QC")
+        tabs.addTab(self._utilities(), "Utilities")
+        tabs.setCurrentIndex(settings.get(SETTINGS_KEY, "tab", 0))
+        tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
+        self.layout.addWidget(tabs)
+
+    def _run_qc(self):
+        """The QC results for the selection, or ``None`` after warning why not."""
+        try:
+            return logic.run_qc(selected())
+        except ValueError as e:
+            _warn(str(e))
+            return None
+
+    def _utilities(self):
+        """The Mirror, Select and Reset boxes, as they were before the QC tab."""
         mirror_box = QtWidgets.QGroupBox("Mirror")
         mirror = QtWidgets.QVBoxLayout(mirror_box)
         note = QtWidgets.QLabel(
@@ -54,10 +76,13 @@ class PoseToolWindow(ToolWindow):
         self.status = QtWidgets.QLabel()
         self.status.setWordWrap(True)
 
+        utilities = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(utilities)
         for box in (mirror_box, select_box, reset_box):
-            self.layout.addWidget(box)
-        self.layout.addWidget(self.status)
-        self.layout.addStretch()
+            layout.addWidget(box)
+        layout.addWidget(self.status)
+        layout.addStretch()
+        return utilities
 
     def _nodes(self):
         nodes = selected()
