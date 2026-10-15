@@ -1304,3 +1304,143 @@ def test_double_click_on_a_loft_item_opens_the_loft_tool(data_probe):
 def test_new_menu_offers_a_loft_item_with_its_icon(probe):
     assert "Loft" in probe["new_kinds"]
     assert "scripter_loft.svg" in probe["icon_files"]
+
+
+# The Version column is a dropdown: clicking a published item's version
+# lists its versions, newest first, the one it's at ticked; picking one
+# restores it, asking first if there are changes not published yet.
+_VERSION_DROPDOWN_PROBE = r"""
+import json, os, sys, tempfile
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import versions, widget
+
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+widget.script_editor.watch_in_script_editor = lambda path: None
+
+root = tempfile.mkdtemp()
+
+
+def write(path, text):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+script = os.path.join(root, "setup.py")
+write(script, "one\n")
+versions.publish(script, "First")
+write(script, "two\n")
+versions.publish(script)
+write(script, "three\n")
+versions.publish(script, "Third")
+fresh = os.path.join(root, "fresh.py")
+write(fresh, "new\n")
+
+asked = []
+answer = {"value": QtWidgets.QMessageBox.StandardButton.No}
+widget.QtWidgets.QMessageBox.question = staticmethod(lambda *a: asked.append(a[2]) or answer["value"])
+
+
+class Stand(QtWidgets.QWidget):
+    root = root
+    attempt = staticmethod(lambda fn: fn())
+    populate = staticmethod(lambda: None)
+    version_menu = widget.ScripterWindow.version_menu
+    restore_version = widget.ScripterWindow.restore_version
+    _on_item_clicked = widget.ScripterWindow._on_item_clicked
+    _show_version = widget.ScripterWindow._show_version
+
+
+stand = Stand()
+stand.tree = widget._Tree(stand)
+rows = {}
+for path in (script, fresh):
+    rows[path] = QtWidgets.QTreeWidgetItem(stand.tree, [os.path.basename(path), "", "", ""])
+    rows[path].setData(0, widget.PATH_ROLE, path)
+    stand._show_version(rows[path])
+
+out = {}
+
+
+def menu_rows(menu):
+    return [[a.text(), a.isChecked()] for a in menu.actions()]
+
+
+out["menu"] = menu_rows(stand.version_menu(script))
+out["dropdown"] = {os.path.basename(p): bool(r.data(widget.VERSION, widget.DROPDOWN_ROLE)) for p, r in rows.items()}
+out["delegate"] = type(stand.tree.itemDelegateForColumn(widget.VERSION)).__name__
+
+# Clean: picking v001 restores it without asking.
+[a for a in stand.version_menu(script).actions() if a.text().startswith("v001")][0].trigger()
+out["clean_pick"] = {"asked": len(asked), "text": read(script), "label": versions.label(script)}
+out["menu_after"] = menu_rows(stand.version_menu(script))
+
+# Edited: picking v003 asks; No keeps the edits, Yes restores.
+write(script, "unsaved\n")
+stand.restore_version(script, 3)
+out["declined"] = {"asked": len(asked), "text": read(script)}
+answer["value"] = QtWidgets.QMessageBox.StandardButton.Yes
+stand.restore_version(script, 3)
+out["accepted"] = {"asked": len(asked), "text": read(script), "label": versions.label(script)}
+out["question"] = asked[0]
+
+# Clicking: the Version cell of a published item drops the menu down; other
+# columns, and items never published, don't.
+shown = []
+
+
+class RecordingMenu(QtWidgets.QMenu):
+    def exec(self, *_):
+        shown.append([a.text() for a in self.actions()])
+
+
+widget.QtWidgets.QMenu = RecordingMenu
+stand._on_item_clicked(rows[script], widget.NAME)
+stand._on_item_clicked(rows[fresh], widget.VERSION)
+out["other_clicks"] = len(shown)
+stand._on_item_clicked(rows[script], widget.VERSION)
+out["version_click"] = shown
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def version_dropdown_probe():
+    done = subprocess.run(
+        [sys.executable, "-c", _VERSION_DROPDOWN_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120
+    )
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_version_dropdown_lists_versions_newest_first_with_current_ticked(version_dropdown_probe):
+    assert version_dropdown_probe["menu"] == [["v003  Third", True], ["v002", False], ["v001  First", False]]
+
+
+def test_only_published_items_show_the_version_dropdown(version_dropdown_probe):
+    assert version_dropdown_probe["dropdown"] == {"setup.py": True, "fresh.py": False}
+    assert version_dropdown_probe["delegate"] == "_VersionDelegate"
+
+
+def test_picking_a_version_restores_it(version_dropdown_probe):
+    assert version_dropdown_probe["clean_pick"] == {"asked": 0, "text": "one\n", "label": "v001"}
+    assert version_dropdown_probe["menu_after"] == [["v003  Third", False], ["v002", False], ["v001  First", True]]
+
+
+def test_picking_a_version_over_unpublished_changes_asks_first(version_dropdown_probe):
+    assert version_dropdown_probe["declined"] == {"asked": 1, "text": "unsaved\n"}
+    assert version_dropdown_probe["accepted"] == {"asked": 2, "text": "three\n", "label": "v003"}
+    assert "v003" in version_dropdown_probe["question"]
+
+
+def test_clicking_the_version_cell_drops_down_the_versions(version_dropdown_probe):
+    assert version_dropdown_probe["other_clicks"] == 0
+    assert version_dropdown_probe["version_click"] == [["v003  Third", "v002", "v001  First"]]

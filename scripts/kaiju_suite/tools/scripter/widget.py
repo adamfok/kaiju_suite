@@ -16,6 +16,9 @@ from kaiju_suite.ui.qc_tab import QCResultsDialog
 log = get_logger(__name__)
 
 PATH_ROLE = QtCore.Qt.ItemDataRole.UserRole
+# Set on a Version cell with versions to pick from: it draws a dropdown arrow.
+DROPDOWN_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1
+DROPDOWN_ARROW = 8
 
 # Columns: Name (fills what's left), Version, Type and the last run's status.
 NAME, VERSION, TYPE, STATUS = range(4)
@@ -157,12 +160,31 @@ def folder_box():
     return box
 
 
+class _VersionDelegate(QtWidgets.QStyledItemDelegate):
+    """Version cells with versions to pick from get a dropdown arrow at the right."""
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        if not index.data(DROPDOWN_ROLE):
+            return
+        arrow = QtWidgets.QStyleOption()
+        arrow.initFrom(option.widget)
+        arrow.state = option.state
+        rect = option.rect
+        arrow.rect = QtCore.QRect(
+            rect.right() - DROPDOWN_ARROW - 3, rect.center().y() - DROPDOWN_ARROW // 2, DROPDOWN_ARROW, DROPDOWN_ARROW
+        )
+        style = option.widget.style() if option.widget else QtWidgets.QApplication.style()
+        style.drawPrimitive(QtWidgets.QStyle.PrimitiveElement.PE_IndicatorArrowDown, arrow, painter, option.widget)
+
+
 class _Tree(QtWidgets.QTreeWidget):
     """Tree whose drag and drop moves and reorders files on disk, then refreshes."""
 
     def __init__(self, window):
         super().__init__()
         self.owner = window
+        self.setItemDelegateForColumn(VERSION, _VersionDelegate(self))
         # Double-click opens a folder in the file browser; its arrow expands it.
         self.setExpandsOnDoubleClick(False)
         self.setHeaderLabels(["Name", "Version", "Type", ""])
@@ -295,6 +317,7 @@ class ScripterWindow(ToolWindow):
 
         self.tree = _Tree(self)
         self.tree.itemDoubleClicked.connect(self._on_double_click)
+        self.tree.itemClicked.connect(self._on_item_clicked)
         self.tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.tree.customContextMenuRequested.connect(self._on_context_menu)
         for keys, fn in (
@@ -421,6 +444,7 @@ class ScripterWindow(ToolWindow):
             return
         text = versions.label(path)
         item.setText(VERSION, text)
+        item.setData(VERSION, DROPDOWN_ROLE, bool(text))
         tips = []
         if not text:
             tips.append("Not published yet")
@@ -430,7 +454,56 @@ class ScripterWindow(ToolWindow):
             tips.append("Not the newest version")
         if text.endswith("*"):
             tips.append("Has changes not published yet")
+        if text:
+            tips.append("Click to pick a version")
         item.setToolTip(VERSION, "\n".join(tips))
+
+    def version_menu(self, path):
+        """The Version column's dropdown: ``path``'s versions, newest first,
+        the one it's at ticked. Picking one restores it."""
+        menu = QtWidgets.QMenu(self)
+        current = versions.current_number(path)
+        for version in reversed(versions.list_versions(path)):
+            text = f"v{version.number:03d}"
+            if version.description != versions.NO_DESCRIPTION:
+                text += f"  {version.description}"
+            action = menu.addAction(text, functools.partial(self.restore_version, path, version.number))
+            action.setCheckable(True)
+            action.setChecked(version.number == current)
+        return menu
+
+    def _on_item_clicked(self, item, column):
+        # A plain click on the Version cell drops down its versions; Ctrl and
+        # Shift clicks are left to select rows.
+        path = item.data(0, PATH_ROLE)
+        if column != VERSION or not item.data(VERSION, DROPDOWN_ROLE) or not path:
+            return
+        if QtWidgets.QApplication.keyboardModifiers() != QtCore.Qt.KeyboardModifier.NoModifier:
+            return
+        cell = self.tree.visualRect(self.tree.indexFromItem(item, VERSION))
+        self.version_menu(path).exec(self.tree.viewport().mapToGlobal(cell.bottomLeft()))
+
+    def restore_version(self, path, number, parent=None):
+        """Put version ``number`` of ``path`` back, asking first if that
+        loses changes not published yet. True if it was restored."""
+        if versions.has_unpublished(path):
+            Button = QtWidgets.QMessageBox.StandardButton
+            answer = QtWidgets.QMessageBox.question(
+                parent or self,
+                "Restore",
+                f"{os.path.basename(path)} has changes not published yet. "
+                f"Restoring v{number:03d} loses them.\n\nRestore anyway?",
+                Button.Yes | Button.No,
+                Button.No,
+            )
+            if answer != Button.Yes:
+                return False
+        elif versions.current_number(path) == number:
+            return False
+        script_editor.watch_in_script_editor(path)
+        self.attempt(lambda: versions.restore(path, number))
+        self.populate()
+        return True
 
     def _on_file_changed(self, path):
         # Editors may still be writing, or save by replacing the file (which
@@ -922,23 +995,8 @@ class VersionsDialog(QtWidgets.QDialog):
         row = self.table.currentItem()
         if row is None:
             return
-        number = row.data(0, PATH_ROLE)
-        if versions.has_unpublished(self.path):
-            Button = QtWidgets.QMessageBox.StandardButton
-            answer = QtWidgets.QMessageBox.question(
-                self,
-                "Restore",
-                f"{os.path.basename(self.path)} has changes not published yet. "
-                f"Restoring v{number:03d} loses them.\n\nRestore anyway?",
-                Button.Yes | Button.No,
-                Button.No,
-            )
-            if answer != Button.Yes:
-                return
-        script_editor.watch_in_script_editor(self.path)
-        self.owner.attempt(lambda: versions.restore(self.path, number))
-        self.owner.populate()
-        self._fill()
+        if self.owner.restore_version(self.path, row.data(0, PATH_ROLE), self):
+            self._fill()
 
 
 class _EntryList(QtWidgets.QTreeWidget):
