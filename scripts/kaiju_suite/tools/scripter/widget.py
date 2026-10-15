@@ -486,7 +486,32 @@ class ScripterWindow(ToolWindow):
         if not paths:
             _warn("Select items to run.")
             return
+        if logic.runs_a_folder(paths) and not logic.scene_is_new():
+            if not self._ask_new_scene():
+                return
         self._report(self.attempt(lambda: self.runner.run(paths)))
+
+    def _ask_new_scene(self):
+        """Ask whether a folder run starts from a new scene, and start one if
+        so. Returns ``False`` if the run is cancelled."""
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Run Folder")
+        box.setIcon(QtWidgets.QMessageBox.Icon.Question)
+        box.setText("The scene isn't new. Start a new scene before running?")
+        box.setInformativeText("A new scene drops any unsaved changes.")
+        Role = QtWidgets.QMessageBox.ButtonRole
+        new = box.addButton("New Scene", Role.AcceptRole)
+        box.addButton("Run in This Scene", Role.DestructiveRole)
+        cancel = box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(new)
+        box.setEscapeButton(cancel)
+        box.exec()
+        clicked = box.clickedButton()
+        if clicked is cancel:
+            return False
+        if clicked is new:
+            logic.start_new_scene()
+        return True
 
     def _continue(self, path):
         self._report(self.attempt(lambda: self.runner.continue_run(path)))

@@ -392,6 +392,41 @@ def test_a_disabled_breakpoint_doesnt_pause(tmp_path, ran):
     assert ran == ["a", "b"]
 
 
+# -- new scene before a folder run --------------------------------------------
+
+
+def test_runs_a_folder_only_when_a_folder_is_selected(tmp_path):
+    folder = tmp_path / "build"
+    folder.mkdir()
+    script = _script(folder, "a")
+    loose = _script(tmp_path, "b")
+    assert logic.runs_a_folder([str(folder)])
+    assert logic.runs_a_folder([loose, str(folder)])
+    assert not logic.runs_a_folder([script, loose])
+
+
+def test_a_fresh_scene_is_new(new_scene):
+    assert logic.scene_is_new()
+
+
+def test_a_changed_scene_is_not_new(new_scene):
+    cmds.polyCube()
+    assert not logic.scene_is_new()
+
+
+def test_a_saved_scene_is_not_new(tmp_path, new_scene):
+    cmds.file(rename=str(tmp_path / "shot.ma"))
+    cmds.file(save=True, type="mayaAscii")
+    assert not logic.scene_is_new()
+
+
+def test_start_new_scene_drops_changes_without_asking(new_scene):
+    cmds.polyCube(name="leftover")
+    logic.start_new_scene()
+    assert not cmds.objExists("leftover")
+    assert logic.scene_is_new()
+
+
 # -- the tool ---------------------------------------------------------------
 
 
