@@ -545,7 +545,7 @@ class ScripterWindow(ToolWindow):
         selected = self.selected_paths()
         menu = QtWidgets.QMenu(self)
 
-        if selected:
+        if selected and kind != logic.BREAKPOINT:
             menu.addAction("Run", self._run_selected)
         if kind == logic.BREAKPOINT:
             action = menu.addAction("Continue", lambda: self._continue(path))
