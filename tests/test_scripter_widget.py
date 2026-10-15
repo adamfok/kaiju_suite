@@ -462,13 +462,18 @@ app = QtWidgets.QApplication([])
 from kaiju_suite.tools.scripter import items, widget
 
 # A fake scene: what each entry finds, without Maya.
-SCENE = {"body_geo": ["body_geo"], "hair_geo": ["hair_geo"], "*_eye_geo": ["L_eye_geo", "R_eye_geo"]}
+SCENE = {"body_geo": ["body_geo"], "hair_geo": ["hair_geo"], "*_eye_geo": ["L_eye_geo", "R_eye_geo"],
+         "new_geo": ["new_geo"]}
 items.lookup = lambda entry: (
     [found for name in items._names(entry) for found in SCENE.get(name, [])],
     [name for name in items._names(entry) if not SCENE.get(name)],
 )
+scene_selection = ["new_geo"]
+items.selected_names = lambda: list(scene_selection)
 selected = []
 widget.cmds.select = lambda objects, replace=True: selected.append(list(objects))
+warnings = []
+widget._warn = warnings.append
 saved = []
 
 entries = [
@@ -489,28 +494,54 @@ def preview():
 def row(i):
     return [table.topLevelItem(i).text(c) for c in range(3)]
 
+def click(i):
+    QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=table.visualItemRect(table.topLevelItem(i)).center())
+
+def actions(menu):
+    return [a.text() for a in menu.actions() if not a.isSeparator()]
+
 out = {
     "labels": labels,
     "buttons": buttons,
     "modal": dialog.isModal(),
     "rows": [row(0), row(1)],
-    "preview_selectable": dialog.preview.selectionMode() != QtWidgets.QAbstractItemView.SelectionMode.NoSelection,
-    "select_has_icon": not dialog.select_button.icon().isNull(),
-    "count_and_select_beside_preview": [
+    "preview_header": [
         w for w in (dialog.preview_row.itemAt(i).widget() for i in range(dialog.preview_row.count())) if w
-    ] == [dialog.preview_label, dialog.count, dialog.select_button],
+    ] == [dialog.preview_label, dialog.count],
     "all": [preview(), dialog.count.text()],
+    "empty_menu": actions(dialog.entry_menu(None)),
+    "row_menu": actions(dialog.entry_menu(table.topLevelItem(0))),
+    "preview_menu": actions(dialog.preview_menu()),
 }
+table.clearSelection()
 SCENE["hair_geo"] = []
-QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=table.visualItemRect(table.topLevelItem(0)).center())
+click(0)
 out["selected_row"] = [preview(), dialog.count.text(), row(0)[2]]
 SCENE["hair_geo"] = ["hair_geo"]
-QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=table.visualItemRect(table.topLevelItem(1)).center())
+click(1)
 out["pattern_row"] = [preview(), dialog.count.text(), row(0)[2]]
-dialog.select_button.click()
-out["selected"] = selected
+out["selected_by_clicking_rows"] = list(selected)
+
+# Picking preview rows selects those objects in the scene.
+dialog.preview.item(0).setSelected(True)
+dialog.preview.item(1).setSelected(True)
+out["preview_pick"] = selected[-1]
+dialog.select_all()
+out["select_all"] = [selected[-1], len(dialog.preview.selectedItems())]
+
 QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=QtCore.QPoint(10, table.viewport().height() - 5))
 out["empty_click"] = [len(table.selectedItems()), preview()]
+
+# Double-clicking a Selected row picks the scene selection again.
+dialog._edit_row(table.topLevelItem(0), 1)
+out["repicked"] = row(0)
+scene_selection.clear()
+dialog._edit_row(table.topLevelItem(0), 1)
+out["repick_with_nothing_selected"] = [row(0), len(warnings)]
+
+table.topLevelItem(1).setSelected(True)
+dialog.remove_selected()
+out["after_remove"] = table.topLevelItemCount()
 dialog.accept()
 out["saved"] = saved
 print(json.dumps(out))
@@ -541,36 +572,51 @@ def test_selection_editor_does_not_block_maya(selection_dialog_probe):
     assert not selection_dialog_probe["modal"]
 
 
+def test_selection_editor_buttons_are_only_ok_and_cancel(selection_dialog_probe):
+    assert sorted(selection_dialog_probe["buttons"]) == ["Cancel", "OK"]
+
+
+def test_entries_empty_space_menu_adds(selection_dialog_probe):
+    assert selection_dialog_probe["empty_menu"] == ["Add Selected", "Add Pattern...", "Add Set..."]
+
+
+def test_entry_menu_removes(selection_dialog_probe):
+    assert selection_dialog_probe["row_menu"] == ["Remove"]
+    assert selection_dialog_probe["after_remove"] == 1
+
+
 def test_selection_preview_is_labelled_with_its_count(selection_dialog_probe):
     assert "Preview:" in selection_dialog_probe["labels"]
-    assert selection_dialog_probe["count_and_select_beside_preview"]
+    assert selection_dialog_probe["preview_header"]
     assert selection_dialog_probe["all"] == [["body_geo", "hair_geo", "L_eye_geo", "R_eye_geo"], "4 objects"]
-
-
-def test_selection_preview_rows_cant_be_selected(selection_dialog_probe):
-    assert not selection_dialog_probe["preview_selectable"]
-
-
-def test_selection_select_is_an_icon_button_and_there_is_no_refresh(selection_dialog_probe):
-    assert selection_dialog_probe["select_has_icon"]
-    assert "Refresh" not in selection_dialog_probe["buttons"]
 
 
 def test_clicking_an_entry_refreshes_and_previews_just_it(selection_dialog_probe):
     # The scene changed (hair_geo went away) before the row was clicked: its count updates.
     assert selection_dialog_probe["selected_row"] == [["body_geo"], "1 object", "1"]
     assert selection_dialog_probe["pattern_row"] == [["L_eye_geo", "R_eye_geo"], "2 objects", "2"]
+    # Refreshing the preview doesn't touch the scene selection.
+    assert selection_dialog_probe["selected_by_clicking_rows"] == []
 
 
-def test_select_button_selects_what_the_preview_shows(selection_dialog_probe):
-    assert selection_dialog_probe["selected"] == [["L_eye_geo", "R_eye_geo"]]
+def test_picking_preview_rows_selects_them_in_the_scene(selection_dialog_probe):
+    assert selection_dialog_probe["preview_pick"] == ["L_eye_geo", "R_eye_geo"][:2]
+
+
+def test_preview_menu_selects_all(selection_dialog_probe):
+    assert selection_dialog_probe["preview_menu"] == ["Select All"]
+    assert selection_dialog_probe["select_all"] == [["L_eye_geo", "R_eye_geo"], 2]
 
 
 def test_clicking_empty_space_previews_everything(selection_dialog_probe):
     assert selection_dialog_probe["empty_click"] == [0, ["body_geo", "hair_geo", "L_eye_geo", "R_eye_geo"]]
 
 
+def test_double_clicking_a_selected_entry_picks_the_scene_selection_again(selection_dialog_probe):
+    assert selection_dialog_probe["repicked"] == ["Selected", "new_geo", "1"]
+    # With nothing selected it warns and keeps the entry.
+    assert selection_dialog_probe["repick_with_nothing_selected"] == [["Selected", "new_geo", "1"], 1]
+
+
 def test_ok_saves_the_entries(selection_dialog_probe):
-    assert selection_dialog_probe["saved"] == [
-        [{"type": "selected", "value": ["body_geo", "hair_geo"]}, {"type": "pattern", "value": "*_eye_geo"}]
-    ]
+    assert selection_dialog_probe["saved"] == [[{"type": "selected", "value": ["new_geo"]}]]

@@ -787,7 +787,11 @@ class _EntryList(QtWidgets.QTreeWidget):
 
 class SelectionDialog(QtWidgets.QDialog):
     """Edit a Selection item's entries and preview what they find now. It
-    isn't modal; OK calls ``on_save`` with the edited entries."""
+    isn't modal; OK calls ``on_save`` with the edited entries.
+
+    Right-click empty space in the entries list to add an entry, or an entry
+    to remove it; double-click one to change it. Picking objects in the
+    preview selects them in the scene."""
 
     TYPE_LABELS = {items.SELECTED: "Selected", items.PATTERN: "Pattern", items.SET: "Set"}
 
@@ -802,39 +806,30 @@ class SelectionDialog(QtWidgets.QDialog):
         self.table.setHeaderLabels(["Type", "Entry", "Found"])
         self.table.setRootIsDecorated(False)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.table.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(
+            lambda pos: self.entry_menu(self.table.itemAt(pos)).exec(self.table.viewport().mapToGlobal(pos))
+        )
         self.table.itemDoubleClicked.connect(self._edit_row)
         self.table.itemSelectionChanged.connect(self._refresh)
         self.table.setColumnWidth(0, 70)
         self.table.setColumnWidth(1, 260)
 
-        buttons = QtWidgets.QHBoxLayout()
-        for label, slot in (
-            ("Add Selected", self._add_selected),
-            ("Add Pattern...", self._add_pattern),
-            ("Add Set...", self._add_set),
-            ("Remove", self._remove),
-        ):
-            button = QtWidgets.QPushButton(label)
-            button.clicked.connect(slot)
-            buttons.addWidget(button)
-
         # The preview shows what the selected entries find, or all of them
         # when none is selected; the objects it lists are self.previewed.
         self.previewed = []
         self.preview = QtWidgets.QListWidget()
-        self.preview.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.NoSelection)
-        self.preview.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self.preview.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.preview.itemSelectionChanged.connect(self._select_picked)
+        self.preview.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.preview.customContextMenuRequested.connect(
+            lambda pos: self.preview_menu().exec(self.preview.viewport().mapToGlobal(pos))
+        )
         self.preview_label = QtWidgets.QLabel("Preview:")
         self.count = QtWidgets.QLabel()
-        self.select_button = QtWidgets.QToolButton()
-        self.select_button.setIcon(kind_icon(logic.SELECTION))
-        self.select_button.setToolTip("Select the objects in the preview")
-        self.select_button.setAutoRaise(True)
-        self.select_button.clicked.connect(self._select)
         self.preview_row = QtWidgets.QHBoxLayout()
         self.preview_row.addWidget(self.preview_label)
         self.preview_row.addWidget(self.count)
-        self.preview_row.addWidget(self.select_button)
         self.preview_row.addStretch(1)
 
         ok_cancel = QtWidgets.QDialogButtonBox(
@@ -845,7 +840,6 @@ class SelectionDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.table, 1)
-        layout.addLayout(buttons)
         layout.addLayout(self.preview_row)
         layout.addWidget(self.preview, 1)
         layout.addWidget(ok_cancel)
@@ -854,6 +848,25 @@ class SelectionDialog(QtWidgets.QDialog):
     def accept(self):
         self.on_save(self.entries)
         super().accept()
+
+    def entry_menu(self, row):
+        """The entries list's right-click menu: adding on empty space, Remove on an entry."""
+        menu = QtWidgets.QMenu(self)
+        if row is None:
+            menu.addAction("Add Selected", self._add_selected)
+            menu.addAction("Add Pattern...", self._add_pattern)
+            menu.addAction("Add Set...", self._add_set)
+        else:
+            if not row.isSelected():
+                self.table.clearSelection()
+                row.setSelected(True)
+            menu.addAction("Remove", self.remove_selected)
+        return menu
+
+    def preview_menu(self):
+        menu = QtWidgets.QMenu(self)
+        menu.addAction("Select All", self.select_all)
+        return menu
 
     def _rebuild(self):
         """Fill the entries list again after it was edited."""
@@ -880,9 +893,26 @@ class SelectionDialog(QtWidgets.QDialog):
             if row.isSelected():
                 chosen.append(entry)
         self.previewed, _missing = items.resolve(chosen or self.entries)
-        self.preview.clear()
-        self.preview.addItems(self.previewed)
+        # Filling the preview mustn't change the scene selection.
+        with QtCore.QSignalBlocker(self.preview):
+            self.preview.clear()
+            self.preview.addItems(self.previewed)
         self.count.setText(f"{len(self.previewed)} object{'' if len(self.previewed) == 1 else 's'}")
+
+    def _select_picked(self):
+        """Select the objects picked in the preview in the scene."""
+        picked = [item.text() for item in self.preview.selectedItems()]
+        if picked:
+            cmds.select(picked, replace=True)
+
+    def select_all(self):
+        """Pick every object in the preview, selecting them all in the scene."""
+        if not self.previewed:
+            _warn("Nothing to select: the preview is empty.")
+            return
+        with QtCore.QSignalBlocker(self.preview):
+            self.preview.selectAll()
+        cmds.select(self.previewed, replace=True)
 
     def _add_selected(self):
         names = items.selected_names()
@@ -922,8 +952,16 @@ class SelectionDialog(QtWidgets.QDialog):
             self._rebuild()
 
     def _edit_row(self, row, _column):
+        """Change an entry: a Selected one takes the scene selection, a
+        pattern or set asks for its new value."""
         entry = self.entries[row.data(0, PATH_ROLE)]
-        if entry["type"] == items.PATTERN:
+        if entry["type"] == items.SELECTED:
+            names = items.selected_names()
+            if not names:
+                _warn("Nothing selected: select the objects for this entry first.")
+                return
+            value = list(dict.fromkeys(names))
+        elif entry["type"] == items.PATTERN:
             value = self._ask_pattern(entry["value"])
         elif entry["type"] == items.SET:
             value = self._ask_set(entry["value"])
@@ -933,13 +971,7 @@ class SelectionDialog(QtWidgets.QDialog):
             entry["value"] = value
             self._rebuild()
 
-    def _remove(self):
+    def remove_selected(self):
         gone = {row.data(0, PATH_ROLE) for row in self.table.selectedItems()}
         self.entries = [e for i, e in enumerate(self.entries) if i not in gone]
         self._rebuild()
-
-    def _select(self):
-        if not self.previewed:
-            _warn("Nothing to select: the preview is empty.")
-            return
-        cmds.select(self.previewed, replace=True)
