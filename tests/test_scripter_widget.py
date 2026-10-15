@@ -637,6 +637,21 @@ set_dialog.new_button.click()
 out["set_dialog"]["nothing_selected_warns"] = [len(warnings) - before, len(made)]
 out["set_dialog"]["missing_current_kept"] = widget.SetDialog(None, "gone_set", print).value()
 
+# Sets made or deleted in the scene show up when the dropdown is opened.
+scene_sets.append("fx_set")
+scene_sets.remove("render_set")
+combo.setCurrentText("new_set1")
+combo.showPopup()
+combo.hidePopup()
+out["set_dialog"]["reopened"] = [[combo.itemText(i) for i in range(combo.count())], set_dialog.value()]
+scene_sets.remove("new_set1")
+combo.showPopup()
+combo.hidePopup()
+out["set_dialog"]["picked_set_gone"] = [[combo.itemText(i) for i in range(combo.count())], set_dialog.value()]
+scene_sets.append("render_set")
+combo.showPopup()
+combo.hidePopup()
+
 combo.setCurrentText("anim_set")
 set_dialog.delete_button.click()
 out["set_dialog"]["deleted"] = [deleted, [combo.itemText(i) for i in range(combo.count())]]
@@ -817,7 +832,7 @@ def test_set_picker_deletes_the_picked_set(selection_dialog_probe):
     window = selection_dialog_probe["set_dialog"]
     assert window["delete_button"] == ["Delete Selection Set", False]
     assert window["delete_beside_new"]
-    assert window["deleted"] == [["anim_set"], ["render_set", "new_set1"]]
+    assert window["deleted"] == [["anim_set"], ["fx_set", "render_set"]]
     assert not window["delete_enabled_when_empty"]
     assert window["empty_ok_picks_nothing"] == []
 
@@ -827,3 +842,9 @@ def test_set_picker_does_not_block_maya(selection_dialog_probe):
     assert not window["modal"] and window["visible"]
     assert window["editor_locked"]
     assert window["after_ok"] == [[{"type": "set", "value": "render_set"}], True, True]
+
+
+def test_set_dropdown_rereads_the_scene_when_opened(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["reopened"] == [["anim_set", "new_set1", "fx_set"], "new_set1"]
+    assert window["picked_set_gone"] == [["anim_set", "fx_set"], "anim_set"]

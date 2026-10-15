@@ -1163,6 +1163,18 @@ class PatternDialog(QtWidgets.QDialog):
         return [self.pattern.text().strip(), self.node_type.currentText()]
 
 
+class _SetBox(QtWidgets.QComboBox):
+    """A dropdown that calls ``before_popup`` each time it opens, to fill itself again."""
+
+    def __init__(self, before_popup):
+        super().__init__()
+        self.before_popup = before_popup
+
+    def showPopup(self):
+        self.before_popup()
+        super().showPopup()
+
+
 class SetDialog(QtWidgets.QDialog):
     """Pick a selection set for a set entry, or make a new one from the
     scene selection with the button above the list."""
@@ -1186,15 +1198,14 @@ class SetDialog(QtWidgets.QDialog):
         button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
 
-        self.set_name = QtWidgets.QComboBox()
+        self.set_name = _SetBox(self._fill)
         self.set_name.currentTextChanged.connect(lambda name: self.delete_button.setEnabled(bool(name)))
-        sets = items.scene_sets()
-        if current and current not in sets:
-            sets.insert(0, current)
-        self.set_name.addItems(sets)
+        # The entry's set when it's already missing from the scene, kept in the
+        # list so OK keeps it; a set deleted while this is open just goes.
+        self.current = current if current and current not in items.scene_sets() else None
+        self._fill()
         if current:
             self.set_name.setCurrentText(current)
-        self.delete_button.setEnabled(bool(self.value()))
 
         self.ok_cancel = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
@@ -1207,6 +1218,19 @@ class SetDialog(QtWidgets.QDialog):
         layout.addWidget(self.set_name)
         layout.addWidget(self.ok_cancel)
         self.resize(300, self.sizeHint().height())
+
+    def _fill(self):
+        """List the scene's sets again, keeping the picked one if it's still there."""
+        picked = self.value()
+        sets = items.scene_sets()
+        if self.current and self.current not in sets:
+            sets.insert(0, self.current)
+        with QtCore.QSignalBlocker(self.set_name):
+            self.set_name.clear()
+            self.set_name.addItems(sets)
+            if picked in sets:
+                self.set_name.setCurrentText(picked)
+        self.delete_button.setEnabled(bool(self.value()))
 
     def value(self):
         """The picked set's name; ``""`` if there are none."""
