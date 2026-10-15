@@ -23,8 +23,8 @@ HIDDEN_DIR = ".scripter"
 VERSIONS_DIR = "versions"
 BASE_FILE = "base"
 DESCRIPTIONS_FILE = "descriptions.json"
-# Scripts, and Joints, Skin and Mesh items (see .items).
-VERSIONED_EXTENSIONS = (".py", ".jnt", ".skin", ".mesh")
+# Scripts, and Joints, Skin, Mesh and Pose items (see .items).
+VERSIONED_EXTENSIONS = (".py", ".jnt", ".skin", ".mesh", ".pose")
 
 NO_DESCRIPTION = "(no description)"
 

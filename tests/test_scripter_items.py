@@ -715,3 +715,56 @@ def test_publish_qc_runs_the_joint_checks_on_the_joints(tmp_path, new_scene):
     found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long(hip)))
 
     assert found["rotate"] == ["hip: rotate is (30, 0, 0)"]
+
+
+# -- Pose -------------------------------------------------------------------
+
+
+def _pose_ctrl(name="ctrl"):
+    node = cmds.createNode("transform", name=name, skipSelect=True)
+    cmds.setAttr(f"{node}.translate", 1, 2, 3)
+    return node
+
+
+def test_pose_item_round_trip_as_one_undo_step(tmp_path, new_scene):
+    node = _pose_ctrl()
+    path = logic.create_data_item(items.POSE, str(tmp_path), "rest", _long(node))
+
+    assert path == os.path.join(str(tmp_path), "rest.pose")
+    assert versions.label(path) == "v001"
+    assert versions.is_versioned(path)
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.POSE, "Pose")
+    assert items.describe(path)[0] == "1 node"
+
+    cmds.setAttr(f"{node}.translate", 0, 0, 0)
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.getAttr(f"{node}.translate")[0] == pytest.approx((1, 2, 3))
+    cmds.undo()
+    assert cmds.getAttr(f"{node}.translate")[0] == (0, 0, 0)
+
+
+def test_new_pose_item_needs_a_selection(tmp_path, new_scene):
+    with pytest.raises(ValueError, match="Nothing selected"):
+        logic.create_data_item(items.POSE, str(tmp_path), "rest", [])
+    assert logic.scan(str(tmp_path)) == []
+
+
+def test_pose_items_open_the_pose_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.POSE) == "Pose Tool"
+    assert registry.find(items.tool_for(items.POSE)) is not None
+
+
+def test_publish_qc_runs_the_pose_checks_on_the_nodes(tmp_path, new_scene):
+    node = _pose_ctrl()
+    path = logic.create_data_item(items.POSE, str(tmp_path), "rest", _long(node))
+    driver = cmds.createNode("transform", name="driver")
+    cmds.connectAttr(f"{driver}.rotateY", f"{node}.rotateY")
+
+    found = {check.key: problems for check, problems in items.publish_qc(path, _long(node))}
+
+    assert found["driven"] == ["ctrl: 1 driven attribute (Run will skip them): rotateY"]
