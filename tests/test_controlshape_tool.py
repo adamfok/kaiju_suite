@@ -366,3 +366,51 @@ def test_outline_of_an_open_cubic_curve_ends_on_its_end_cvs(new_scene):
 
     assert line[0] == pytest.approx([0, 0, 0])
     assert line[-1] == pytest.approx([4, 2, 0])
+
+
+# -- QC tab -----------------------------------------------------------------
+
+
+def _long(*nodes):
+    return cmds.ls(nodes, long=True)
+
+
+def test_qc_runs_the_controlshape_checks_on_the_selected_controls(new_scene):
+    ctrl = _ctrl("L_hand_ctrl", color=17)
+    plain = _ctrl("plain_ctrl")
+
+    found = {check.key: problems for check, problems in logic.run_qc(_long(ctrl, plain))}
+
+    assert list(found) == ["no_shapes", "shape_names", "color", "duplicate_names", "rational"]
+    assert found["color"] == ["plain_ctrl: no color"]
+
+
+def test_qc_needs_a_selection(new_scene):
+    with pytest.raises(ValueError, match="Nothing selected"):
+        logic.run_qc([])
+
+
+def test_qc_options_are_saved_for_publish_too():
+    from kaiju_suite import datatypes
+    from kaiju_suite.datatypes import controlshape
+
+    assert logic.QC_CHECKS is controlshape.CHECKS
+    assert logic.qc_settings() == datatypes.qc_settings(controlshape)
+
+
+def test_select_problem_selects_the_control(new_scene):
+    _ctrl("plain_ctrl")
+    found = dict((check.key, problems) for check, problems in logic.run_qc(_long("plain_ctrl")))
+
+    assert logic.select_problem(found["color"][0]) == ["plain_ctrl"]
+    assert cmds.ls(selection=True) == ["plain_ctrl"]
+
+
+def test_qc_changes_nothing_and_adds_no_undo_step(new_scene):
+    ctrl = _ctrl("plain_ctrl")
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    logic.run_qc(_long(ctrl))
+
+    assert not cmds.undoInfo(query=True, undoName=True)

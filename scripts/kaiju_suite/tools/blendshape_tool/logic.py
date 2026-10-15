@@ -19,6 +19,11 @@ A pose reader (:func:`create_pose_reader`) outputs 1 when a joint's axis
 points where it did when the reader was made, falling to 0 once it's
 ``cone_angle`` degrees away; :func:`drive_target` connects it to a target's
 weight. Every scene change is one undo step.
+
+The QC tab runs the blendShape checks
+(:data:`kaiju_suite.datatypes.blendshape.CHECKS`) on the selected meshes with
+:func:`run_qc`, with options saved per user and shared with Scripter's
+Publish; :func:`select_problem` selects what a problem points at.
 """
 
 import re
@@ -27,11 +32,17 @@ from maya import cmds
 from maya.api import OpenMaya as om
 from maya.api import OpenMayaAnim as oma
 
+from kaiju_suite import datatypes
+from kaiju_suite.core import checks
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.selection import short_name
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.datatypes import blendshape as blendshape_data
 
 log = get_logger(__name__)
+
+# The checks the QC tab runs (see run_qc).
+QC_CHECKS = blendshape_data.CHECKS
 
 SCULPT_ATTR = "kaijuSculptBase"
 READER_ATTR = "kaijuPoseReader"
@@ -386,3 +397,31 @@ def target_driver(node, name):
     """The node driving target ``name``'s weight, or ``None``."""
     found = cmds.listConnections(_weight_plug(node, name), source=True, destination=False, skipConversionNodes=True) or []
     return found[0] if found else None
+
+
+# -- QC ---------------------------------------------------------------------
+
+
+def qc_settings():
+    """The QC options this user saved (defaults for the rest); Scripter's
+    Publish of a BlendShapes item uses the same ones."""
+    return datatypes.qc_settings(blendshape_data)
+
+
+def save_qc_setting(key, option, value):
+    """Save one QC option for this user."""
+    datatypes.save_qc_setting(blendshape_data, key, option, value)
+
+
+def run_qc(selection, settings=None):
+    """Run the blendShape checks on the meshes in ``selection`` (long names).
+    Returns ``(check, problems)`` pairs. Changes nothing. Raises
+    ``ValueError`` if no meshes are selected."""
+    if not selection or not meshes(selection):
+        raise ValueError("No meshes selected. Select the meshes to check.")
+    return datatypes.run_qc(blendshape_data, selection, settings)
+
+
+def select_problem(problem):
+    """Select the meshes ``problem`` points at that are still in the scene."""
+    return checks.select_problem(problem)

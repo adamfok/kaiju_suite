@@ -3,7 +3,8 @@
 - **Script** (``.py``): run in ``__main__``, like the Script Editor.
 - **Folder**, **Separator** (``.sep``) and **Breakpoint** (``.brk``): see
   :mod:`.logic`; they don't run themselves.
-- **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``) and
+- **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``),
+  **NurbsCurve** (``.curve``), **ControlShape** (``.ctrl``) and
   **ProximityWrap** (``.pwrap``, proximityWraps only): data
   published from the selection with :mod:`kaiju_suite.datatypes`, and
   applied back when run. Versioned like scripts. A kind with a tool in
@@ -14,11 +15,20 @@
   file is inside it (see :mod:`kaiju_suite.core.paths`). Import File imports
   any file Maya can import, into the root namespace; Export File exports
   the selection, overwriting the file. Not versioned.
+- **Pose** (``.pose``): the values of the selected nodes' keyable attributes,
+  published and run like Joints, set back with ``setAttr`` (no keys);
+  opens the Pose Tool on double-click.
 - **Selection** (``.sel``): a list of entries, as ``{"entries": [...]}``,
   each ``{"type": ..., "value": ...}``: selected objects (a list of their
   shortest unique names, or components), a name pattern (Maya wildcards, searched on every
   run) or a selection set (its members read on every run). Running it
   replaces the selection with what they find. Not versioned.
+- **Animation** (``.anim``): keys published from the selection, like the
+  data kinds above (:mod:`kaiju_suite.datatypes.animation`); opens the
+  Animation Tool on double-click.
+- **BlendShapes** (``.bshp``): the blendShapes on the selected meshes, a
+  data item like Joints, Skin and Mesh; double-click opens the BlendShape
+  Tool. Pose readers and target drivers aren't saved.
 
 No Qt here.
 """
@@ -32,7 +42,8 @@ from maya import cmds
 from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.datatypes import joints, mesh, skin
+from kaiju_suite.datatypes import animation, blendshape, controlshape, joints, mesh, pose, skin
+from kaiju_suite.datatypes import curves as curve_data
 from kaiju_suite.datatypes import proximity_wrap
 from kaiju_suite.tools.scripter import versions
 
@@ -46,6 +57,11 @@ MESH = "Mesh"
 IMPORT_FILE = "Import File"
 EXPORT_FILE = "Export File"
 SELECTION = "Selection"
+NURBS_CURVE = "NurbsCurve"
+ANIMATION = "Animation"
+POSE = "Pose"
+CONTROLSHAPE = "ControlShape"
+BLENDSHAPES = "BlendShapes"
 PROXIMITY_WRAP = "ProximityWrap"
 
 EXTENSIONS = {
@@ -58,19 +74,27 @@ EXTENSIONS = {
     IMPORT_FILE: ".import",
     EXPORT_FILE: ".export",
     SELECTION: ".sel",
+    NURBS_CURVE: curve_data.EXTENSION,
+    ANIMATION: animation.EXTENSION,
+    POSE: pose.EXTENSION,
+    CONTROLSHAPE: controlshape.EXTENSION,
+    BLENDSHAPES: blendshape.EXTENSION,
     PROXIMITY_WRAP: proximity_wrap.EXTENSION,
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 # Data published from the selection, by kind.
-DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
+DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, NURBS_CURVE: curve_data, ANIMATION: animation, POSE: pose, CONTROLSHAPE: controlshape}
+DATATYPES[BLENDSHAPES] = blendshape
 DATATYPES[PROXIMITY_WRAP] = proximity_wrap
 # The tool each data kind opens on double-click, by its registry name.
-TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool"}
+TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", NURBS_CURVE: "Curve Tool", ANIMATION: "Animation Tool", POSE: "Pose Tool", CONTROLSHAPE: "ControlShape Tool"}
+TOOLS[BLENDSHAPES] = "BlendShape Tool"
 TOOLS[PROXIMITY_WRAP] = "ProximityWrap Tool"
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
-RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)
+RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, NURBS_CURVE, ANIMATION, POSE, CONTROLSHAPE)
+RUNNABLE += (BLENDSHAPES,)
 RUNNABLE += (PROXIMITY_WRAP,)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).

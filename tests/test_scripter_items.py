@@ -717,6 +717,206 @@ def test_publish_qc_runs_the_joint_checks_on_the_joints(tmp_path, new_scene):
     assert found["rotate"] == ["hip: rotate is (30, 0, 0)"]
 
 
+# -- NurbsCurve items -------------------------------------------------------
+
+
+def _spine_curve():
+    return cmds.curve(name="spine_crv", degree=3, point=[(0, 0, 0), (1, 2, 0), (3, 1, 1), (4, 4, 2)])
+
+
+def test_nurbs_curve_items_are_curve_files():
+    from kaiju_suite.datatypes import curves
+
+    assert items.EXTENSIONS[items.NURBS_CURVE] == ".curve"
+    assert items.DATATYPES[items.NURBS_CURVE] is curves
+    assert items.NURBS_CURVE in items.RUNNABLE
+    assert items.kind_of("spine.curve") == items.NURBS_CURVE
+    assert items.kind_of("spine.crv") is None  # the Assembler's Curves items
+
+
+def test_new_nurbs_curve_item_publishes_the_selection_as_v001(tmp_path, new_scene):
+    spine = _spine_curve()
+
+    path = logic.create_data_item(items.NURBS_CURVE, str(tmp_path), "spine", _long(spine))
+
+    assert path == os.path.join(str(tmp_path), "spine.curve")
+    assert versions.is_versioned(path)
+    assert versions.label(path) == "v001"
+    assert items.describe(path) == ["1 curve", "spine_crv"]
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.NURBS_CURVE, "NurbsCurve")
+
+
+def test_new_nurbs_curve_item_without_curves_creates_nothing(tmp_path, new_scene):
+    cube = cmds.polyCube(name="box")[0]
+    with pytest.raises(ValueError, match="Not NURBS curves"):
+        logic.create_data_item(items.NURBS_CURVE, str(tmp_path), "spine", _long(cube))
+    assert logic.scan(str(tmp_path)) == []
+
+
+def test_running_a_nurbs_curve_item_rebuilds_the_curves_as_one_undo_step(tmp_path, new_scene):
+    path = logic.create_data_item(items.NURBS_CURVE, str(tmp_path), "spine", _long(_spine_curve()))
+    cmds.file(new=True, force=True)
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.objExists("spine_crv")
+
+    cmds.undo()
+    assert not cmds.ls(type="nurbsCurve")
+
+
+def test_select_saved_selects_the_curves(tmp_path, new_scene):
+    path = logic.create_data_item(items.NURBS_CURVE, str(tmp_path), "spine", _long(_spine_curve()))
+    cmds.select(clear=True)
+
+    assert items.select_saved(path) == "Selected 1 object from spine.curve"
+    assert cmds.ls(selection=True) == ["spine_crv"]
+
+
+def test_nurbs_curve_items_open_the_curve_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.NURBS_CURVE) == "Curve Tool"
+    assert registry.find(items.tool_for(items.NURBS_CURVE)) is not None
+
+
+def test_publish_qc_runs_the_curve_checks_on_the_curves(tmp_path, new_scene):
+    ring = cmds.circle(name="ring_crv")[0]
+    path = logic.create_data_item(items.NURBS_CURVE, str(tmp_path), "ring", _long(ring))
+
+    found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long(ring)))
+
+    assert list(found) == ["duplicate_names", "rational", "history", "degenerate"]
+    assert found["history"] == ["ring_crv: driven by makeNurbCircle1 (only the current shape is saved)"]
+
+
+# -- Pose -------------------------------------------------------------------
+
+
+def _pose_ctrl(name="ctrl"):
+    node = cmds.createNode("transform", name=name, skipSelect=True)
+    cmds.setAttr(f"{node}.translate", 1, 2, 3)
+    return node
+
+
+def test_pose_item_round_trip_as_one_undo_step(tmp_path, new_scene):
+    node = _pose_ctrl()
+    path = logic.create_data_item(items.POSE, str(tmp_path), "rest", _long(node))
+
+    assert path == os.path.join(str(tmp_path), "rest.pose")
+    assert versions.label(path) == "v001"
+    assert versions.is_versioned(path)
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.POSE, "Pose")
+    assert items.describe(path)[0] == "1 node"
+
+    cmds.setAttr(f"{node}.translate", 0, 0, 0)
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.getAttr(f"{node}.translate")[0] == pytest.approx((1, 2, 3))
+    cmds.undo()
+    assert cmds.getAttr(f"{node}.translate")[0] == (0, 0, 0)
+
+
+def test_new_pose_item_needs_a_selection(tmp_path, new_scene):
+    with pytest.raises(ValueError, match="Nothing selected"):
+        logic.create_data_item(items.POSE, str(tmp_path), "rest", [])
+    assert logic.scan(str(tmp_path)) == []
+
+
+def test_pose_items_open_the_pose_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.POSE) == "Pose Tool"
+    assert registry.find(items.tool_for(items.POSE)) is not None
+
+
+def test_publish_qc_runs_the_pose_checks_on_the_nodes(tmp_path, new_scene):
+    node = _pose_ctrl()
+    path = logic.create_data_item(items.POSE, str(tmp_path), "rest", _long(node))
+    driver = cmds.createNode("transform", name="driver")
+    cmds.connectAttr(f"{driver}.rotateY", f"{node}.rotateY")
+
+    found = {check.key: problems for check, problems in items.publish_qc(path, _long(node))}
+
+    assert found["driven"] == ["ctrl: 1 driven attribute (Run will skip them): rotateY"]
+
+
+# -- ControlShape items ------------------------------------------------------
+
+
+def _controlshape_ctrl(name="ctrl", color=17):
+    node = cmds.rename(cmds.circle(normal=(0, 1, 0), constructionHistory=False)[0], name)
+    shape = cmds.rename(cmds.listRelatives(node, shapes=True, fullPath=True)[0], f"{name}Shape")
+    if color:
+        cmds.setAttr(f"{node}|{shape}.overrideEnabled", True)
+        cmds.setAttr(f"{node}|{shape}.overrideColor", color)
+    return node
+
+
+def test_new_controlshape_item_publishes_the_selection_as_v001(tmp_path, new_scene):
+    ctrl = _controlshape_ctrl()
+
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(ctrl))
+
+    assert path == os.path.join(str(tmp_path), "ctrls.ctrl")
+    assert versions.is_versioned(path) and versions.label(path) == "v001"
+    assert items.describe(path) == ["1 control", "1 curve shape", "Controls: ctrl"]
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.CONTROLSHAPE, "ControlShape")
+    assert items.CONTROLSHAPE in items.RUNNABLE
+
+
+def test_running_a_controlshape_item_replaces_the_shapes_as_one_undo_step(tmp_path, new_scene):
+    ctrl = _controlshape_ctrl()
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(ctrl))
+    cmds.delete(cmds.listRelatives(ctrl, shapes=True, fullPath=True))
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    assert logic.Runner().run([path]) == logic.DONE
+    assert cmds.listRelatives(ctrl, shapes=True) == ["ctrlShape"]
+
+    cmds.undo()
+    assert not cmds.listRelatives(ctrl, shapes=True)
+
+
+def test_new_controlshape_item_needs_curve_shapes(tmp_path, new_scene):
+    bare = cmds.createNode("transform", name="bare")
+    with pytest.raises(ValueError, match="bare"):
+        logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(bare))
+    assert logic.scan(str(tmp_path)) == []
+
+
+def test_select_saved_selects_the_controls(tmp_path, new_scene):
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(_controlshape_ctrl()))
+    cmds.select(clear=True)
+
+    assert items.select_saved(path) == "Selected 1 object from ctrls.ctrl"
+    assert cmds.ls(selection=True) == ["ctrl"]
+
+
+def test_controlshape_items_open_the_controlshape_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.CONTROLSHAPE) == "ControlShape Tool"
+    assert registry.find(items.tool_for(items.CONTROLSHAPE)) is not None
+
+
+def test_publish_qc_runs_the_controlshape_checks_on_the_controls(tmp_path, new_scene):
+    ctrl = _controlshape_ctrl()
+    path = logic.create_data_item(items.CONTROLSHAPE, str(tmp_path), "ctrls", _long(ctrl))
+    plain = _controlshape_ctrl("plain", color=0)
+
+    found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long([ctrl, plain])))
+
+    assert list(found) == ["no_shapes", "shape_names", "color", "duplicate_names", "rational"]
+    assert found["color"] == ["plain: no color"]
+
+
 # -- ProximityWrap ------------------------------------------------------------
 
 
