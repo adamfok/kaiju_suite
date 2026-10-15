@@ -1,5 +1,6 @@
 """Builds the Kaiju menu in Maya's main menu bar from the tool registry."""
 
+import importlib
 import os
 import sys
 
@@ -60,6 +61,9 @@ def reload():
     for name in list(sys.modules):
         if name == "kaiju_suite" or name.startswith("kaiju_suite."):
             del sys.modules[name]
+    # Python remembers each folder's files; after kaiju_suite-dev is pointed at
+    # another worktree that list can be stale, and present modules read as missing.
+    importlib.invalidate_caches()
     from kaiju_suite.ui import menu as fresh
 
     fresh.build()
