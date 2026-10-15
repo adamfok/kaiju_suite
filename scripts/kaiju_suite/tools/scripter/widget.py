@@ -1163,28 +1163,33 @@ class PatternDialog(QtWidgets.QDialog):
         return [self.pattern.text().strip(), self.node_type.currentText()]
 
 
-class _SetBox(QtWidgets.QComboBox):
-    """A dropdown that calls ``before_popup`` each time it opens, to fill itself again."""
+class _SetList(QtWidgets.QListWidget):
+    """The Selection Set picker's list: calls ``on_click`` after every click in it."""
 
-    def __init__(self, before_popup):
+    def __init__(self, on_click):
         super().__init__()
-        self.before_popup = before_popup
+        self.on_click = on_click
 
-    def showPopup(self):
-        self.before_popup()
-        super().showPopup()
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        # Later, not while the click is still being handled.
+        QtCore.QTimer.singleShot(0, self.on_click)
 
 
 class SetDialog(QtWidgets.QDialog):
-    """Pick a selection set for a set entry, or make a new one from the
-    scene selection with the button above the list."""
+    """Pick a selection set for a set entry from a list of the scene's sets,
+    or make or delete one with the buttons above it. It isn't modal; OK, or
+    double-clicking a set, calls ``on_pick`` with the picked set's name.
+
+    The list reads the scene's sets again after each click in it and
+    each time the window is activated, so sets made or deleted in Maya show up."""
 
     def __init__(self, parent, current, on_pick):
         super().__init__(parent)
         self.on_pick = on_pick
         self.setWindowTitle("Selection Set")
         self.new_button = QtWidgets.QToolButton()
-        self.new_button.setIcon(icons.same_when_selected(icons.icon("scripter_new_set.svg")))
+        self.new_button.setIcon(icons.same_when_selected(icons.icon("scripter_add_set.svg")))
         self.new_button.setToolTip("New Selection Set from Selected")
         self.new_button.setAutoRaise(True)
         self.new_button.clicked.connect(self._new_set)
@@ -1198,14 +1203,14 @@ class SetDialog(QtWidgets.QDialog):
         button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
 
-        self.set_name = _SetBox(self._fill)
-        self.set_name.currentTextChanged.connect(lambda name: self.delete_button.setEnabled(bool(name)))
+        self.set_list = _SetList(self._fill)
+        self.set_list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
+        self.set_list.itemSelectionChanged.connect(lambda: self.delete_button.setEnabled(bool(self.value())))
+        self.set_list.itemDoubleClicked.connect(lambda _item: self.accept())
         # The entry's set when it's already missing from the scene, kept in the
         # list so OK keeps it; a set deleted while this is open just goes.
         self.current = current if current and current not in items.scene_sets() else None
-        self._fill()
-        if current:
-            self.set_name.setCurrentText(current)
+        self._fill(current)
 
         self.ok_cancel = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
@@ -1215,41 +1220,41 @@ class SetDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(button_row)
-        layout.addWidget(self.set_name)
+        layout.addWidget(self.set_list, 1)
         layout.addWidget(self.ok_cancel)
-        self.resize(300, self.sizeHint().height())
+        self.resize(300, 320)
 
-    def _fill(self):
-        """List the scene's sets again, keeping the picked one if it's still there."""
-        picked = self.value()
+    def _fill(self, pick=None):
+        """List the scene's sets again and pick ``pick`` (by default, the
+        picked set) if it's still there."""
+        pick = self.value() if pick is None else pick
         sets = items.scene_sets()
         if self.current and self.current not in sets:
             sets.insert(0, self.current)
-        with QtCore.QSignalBlocker(self.set_name):
-            self.set_name.clear()
-            self.set_name.addItems(sets)
-            if picked in sets:
-                self.set_name.setCurrentText(picked)
+        scroll = self.set_list.verticalScrollBar().value()
+        with QtCore.QSignalBlocker(self.set_list):
+            self.set_list.clear()
+            self.set_list.addItems(sets)
+            for item in self.set_list.findItems(pick, QtCore.Qt.MatchFlag.MatchExactly) if pick else []:
+                item.setSelected(True)
+                self.set_list.setCurrentItem(item)
+        self.set_list.verticalScrollBar().setValue(scroll)
         self.delete_button.setEnabled(bool(self.value()))
 
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QtCore.QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._fill()
+
     def value(self):
-        """The picked set's name; ``""`` if there are none."""
-        return self.set_name.currentText()
+        """The picked set's name; ``""`` if none is picked."""
+        picked = self.set_list.selectedItems()
+        return picked[0].text() if picked else ""
 
     def accept(self):
         if self.value():
             self.on_pick(self.value())
         super().accept()
-
-    def _delete_set(self):
-        """Delete the picked set from the scene (not its members), as one undo step."""
-        name = self.value()
-        try:
-            items.delete_set(name)
-        except (ValueError, RuntimeError) as e:
-            _warn(str(e))
-            return
-        self.set_name.removeItem(self.set_name.currentIndex())
 
     def _new_set(self):
         members = items.selected_names()
@@ -1266,5 +1271,13 @@ class SetDialog(QtWidgets.QDialog):
         except (ValueError, RuntimeError) as e:
             _warn(str(e))
             return
-        self._fill()
-        self.set_name.setCurrentText(made)
+        self._fill(made)
+
+    def _delete_set(self):
+        """Delete the picked set from the scene (not its members), as one undo step."""
+        try:
+            items.delete_set(self.value())
+        except (ValueError, RuntimeError) as e:
+            _warn(str(e))
+            return
+        self._fill("")

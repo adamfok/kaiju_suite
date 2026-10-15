@@ -618,23 +618,38 @@ def get_text(*args, **kwargs):
     asked_names.append(kwargs.get("text"))
     return ("new_set", True)
 QtWidgets.QInputDialog.getText = staticmethod(get_text)
+
+def names(d):
+    return [d.set_list.item(i).text() for i in range(d.set_list.count())]
+
+def click_set(d, name):
+    item = d.set_list.findItems(name, QtCore.Qt.MatchFlag.MatchExactly)[0]
+    QTest.mouseClick(d.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=d.set_list.visualItemRect(item).center())
+    app.processEvents()
+
 picked_sets = []
 set_dialog = widget.SetDialog(None, "render_set", picked_sets.append)
-combo = set_dialog.set_name
+set_dialog.show()
+app.processEvents()
+set_list = set_dialog.set_list
 out["set_dialog"] = {
     "title": set_dialog.windowTitle(),
-    "sets": [combo.itemText(i) for i in range(combo.count())],
+    "is_list": isinstance(set_list, QtWidgets.QListWidget) and not set_dialog.findChildren(QtWidgets.QComboBox),
+    "single": set_list.selectionMode() == QtWidgets.QAbstractItemView.SelectionMode.SingleSelection,
+    "sets": names(set_dialog),
     "current": set_dialog.value(),
     "new_button": [set_dialog.new_button.toolTip(), set_dialog.new_button.icon().isNull()],
+    "new_icon_is_add_set": set_dialog.new_button.icon().pixmap(16, 16).toImage()
+    == widget.icons.same_when_selected(widget.icons.icon("scripter_add_set.svg")).pixmap(16, 16).toImage(),
     "delete_button": [set_dialog.delete_button.toolTip(), set_dialog.delete_button.icon().isNull()],
     "delete_beside_new": set_dialog.layout().itemAt(0).layout().itemAt(1).widget() is set_dialog.delete_button,
-    "button_above_dropdown": set_dialog.layout().itemAt(0).layout().itemAt(0).widget() is set_dialog.new_button
-    and set_dialog.layout().itemAt(1).widget() is combo,
+    "button_above_list": set_dialog.layout().itemAt(0).layout().itemAt(0).widget() is set_dialog.new_button
+    and set_dialog.layout().itemAt(1).widget() is set_list,
 }
 scene_selection[:] = ["a_geo", "b_geo"]
 set_dialog.new_button.click()
 out["set_dialog"]["made"] = made
-out["set_dialog"]["after_new"] = [[combo.itemText(i) for i in range(combo.count())], set_dialog.value()]
+out["set_dialog"]["after_new"] = [names(set_dialog), set_dialog.value()]
 scene_selection.clear()
 before = len(warnings)
 set_dialog.new_button.click()
@@ -652,35 +667,43 @@ def create_named(name, members):
 items.create_set = create_named
 missing.new_button.click()
 out["set_dialog"]["missing_default"] = asked_names[-1]
-out["set_dialog"]["after_remaking_missing"] = [
-    [missing.set_name.itemText(i) for i in range(missing.set_name.count())], missing.value()
-]
+out["set_dialog"]["after_remaking_missing"] = [names(missing), missing.value()]
 scene_sets.remove("gone_set")
 scene_selection.clear()
 items.create_set = create_set
 
-# Sets made or deleted in the scene show up when the dropdown is opened.
+# Sets made or deleted in the scene show up when a set is clicked.
 scene_sets.append("fx_set")
 scene_sets.remove("render_set")
-combo.setCurrentText("new_set1")
-combo.showPopup()
-combo.hidePopup()
-out["set_dialog"]["reopened"] = [[combo.itemText(i) for i in range(combo.count())], set_dialog.value()]
-scene_sets.remove("new_set1")
-combo.showPopup()
-combo.hidePopup()
-out["set_dialog"]["picked_set_gone"] = [[combo.itemText(i) for i in range(combo.count())], set_dialog.value()]
-scene_sets.append("render_set")
-combo.showPopup()
-combo.hidePopup()
+click_set(set_dialog, "new_set1")
+out["set_dialog"]["reread_on_click"] = [names(set_dialog), set_dialog.value()]
+scene_sets.remove("anim_set")
+click_set(set_dialog, "anim_set")
+out["set_dialog"]["clicked_set_gone"] = [names(set_dialog), set_dialog.value()]
+scene_sets.insert(0, "anim_set")
+click_set(set_dialog, "fx_set")
 
-combo.setCurrentText("anim_set")
+click_set(set_dialog, "anim_set")
 set_dialog.delete_button.click()
-out["set_dialog"]["deleted"] = [deleted, [combo.itemText(i) for i in range(combo.count())]]
-combo.clear()
-out["set_dialog"]["delete_enabled_when_empty"] = set_dialog.delete_button.isEnabled()
+out["set_dialog"]["deleted"] = [deleted, names(set_dialog)]
+set_list.clearSelection()
+out["set_dialog"]["delete_enabled_with_no_pick"] = set_dialog.delete_button.isEnabled()
 set_dialog.accept()
-out["set_dialog"]["empty_ok_picks_nothing"] = picked_sets
+out["set_dialog"]["empty_ok_picks_nothing"] = list(picked_sets)
+
+double_picked = []
+double = widget.SetDialog(None, None, double_picked.append)
+double.show()
+app.processEvents()
+item = double.set_list.findItems("fx_set", QtCore.Qt.MatchFlag.MatchExactly)[0]
+# As a real double-click arrives: a click (the list refills after it), then press and double-click.
+where = double.set_list.visualItemRect(item).center()
+QTest.mouseClick(double.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=where)
+app.processEvents()
+QTest.mousePress(double.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=where)
+QTest.mouseDClick(double.set_list.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=where)
+app.processEvents()
+out["set_dialog"]["double_click_picks"] = [double_picked, double.isVisible()]
 
 # Adding a set entry opens the picker without blocking Maya; the editor waits.
 scene_sets[:] = ["anim_set", "render_set"]
@@ -689,7 +712,7 @@ editor = widget.SelectionDialog(None, "hero", [], saved2.append)
 editor._add_set()
 set_window = editor.set_window
 out["set_window"] = {"modal": set_window.isModal(), "visible": set_window.isVisible(), "editor_locked": not editor.table.isEnabled()}
-set_window.set_name.setCurrentText("render_set")
+set_window.set_list.findItems("render_set", QtCore.Qt.MatchFlag.MatchExactly)[0].setSelected(True)
 set_window.accept()
 out["set_window"]["after_ok"] = [editor.entries, editor.table.isEnabled(), editor.set_window is None]
 print(json.dumps(out))
@@ -836,15 +859,17 @@ def test_delete_button_at_the_top_right_removes_selected_entries(selection_dialo
 def test_set_picker_is_titled_selection_set(selection_dialog_probe):
     window = selection_dialog_probe["set_dialog"]
     assert window["title"] == "Selection Set"
+    assert window["is_list"] and window["single"]
     assert window["sets"] == ["anim_set", "render_set"]
     assert window["current"] == "render_set"
-    assert selection_dialog_probe["set_dialog"]["missing_current_kept"] == "gone_set"
+    assert window["missing_current_kept"] == "gone_set"
 
 
 def test_set_picker_makes_a_new_set_from_the_selection(selection_dialog_probe):
     window = selection_dialog_probe["set_dialog"]
     assert window["new_button"] == ["New Selection Set from Selected", False]
-    assert window["button_above_dropdown"]
+    assert window["new_icon_is_add_set"]
+    assert window["button_above_list"]
     assert window["made"] == [["new_set", ["a_geo", "b_geo"]]]
     assert window["after_new"] == [["anim_set", "render_set", "new_set1"], "new_set1"]
     assert window["nothing_selected_warns"] == [1, 1]
@@ -854,8 +879,8 @@ def test_set_picker_deletes_the_picked_set(selection_dialog_probe):
     window = selection_dialog_probe["set_dialog"]
     assert window["delete_button"] == ["Delete Selection Set", False]
     assert window["delete_beside_new"]
-    assert window["deleted"] == [["anim_set"], ["fx_set", "render_set"]]
-    assert not window["delete_enabled_when_empty"]
+    assert window["deleted"] == [["anim_set"], ["new_set1", "fx_set"]]
+    assert not window["delete_enabled_with_no_pick"]
     assert window["empty_ok_picks_nothing"] == []
 
 
@@ -866,10 +891,15 @@ def test_set_picker_does_not_block_maya(selection_dialog_probe):
     assert window["after_ok"] == [[{"type": "set", "value": "render_set"}], True, True]
 
 
-def test_set_dropdown_rereads_the_scene_when_opened(selection_dialog_probe):
+def test_set_list_rereads_the_scene_when_a_set_is_clicked(selection_dialog_probe):
     window = selection_dialog_probe["set_dialog"]
-    assert window["reopened"] == [["anim_set", "new_set1", "fx_set"], "new_set1"]
-    assert window["picked_set_gone"] == [["anim_set", "fx_set"], "anim_set"]
+    assert window["reread_on_click"] == [["anim_set", "new_set1", "fx_set"], "new_set1"]
+    # Clicking a set someone just deleted: it goes, and nothing is picked.
+    assert window["clicked_set_gone"] == [["new_set1", "fx_set"], ""]
+
+
+def test_double_clicking_a_set_picks_it(selection_dialog_probe):
+    assert selection_dialog_probe["set_dialog"]["double_click_picks"] == [["fx_set"], False]
 
 
 def test_new_set_is_named_after_a_missing_set(selection_dialog_probe):
