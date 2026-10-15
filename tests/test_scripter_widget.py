@@ -580,6 +580,17 @@ dialog.remove_selected()
 out["after_remove"] = table.topLevelItemCount()
 dialog.accept()
 out["saved"] = saved
+
+new_pattern = widget.PatternDialog(None)
+types = new_pattern.node_type
+out["pattern_dialog"] = {
+    "types": [types.itemText(i) for i in range(types.count())],
+    "default": new_pattern.values(),
+}
+new_pattern.pattern.setText("  *_geo ")
+types.setCurrentText("Geo")
+out["pattern_dialog"]["picked"] = new_pattern.values()
+out["pattern_dialog"]["editing"] = widget.PatternDialog(None, "*_jnt", "Joint").values()
 print(json.dumps(out))
 """
 
@@ -701,3 +712,13 @@ def test_objects_window_replace_and_ok(selection_dialog_probe):
 
 def test_ok_saves_the_entries(selection_dialog_probe):
     assert selection_dialog_probe["saved"] == [[{"type": "selected", "value": ["new_geo"]}]]
+
+
+def test_pattern_window_has_a_type_dropdown_defaulting_to_any(selection_dialog_probe):
+    from kaiju_suite.tools.scripter import items
+
+    window = selection_dialog_probe["pattern_dialog"]
+    assert window["types"] == list(items.NODE_TYPES)
+    assert window["default"] == ["", "*"]
+    assert window["picked"] == ["*_geo", "Geo"]
+    assert window["editing"] == ["*_jnt", "Joint"]

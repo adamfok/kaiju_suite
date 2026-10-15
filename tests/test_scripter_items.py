@@ -409,3 +409,55 @@ def test_entries_skip_intermediate_objects(new_scene):
     assert items.find({"type": items.PATTERN, "value": "body_geoShape*"}) == ["body_geoShape"]
     assert items.find({"type": items.SET, "value": "geo_set"}) == ["body_geo"]
     assert items.find(_selected("body_geoShapeOrig")) == []
+
+
+def _pattern(value, node_type=None):
+    entry = {"type": items.PATTERN, "value": value}
+    if node_type:
+        entry["node_type"] = node_type
+    return entry
+
+
+def test_pattern_node_types_offered():
+    assert items.NODE_TYPES[0] == "*"
+    assert {"Transform", "Joint", "Geo", "Nurbs Curve", "Nurbs Surface", "Locator", "Constraint"} <= set(
+        items.NODE_TYPES
+    )
+
+
+def test_pattern_node_type_filters_what_it_finds(new_scene):
+    cmds.polyCube(name="body_x")
+    cmds.circle(name="ctrl_x")
+    cmds.nurbsPlane(name="plane_x")
+    cmds.spaceLocator(name="loc_x")
+    cmds.createNode("transform", name="grp_x")
+    cmds.select(clear=True)
+    cmds.joint(name="jnt_x")
+    cmds.parentConstraint("loc_x", "grp_x", name="con_x")
+
+    def found(node_type):
+        return sorted(items.find(_pattern("*_x", node_type)))
+
+    assert found(None) == found("*") == ["body_x", "con_x", "ctrl_x", "grp_x", "jnt_x", "loc_x", "plane_x"]
+    assert found("Geo") == ["body_x"]
+    assert found("Nurbs Curve") == ["ctrl_x"]
+    assert found("Nurbs Surface") == ["plane_x"]
+    assert found("Locator") == ["loc_x"]
+    assert found("Joint") == ["jnt_x"]
+    assert found("Constraint") == ["con_x"]
+    # Plain transforms: groups and transforms with shapes, not joints or constraints.
+    assert found("Transform") == ["body_x", "ctrl_x", "grp_x", "loc_x", "plane_x"]
+
+
+def test_geo_ignores_intermediate_shapes(new_scene):
+    group = cmds.createNode("transform", name="only_orig_geo")
+    orig = cmds.createNode("mesh", name="only_orig_geoShapeOrig", parent=group)
+    cmds.setAttr(f"{orig}.intermediateObject", True)
+    assert items.find(_pattern("*_geo", "Geo")) == []
+
+
+def test_pattern_with_a_node_type_reads_with_it():
+    assert items.entry_label(_pattern("*_geo", "Geo")) == "*_geo (Geo)"
+    assert items.entry_label(_pattern("*_geo", "*")) == "*_geo"
+    assert items.entry_label(_pattern("*_geo")) == "*_geo"
+    assert items.missing(_pattern("*_none", "Joint")) == ["*_none (Joint)"]

@@ -899,7 +899,7 @@ class SelectionDialog(QtWidgets.QDialog):
         with QtCore.QSignalBlocker(self.table):
             self.table.clear()
             for index, entry in enumerate(self.entries):
-                label = items.entry_label(entry) if entry["type"] == items.SELECTED else entry["value"]
+                label = entry["value"] if entry["type"] == items.SET else items.entry_label(entry)
                 row = QtWidgets.QTreeWidgetItem(self.table, [self.TYPE_LABELS.get(entry["type"], entry["type"]), label, ""])
                 row.setData(0, PATH_ROLE, index)
         self._refresh()
@@ -948,11 +948,13 @@ class SelectionDialog(QtWidgets.QDialog):
         self.entries = items.add_selected(self.entries, names)
         self._rebuild()
 
-    def _ask_pattern(self, current=""):
-        text, ok = QtWidgets.QInputDialog.getText(
-            self, "Pattern", "Name pattern (Maya wildcards, e.g. *_geo; separate several with spaces):", text=current
-        )
-        return text.strip() if ok else ""
+    def _ask_pattern(self, entry=None):
+        """``(pattern, node_type)`` for a new or edited pattern entry; ``None`` if cancelled."""
+        dialog = PatternDialog(self, *((entry["value"], entry.get("node_type", items.ANY_TYPE)) if entry else ()))
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return None
+        pattern, node_type = dialog.values()
+        return (pattern, node_type) if pattern else None
 
     def _ask_set(self, current=None):
         sets = items.scene_sets()
@@ -966,9 +968,9 @@ class SelectionDialog(QtWidgets.QDialog):
         return name if ok else ""
 
     def _add_pattern(self):
-        text = self._ask_pattern()
-        if text:
-            self.entries.append({"type": items.PATTERN, "value": text})
+        answer = self._ask_pattern()
+        if answer:
+            self.entries.append({"type": items.PATTERN, "value": answer[0], "node_type": answer[1]})
             self._rebuild()
 
     def _add_set(self):
@@ -985,8 +987,12 @@ class SelectionDialog(QtWidgets.QDialog):
             self._edit_objects(entry)
             return
         if entry["type"] == items.PATTERN:
-            value = self._ask_pattern(entry["value"])
-        elif entry["type"] == items.SET:
+            answer = self._ask_pattern(entry)
+            if answer:
+                entry["value"], entry["node_type"] = answer
+                self._rebuild()
+            return
+        if entry["type"] == items.SET:
             value = self._ask_set(entry["value"])
         else:
             return
@@ -1111,3 +1117,34 @@ class SelectedObjectsDialog(QtWidgets.QDialog):
         gone = {item.text() for item in self.list.selectedItems()}
         self.names = [name for name in self.names if name not in gone]
         self._fill()
+
+
+class PatternDialog(QtWidgets.QDialog):
+    """Ask for a pattern entry's name pattern and the node type it finds."""
+
+    def __init__(self, parent, pattern="", node_type=items.ANY_TYPE):
+        super().__init__(parent)
+        self.setWindowTitle("Pattern")
+        self.pattern = QtWidgets.QLineEdit(pattern)
+        self.pattern.setPlaceholderText("*_geo")
+        self.pattern.setToolTip("Maya wildcards (* and ?); separate several patterns with spaces")
+        self.node_type = QtWidgets.QComboBox()
+        self.node_type.addItems(items.NODE_TYPES)
+        self.node_type.setCurrentText(node_type)
+        self.node_type.setToolTip("Geo, Nurbs Curve, Nurbs Surface and Locator find transforms with that shape")
+
+        ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        ok_cancel.accepted.connect(self.accept)
+        ok_cancel.rejected.connect(self.reject)
+
+        form = QtWidgets.QFormLayout(self)
+        form.addRow("Name:", self.pattern)
+        form.addRow("Type:", self.node_type)
+        form.addRow(ok_cancel)
+        self.resize(320, self.sizeHint().height())
+
+    def values(self):
+        """``[pattern, node_type]``, the pattern stripped of outer spaces."""
+        return [self.pattern.text().strip(), self.node_type.currentText()]

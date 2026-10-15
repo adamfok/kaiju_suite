@@ -229,6 +229,11 @@ def export_selected(file_path):
 SELECTED = "selected"
 PATTERN = "pattern"
 SET = "set"
+# What a pattern entry's "node_type" can be; "*" (or none) is any node.
+# Geo, Nurbs Curve, Nurbs Surface and Locator find transforms with that shape.
+ANY_TYPE = "*"
+_SHAPE_TYPES = {"Geo": "mesh", "Nurbs Curve": "nurbsCurve", "Nurbs Surface": "nurbsSurface", "Locator": "locator"}
+NODE_TYPES = (ANY_TYPE, "Transform", "Joint", *_SHAPE_TYPES, "Constraint")
 # How many names a summary lists before "...and N more".
 MAX_SUMMARY = 10
 
@@ -268,7 +273,8 @@ def _names(entry):
         return list(entry["value"])
     if entry["type"] == SET:
         return [f"set: {entry['value']}"]
-    return [entry["value"]]
+    node_type = entry.get("node_type", ANY_TYPE)
+    return [entry["value"] if node_type == ANY_TYPE else f"{entry['value']} ({node_type})"]
 
 
 def entry_label(entry):
@@ -329,8 +335,34 @@ def lookup(entry):
     if kind == SET:
         found = _ls(_set_members(value, set()) if cmds.objExists(value) else [])
     else:
-        found = _ls(value.split())
+        found = _of_type(_ls(value.split()), entry.get("node_type", ANY_TYPE))
     return found, ([] if found else [entry_label(entry)])
+
+
+def _of_type(found, node_type):
+    """The nodes in ``found`` of ``node_type`` (one of :data:`NODE_TYPES`), in order."""
+    if node_type == ANY_TYPE:
+        return found
+    nodes = [name for name in found if "." not in name]
+    if not nodes:
+        return []
+    if node_type == "Transform":
+        keep = cmds.ls(nodes, exactType="transform")
+    elif node_type == "Joint":
+        keep = cmds.ls(nodes, type="joint")
+    elif node_type == "Constraint":
+        keep = cmds.ls(nodes, type="constraint")
+    elif node_type in _SHAPE_TYPES:
+        shape = _SHAPE_TYPES[node_type]
+        keep = [
+            name
+            for name in cmds.ls(nodes, type="transform")
+            if cmds.listRelatives(name, shapes=True, noIntermediate=True, type=shape)
+        ]
+    else:
+        raise ValueError(f"Unknown node type: {node_type}")
+    keep = set(keep or [])
+    return [name for name in nodes if name in keep]
 
 
 def find(entry):
