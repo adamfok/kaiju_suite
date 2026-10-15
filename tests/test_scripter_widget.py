@@ -114,6 +114,11 @@ def test_new_menu_offers_a_selection_item_with_its_icon(probe):
     assert "scripter_selection.svg" in probe["icon_files"]
 
 
+def test_new_menu_offers_a_pose_item_with_its_icon(probe):
+    assert "Pose" in probe["new_kinds"]
+    assert "scripter_pose.svg" in probe["icon_files"]
+
+
 def test_item_icons_draw_something(probe):
     for kind, icon in probe["kind_icons"].items():
         assert not icon["null"], kind
@@ -235,7 +240,7 @@ def test_double_click_does_not_also_expand_or_collapse(folder_probe):
 def test_new_menu_shows_each_kinds_icon(folder_probe):
     # The same icon the item gets in the tree, so the menu previews it.
     assert sorted(folder_probe["new_icons"]) == sorted(
-        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh", "NurbsSurface"]
+        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh", "NurbsCurve", "Animation", "Pose", "ControlShape", "BlendShapes", "ProximityWrap", "DeltaMush", "NurbsSurface"]
     )
     assert all(folder_probe["new_icons"].values()), folder_probe["new_icons"]
 
@@ -1060,7 +1065,7 @@ from kaiju_suite.tools.scripter import widget
 
 root = tempfile.mkdtemp()
 paths = {}
-for name in ("leg.skin", "skeleton.jnt", "body.mesh"):
+for name in ("leg.skin", "skeleton.jnt", "body.mesh", "spine.curve", "rest.pose", "ctrls.ctrl", "shirt.pwrap", "body.dmsh", "ribbons.surface"):
     paths[name] = os.path.join(root, name)
     open(paths[name], "w").close()
 
@@ -1135,7 +1140,28 @@ def test_double_click_on_a_joints_item_opens_the_joint_tool(data_probe):
     assert data_probe["double_click"]["skeleton.jnt"] == [["tool", "skeleton.jnt"]]
 
 
-@pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt", "body.mesh"])
+def test_double_click_on_a_proximitywrap_item_opens_its_tool(data_probe):
+    assert data_probe["double_click"]["shirt.pwrap"] == [["tool", "shirt.pwrap"]]
+    assert "Info..." in data_probe["menus"]["shirt.pwrap"]
+
+
+def test_double_click_on_a_nurbs_curve_item_opens_the_curve_tool(data_probe):
+    assert data_probe["double_click"]["spine.curve"] == [["tool", "spine.curve"]]
+
+
+def test_double_click_on_a_pose_item_opens_the_pose_tool(data_probe):
+    assert data_probe["double_click"]["rest.pose"] == [["tool", "rest.pose"]]
+
+
+def test_double_click_on_a_controlshape_item_opens_the_controlshape_tool(data_probe):
+    assert data_probe["double_click"]["ctrls.ctrl"] == [["tool", "ctrls.ctrl"]]
+
+
+def test_double_click_on_a_deltamush_item_opens_the_deltamush_tool(data_probe):
+    assert data_probe["double_click"]["body.dmsh"] == [["tool", "body.dmsh"]]
+
+
+@pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt", "body.mesh", "spine.curve", "rest.pose", "ctrls.ctrl", "body.dmsh"])
 def test_data_items_have_right_click_info(data_probe, name):
     assert "Info..." in data_probe["menus"][name]
     assert data_probe["info"][name] == [["describe", name], ["box", name]]
@@ -1256,21 +1282,13 @@ def test_publish_of_a_kind_without_checks_shows_no_dialog(publish_probe):
     assert [e[0] for e in publish_probe["no_checks"]] == ["qc", "describe", "publish", "message"]
 
 
-@pytest.fixture(scope="module")
-def surface_probe():
-    probe = _DATA_PROBE.replace('("leg.skin", "skeleton.jnt", "body.mesh")', '("ribbons.surface",)')
-    done = subprocess.run([sys.executable, "-c", probe, SCRIPTS], capture_output=True, text=True, timeout=120)
-    assert done.returncode == 0, done.stderr
-    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+def test_double_click_on_a_nurbs_surface_item_opens_the_surface_tool(data_probe):
+    assert data_probe["double_click"]["ribbons.surface"] == [["tool", "ribbons.surface"]]
 
 
-def test_double_click_on_a_nurbs_surface_item_opens_the_surface_tool(surface_probe):
-    assert surface_probe["double_click"]["ribbons.surface"] == [["tool", "ribbons.surface"]]
-
-
-def test_nurbs_surface_items_have_right_click_select_objects_and_info(surface_probe):
-    assert "Select Objects" in surface_probe["menus"]["ribbons.surface"]
-    assert surface_probe["info"]["ribbons.surface"] == [["describe", "ribbons.surface"], ["box", "ribbons.surface"]]
+def test_nurbs_surface_items_have_right_click_select_objects_and_info(data_probe):
+    assert "Select Objects" in data_probe["menus"]["ribbons.surface"]
+    assert data_probe["info"]["ribbons.surface"] == [["describe", "ribbons.surface"], ["box", "ribbons.surface"]]
 
 
 def test_new_menu_offers_a_nurbs_surface_item_with_its_icon(probe):

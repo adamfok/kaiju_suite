@@ -57,6 +57,13 @@ ICONS = {
     logic.SKIN: "scripter_skin.svg",
     logic.MESH: "scripter_mesh.svg",
     logic.SELECTION: "scripter_selection.svg",
+    items.NURBS_CURVE: "scripter_nurbs_curve.svg",
+    items.ANIMATION: "scripter_animation.svg",
+    logic.POSE: "scripter_pose.svg",
+    logic.CONTROLSHAPE: "scripter_controlshape.svg",
+    logic.BLENDSHAPES: "scripter_blendshapes.svg",
+    items.PROXIMITY_WRAP: "scripter_proximity_wrap.svg",
+    logic.DELTAMUSH: "scripter_deltamush.svg",
     items.NURBS_SURFACE: "scripter_nurbs_surface.svg",
 }
 # The right-click New menu, in order.
@@ -71,6 +78,13 @@ NEW_KINDS = (
     logic.JOINTS,
     logic.SKIN,
     logic.MESH,
+    items.NURBS_CURVE,
+    items.ANIMATION,
+    logic.POSE,
+    logic.CONTROLSHAPE,
+    logic.BLENDSHAPES,
+    items.PROXIMITY_WRAP,
+    logic.DELTAMUSH,
     items.NURBS_SURFACE,
 )
 # Dividers in the New menu after these kinds.

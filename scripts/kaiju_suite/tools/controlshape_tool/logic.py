@@ -6,6 +6,11 @@ A control is a transform with NURBS curve shapes; other shapes under it
 control's rotate pivot, in its own space. Presets are the built-in ones
 (:mod:`presets`) plus the user's, saved as Kaiju data files in a library
 folder (by default in Maya's user folder). Every scene edit is one undo step.
+
+The QC tab runs the control shape checks
+(:data:`kaiju_suite.datatypes.controlshape.CHECKS`) on the selected controls
+with :func:`run_qc`, with options saved per user and shared with Scripter's
+Publish; :func:`select_problem` selects what a problem points at.
 """
 
 import copy
@@ -16,15 +21,19 @@ from collections import namedtuple
 from maya import cmds
 from maya.api import OpenMaya as om
 
-from kaiju_suite.core import curves, datafile
+from kaiju_suite import datatypes
+from kaiju_suite.core import checks, curves, datafile
 from kaiju_suite.core.naming import opposite_name
 from kaiju_suite.core.nodes import unique_name
 from kaiju_suite.core.selection import short_name
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.datatypes import controlshape as controlshape_data
 from kaiju_suite.tools.controlshape_tool.presets import BUILT_IN
 
 KIND = "controlShapePreset"
 Result = namedtuple("Result", "changed skipped")
+# The checks the QC tab runs (see run_qc).
+QC_CHECKS = controlshape_data.CHECKS
 
 _NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_ -]*$")
 # Curve data only: what a preset keeps of a shape record.
@@ -295,3 +304,32 @@ def set_line_width(nodes, width):
     for control in controls(nodes):
         for shape in curves.shapes(control):
             cmds.setAttr(f"{shape}.lineWidth", width)
+
+
+# -- QC ---------------------------------------------------------------------
+
+
+def qc_settings():
+    """The QC options this user saved (defaults for the rest); Scripter's
+    Publish of a ControlShape item uses the same ones."""
+    return datatypes.qc_settings(controlshape_data)
+
+
+def save_qc_setting(key, option, value):
+    """Save one QC option for this user."""
+    datatypes.save_qc_setting(controlshape_data, key, option, value)
+
+
+def run_qc(selection, settings=None):
+    """Run the control shape checks on the controls in ``selection`` (long
+    names; a curve shape stands for its control). Returns ``(check,
+    problems)`` pairs. Changes nothing. Raises ``ValueError`` if nothing is
+    selected."""
+    if not selection:
+        raise ValueError("Nothing selected. Select the controls to check.")
+    return datatypes.run_qc(controlshape_data, selection, settings)
+
+
+def select_problem(problem):
+    """Select the controls or shapes ``problem`` points at that are still in the scene."""
+    return checks.select_problem(problem)
