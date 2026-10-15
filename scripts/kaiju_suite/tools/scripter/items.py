@@ -27,6 +27,7 @@ from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.core import paths
+from kaiju_suite.core.undo import undoable
 from kaiju_suite.datatypes import joints, mesh, skin
 from kaiju_suite.tools.scripter import versions
 
@@ -408,3 +409,15 @@ def scene_sets():
             continue
         found.append(name)
     return sorted(found)
+
+
+@undoable
+def create_set(name, members):
+    """Make a selection set named ``name`` holding ``members``, as one undo
+    step. Returns its name, which Maya changes if ``name`` is taken."""
+    name = name.strip()
+    if not name:
+        raise ValueError("Please provide a name for the set.")
+    if not members:
+        raise ValueError("Nothing selected to make a set from.")
+    return cmds.sets(members, name=name)

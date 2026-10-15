@@ -461,3 +461,33 @@ def test_pattern_with_a_node_type_reads_with_it():
     assert items.entry_label(_pattern("*_geo", "*")) == "*_geo"
     assert items.entry_label(_pattern("*_geo")) == "*_geo"
     assert items.missing(_pattern("*_none", "Joint")) == ["*_none (Joint)"]
+
+
+def test_create_set_makes_a_selection_set_as_one_undo_step(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    b = cmds.createNode("transform", name="b_geo")
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    name = items.create_set("render_set", [a, b])
+
+    assert name == "render_set"
+    assert name in items.scene_sets()
+    assert sorted(items.find({"type": items.SET, "value": name})) == ["a_geo", "b_geo"]
+    cmds.undo()
+    assert not cmds.objExists("render_set")
+
+
+def test_create_set_returns_the_name_maya_gave_it(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    cmds.sets(a, name="render_set")
+    assert items.create_set("render_set", [a]) == "render_set1"
+
+
+def test_create_set_needs_a_name_and_a_selection(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    with pytest.raises(ValueError, match="Nothing selected"):
+        items.create_set("render_set", [])
+    with pytest.raises(ValueError, match="name"):
+        items.create_set("  ", [a])
+    assert items.scene_sets() == []

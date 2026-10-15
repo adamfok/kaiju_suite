@@ -598,6 +598,36 @@ new_pattern.pattern.setText("  *_geo ")
 types.setCurrentText("Geo")
 out["pattern_dialog"]["picked"] = new_pattern.values()
 out["pattern_dialog"]["editing"] = widget.PatternDialog(None, "*_jnt", "Joint").values()
+
+# The Selection Set picker, and making a new set from the selection.
+scene_sets = ["anim_set", "render_set"]
+items.scene_sets = lambda: list(scene_sets)
+made = []
+def create_set(name, members):
+    made.append([name, members])
+    scene_sets.append(name + "1")
+    return name + "1"
+items.create_set = create_set
+QtWidgets.QInputDialog.getText = staticmethod(lambda *a, **k: ("new_set", True))
+set_dialog = widget.SetDialog(None, "render_set")
+combo = set_dialog.set_name
+out["set_dialog"] = {
+    "title": set_dialog.windowTitle(),
+    "sets": [combo.itemText(i) for i in range(combo.count())],
+    "current": set_dialog.value(),
+    "new_button": [set_dialog.new_button.toolTip(), set_dialog.new_button.icon().isNull()],
+    "button_above_dropdown": set_dialog.layout().itemAt(0).layout().itemAt(0).widget() is set_dialog.new_button
+    and set_dialog.layout().itemAt(1).widget() is combo,
+}
+scene_selection[:] = ["a_geo", "b_geo"]
+set_dialog.new_button.click()
+out["set_dialog"]["made"] = made
+out["set_dialog"]["after_new"] = [[combo.itemText(i) for i in range(combo.count())], set_dialog.value()]
+scene_selection.clear()
+before = len(warnings)
+set_dialog.new_button.click()
+out["set_dialog"]["nothing_selected_warns"] = [len(warnings) - before, len(made)]
+out["set_dialog"]["missing_current_kept"] = widget.SetDialog(None, "gone_set").value()
 print(json.dumps(out))
 """
 
@@ -639,7 +669,7 @@ def test_selection_editor_has_icon_buttons_to_add_entries(selection_dialog_probe
 
 
 def test_entries_empty_space_menu_adds(selection_dialog_probe):
-    assert selection_dialog_probe["empty_menu"] == ["Add Selected", "Add Pattern...", "Add Set..."]
+    assert selection_dialog_probe["empty_menu"] == ["Add Selected", "Add Pattern...", "Add Selection Set..."]
 
 
 def test_entry_menu_removes(selection_dialog_probe):
@@ -737,3 +767,20 @@ def test_delete_button_at_the_top_right_removes_selected_entries(selection_dialo
     assert selection_dialog_probe["delete_on_the_right"]
     assert selection_dialog_probe["delete_enabled_with_a_selection"]
     assert selection_dialog_probe["after_remove"] == 1
+
+
+def test_set_picker_is_titled_selection_set(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["title"] == "Selection Set"
+    assert window["sets"] == ["anim_set", "render_set"]
+    assert window["current"] == "render_set"
+    assert selection_dialog_probe["set_dialog"]["missing_current_kept"] == "gone_set"
+
+
+def test_set_picker_makes_a_new_set_from_the_selection(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["new_button"] == ["New Selection Set from Selected", False]
+    assert window["button_above_dropdown"]
+    assert window["made"] == [["new_set", ["a_geo", "b_geo"]]]
+    assert window["after_new"] == [["anim_set", "render_set", "new_set1"], "new_set1"]
+    assert window["nothing_selected_warns"] == [1, 1]

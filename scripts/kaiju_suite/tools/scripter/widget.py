@@ -897,7 +897,7 @@ class SelectionDialog(QtWidgets.QDialog):
         if row is None:
             menu.addAction("Add Selected", self._add_selected)
             menu.addAction("Add Pattern...", self._add_pattern)
-            menu.addAction("Add Set...", self._add_set)
+            menu.addAction("Add Selection Set...", self._add_set)
         else:
             if not row.isSelected():
                 self.table.clearSelection()
@@ -969,15 +969,10 @@ class SelectionDialog(QtWidgets.QDialog):
         return (pattern, node_type) if pattern else None
 
     def _ask_set(self, current=None):
-        sets = items.scene_sets()
-        if current and current not in sets:
-            sets.insert(0, current)
-        if not sets:
-            _warn("No selection sets in the scene.")
+        dialog = SetDialog(self, current)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return ""
-        index = sets.index(current) if current in sets else 0
-        name, ok = QtWidgets.QInputDialog.getItem(self, "Set", "Selection set:", sets, index, False)
-        return name if ok else ""
+        return dialog.value()
 
     def _add_pattern(self):
         answer = self._ask_pattern()
@@ -1160,3 +1155,60 @@ class PatternDialog(QtWidgets.QDialog):
     def values(self):
         """``[pattern, node_type]``, the pattern stripped of outer spaces."""
         return [self.pattern.text().strip(), self.node_type.currentText()]
+
+
+class SetDialog(QtWidgets.QDialog):
+    """Pick a selection set for a set entry, or make a new one from the
+    scene selection with the button above the list."""
+
+    def __init__(self, parent, current=None):
+        super().__init__(parent)
+        self.setWindowTitle("Selection Set")
+        self.new_button = QtWidgets.QToolButton()
+        self.new_button.setIcon(icons.same_when_selected(icons.icon("scripter_new_set.svg")))
+        self.new_button.setToolTip("New Selection Set from Selected")
+        self.new_button.setAutoRaise(True)
+        self.new_button.clicked.connect(self._new_set)
+        button_row = QtWidgets.QHBoxLayout()
+        button_row.addWidget(self.new_button)
+        button_row.addStretch(1)
+
+        self.set_name = QtWidgets.QComboBox()
+        sets = items.scene_sets()
+        if current and current not in sets:
+            sets.insert(0, current)
+        self.set_name.addItems(sets)
+        if current:
+            self.set_name.setCurrentText(current)
+
+        self.ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        self.ok_cancel.accepted.connect(self.accept)
+        self.ok_cancel.rejected.connect(self.reject)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addLayout(button_row)
+        layout.addWidget(self.set_name)
+        layout.addWidget(self.ok_cancel)
+        self.resize(300, self.sizeHint().height())
+
+    def value(self):
+        """The picked set's name; ``""`` if there are none."""
+        return self.set_name.currentText()
+
+    def _new_set(self):
+        members = items.selected_names()
+        if not members:
+            _warn("Nothing selected to make a set from.")
+            return
+        name, ok = QtWidgets.QInputDialog.getText(self, "New Selection Set", "Name:", text="selection_set")
+        if not ok or not name.strip():
+            return
+        try:
+            made = items.create_set(name, members)
+        except (ValueError, RuntimeError) as e:
+            _warn(str(e))
+            return
+        self.set_name.addItem(made)
+        self.set_name.setCurrentText(made)
