@@ -785,6 +785,18 @@ class _EntryList(QtWidgets.QTreeWidget):
         super().mousePressEvent(event)
 
 
+class _PreviewList(QtWidgets.QListWidget):
+    """The Selection editor's preview: double-click anywhere calls ``on_double_click``."""
+
+    def __init__(self, on_double_click):
+        super().__init__()
+        self.on_double_click = on_double_click
+
+    def mouseDoubleClickEvent(self, event):
+        self.on_double_click()
+        event.accept()
+
+
 class SelectionDialog(QtWidgets.QDialog):
     """Edit a Selection item's entries and preview what they find now. It
     isn't modal; OK calls ``on_save`` with the edited entries.
@@ -818,13 +830,10 @@ class SelectionDialog(QtWidgets.QDialog):
         # The preview shows what the selected entries find, or all of them
         # when none is selected; the objects it lists are self.previewed.
         self.previewed = []
-        self.preview = QtWidgets.QListWidget()
+        self.preview = _PreviewList(self.select_all)
         self.preview.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.preview.setToolTip("Pick objects to select them in the scene; double-click to select them all")
         self.preview.itemSelectionChanged.connect(self._select_picked)
-        self.preview.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
-        self.preview.customContextMenuRequested.connect(
-            lambda pos: self.preview_menu().exec(self.preview.viewport().mapToGlobal(pos))
-        )
         self.preview_label = QtWidgets.QLabel("Preview:")
         self.count = QtWidgets.QLabel()
         self.preview_row = QtWidgets.QHBoxLayout()
@@ -894,11 +903,6 @@ class SelectionDialog(QtWidgets.QDialog):
                 self.table.clearSelection()
                 row.setSelected(True)
             menu.addAction("Remove", self.remove_selected)
-        return menu
-
-    def preview_menu(self):
-        menu = QtWidgets.QMenu(self)
-        menu.addAction("Select All", self.select_all)
         return menu
 
     def _rebuild(self):

@@ -515,7 +515,7 @@ out = {
     "all": [preview(), dialog.count.text()],
     "empty_menu": actions(dialog.entry_menu(None)),
     "row_menu": actions(dialog.entry_menu(table.topLevelItem(0))),
-    "preview_menu": actions(dialog.preview_menu()),
+    "preview_has_menu": dialog.preview.contextMenuPolicy() == QtCore.Qt.ContextMenuPolicy.CustomContextMenu,
 }
 table.clearSelection()
 SCENE["hair_geo"] = []
@@ -530,8 +530,11 @@ out["selected_by_clicking_rows"] = list(selected)
 dialog.preview.item(0).setSelected(True)
 dialog.preview.item(1).setSelected(True)
 out["preview_pick"] = selected[-1]
-dialog.select_all()
+QTest.mouseDClick(dialog.preview.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=QtCore.QPoint(10, dialog.preview.viewport().height() - 5))
 out["select_all"] = [selected[-1], len(dialog.preview.selectedItems())]
+selected.append(None)
+QTest.mouseDClick(dialog.preview.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=dialog.preview.visualItemRect(dialog.preview.item(0)).center())
+out["select_all_on_a_row"] = [selected[-1], len(dialog.preview.selectedItems())]
 
 QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=QtCore.QPoint(10, table.viewport().height() - 5))
 out["empty_click"] = [len(table.selectedItems()), preview()]
@@ -662,9 +665,10 @@ def test_picking_preview_rows_selects_them_in_the_scene(selection_dialog_probe):
     assert selection_dialog_probe["preview_pick"] == ["L_eye_geo", "R_eye_geo"][:2]
 
 
-def test_preview_menu_selects_all(selection_dialog_probe):
-    assert selection_dialog_probe["preview_menu"] == ["Select All"]
+def test_double_clicking_the_preview_selects_all(selection_dialog_probe):
+    assert not selection_dialog_probe["preview_has_menu"]
     assert selection_dialog_probe["select_all"] == [["L_eye_geo", "R_eye_geo"], 2]
+    assert selection_dialog_probe["select_all_on_a_row"] == [["L_eye_geo", "R_eye_geo"], 2]
 
 
 def test_clicking_empty_space_previews_everything(selection_dialog_probe):
