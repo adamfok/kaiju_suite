@@ -3,8 +3,8 @@
 - **Script** (``.py``): run in ``__main__``, like the Script Editor.
 - **Folder**, **Separator** (``.sep``) and **Breakpoint** (``.brk``): see
   :mod:`.logic`; they don't run themselves.
-- **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``) and
-  **NurbsCurve** (``.curve``): data
+- **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``),
+  **NurbsCurve** (``.curve``) and **ControlShape** (``.ctrl``): data
   published from the selection with :mod:`kaiju_suite.datatypes`, and
   applied back when run. Versioned like scripts. A kind with a tool in
   :data:`TOOLS` opens it on double-click, with the item's objects selected
@@ -38,7 +38,7 @@ from maya import cmds
 from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.datatypes import animation, joints, mesh, pose, skin
+from kaiju_suite.datatypes import animation, controlshape, joints, mesh, pose, skin
 from kaiju_suite.datatypes import curves as curve_data
 from kaiju_suite.tools.scripter import versions
 
@@ -55,6 +55,7 @@ SELECTION = "Selection"
 NURBS_CURVE = "NurbsCurve"
 ANIMATION = "Animation"
 POSE = "Pose"
+CONTROLSHAPE = "ControlShape"
 
 EXTENSIONS = {
     SCRIPT: ".py",
@@ -69,16 +70,17 @@ EXTENSIONS = {
     NURBS_CURVE: curve_data.EXTENSION,
     ANIMATION: animation.EXTENSION,
     POSE: pose.EXTENSION,
+    CONTROLSHAPE: controlshape.EXTENSION,
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 # Data published from the selection, by kind.
-DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, NURBS_CURVE: curve_data, ANIMATION: animation, POSE: pose}
+DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, NURBS_CURVE: curve_data, ANIMATION: animation, POSE: pose, CONTROLSHAPE: controlshape}
 # The tool each data kind opens on double-click, by its registry name.
-TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", NURBS_CURVE: "Curve Tool", ANIMATION: "Animation Tool", POSE: "Pose Tool"}
+TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", NURBS_CURVE: "Curve Tool", ANIMATION: "Animation Tool", POSE: "Pose Tool", CONTROLSHAPE: "ControlShape Tool"}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
-RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, NURBS_CURVE, ANIMATION, POSE)
+RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, NURBS_CURVE, ANIMATION, POSE, CONTROLSHAPE)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {

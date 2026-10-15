@@ -240,7 +240,7 @@ def test_double_click_does_not_also_expand_or_collapse(folder_probe):
 def test_new_menu_shows_each_kinds_icon(folder_probe):
     # The same icon the item gets in the tree, so the menu previews it.
     assert sorted(folder_probe["new_icons"]) == sorted(
-        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh", "NurbsCurve", "Animation", "Pose"]
+        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh", "NurbsCurve", "Animation", "Pose", "ControlShape"]
     )
     assert all(folder_probe["new_icons"].values()), folder_probe["new_icons"]
 
@@ -1065,7 +1065,7 @@ from kaiju_suite.tools.scripter import widget
 
 root = tempfile.mkdtemp()
 paths = {}
-for name in ("leg.skin", "skeleton.jnt", "body.mesh", "spine.curve", "rest.pose"):
+for name in ("leg.skin", "skeleton.jnt", "body.mesh", "spine.curve", "rest.pose", "ctrls.ctrl"):
     paths[name] = os.path.join(root, name)
     open(paths[name], "w").close()
 
@@ -1148,7 +1148,11 @@ def test_double_click_on_a_pose_item_opens_the_pose_tool(data_probe):
     assert data_probe["double_click"]["rest.pose"] == [["tool", "rest.pose"]]
 
 
-@pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt", "body.mesh", "spine.curve", "rest.pose"])
+def test_double_click_on_a_controlshape_item_opens_the_controlshape_tool(data_probe):
+    assert data_probe["double_click"]["ctrls.ctrl"] == [["tool", "ctrls.ctrl"]]
+
+
+@pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt", "body.mesh", "spine.curve", "rest.pose", "ctrls.ctrl"])
 def test_data_items_have_right_click_info(data_probe, name):
     assert "Info..." in data_probe["menus"][name]
     assert data_probe["info"][name] == [["describe", name], ["box", name]]
