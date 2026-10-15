@@ -847,8 +847,10 @@ class SelectionDialog(QtWidgets.QDialog):
         ok_cancel.accepted.connect(self.accept)
         ok_cancel.rejected.connect(self.reject)
         self.ok_cancel = ok_cancel
-        # The open window editing a Selected entry's objects, if any.
+        # The open window editing a Selected entry's objects, or picking a
+        # set, if any. The entries wait while one is open.
         self.objects_window = None
+        self.set_window = None
 
         add_row = QtWidgets.QHBoxLayout()
         self.add_buttons = []
@@ -968,11 +970,9 @@ class SelectionDialog(QtWidgets.QDialog):
         pattern, node_type = dialog.values()
         return (pattern, node_type) if pattern else None
 
-    def _ask_set(self, current=None):
-        dialog = SetDialog(self, current)
-        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-            return ""
-        return dialog.value()
+    def _ask_set(self, on_pick, current=None):
+        """Open the Selection Set picker (not modal); its OK calls ``on_pick`` with the set's name."""
+        self._open_child("set_window", SetDialog(self, current, on_pick))
 
     def _add_pattern(self):
         answer = self._ask_pattern()
@@ -981,10 +981,11 @@ class SelectionDialog(QtWidgets.QDialog):
             self._rebuild()
 
     def _add_set(self):
-        name = self._ask_set()
-        if name:
+        def add(name):
             self.entries.append({"type": items.SET, "value": name})
             self._rebuild()
+
+        self._ask_set(add)
 
     def _edit_row(self, row, _column):
         """Change an entry: a Selected one in a window of its objects, a
@@ -1000,12 +1001,12 @@ class SelectionDialog(QtWidgets.QDialog):
                 self._rebuild()
             return
         if entry["type"] == items.SET:
-            value = self._ask_set(entry["value"])
-        else:
-            return
-        if value:
-            entry["value"] = value
-            self._rebuild()
+
+            def change(name):
+                entry["value"] = name
+                self._rebuild()
+
+            self._ask_set(change, entry["value"])
 
     def _edit_objects(self, entry):
         """Open a window on a Selected entry's objects. The entries list and
@@ -1015,15 +1016,20 @@ class SelectionDialog(QtWidgets.QDialog):
             entry["value"] = names
             self._rebuild()
 
+        self._open_child("objects_window", SelectedObjectsDialog(self, entry["value"], save))
+
+    def _open_child(self, attr, window):
+        """Show ``window`` (not modal) as ``self.<attr>``, holding the entries until it closes."""
+
         def closed():
-            self.objects_window = None
+            setattr(self, attr, None)
             self._lock(False)
             self._refresh()
 
-        self.objects_window = SelectedObjectsDialog(self, entry["value"], save)
-        self.objects_window.finished.connect(closed)
+        setattr(self, attr, window)
+        window.finished.connect(closed)
         self._lock(True)
-        self.objects_window.show()
+        window.show()
 
     def remove_selected(self):
         gone = {row.data(0, PATH_ROLE) for row in self.table.selectedItems()}
@@ -1161,25 +1167,34 @@ class SetDialog(QtWidgets.QDialog):
     """Pick a selection set for a set entry, or make a new one from the
     scene selection with the button above the list."""
 
-    def __init__(self, parent, current=None):
+    def __init__(self, parent, current, on_pick):
         super().__init__(parent)
+        self.on_pick = on_pick
         self.setWindowTitle("Selection Set")
         self.new_button = QtWidgets.QToolButton()
         self.new_button.setIcon(icons.same_when_selected(icons.icon("scripter_new_set.svg")))
         self.new_button.setToolTip("New Selection Set from Selected")
         self.new_button.setAutoRaise(True)
         self.new_button.clicked.connect(self._new_set)
+        self.delete_button = QtWidgets.QToolButton()
+        self.delete_button.setIcon(icons.same_when_selected(icons.icon("scripter_delete_set.svg")))
+        self.delete_button.setToolTip("Delete Selection Set")
+        self.delete_button.setAutoRaise(True)
+        self.delete_button.clicked.connect(self._delete_set)
         button_row = QtWidgets.QHBoxLayout()
         button_row.addWidget(self.new_button)
+        button_row.addWidget(self.delete_button)
         button_row.addStretch(1)
 
         self.set_name = QtWidgets.QComboBox()
+        self.set_name.currentTextChanged.connect(lambda name: self.delete_button.setEnabled(bool(name)))
         sets = items.scene_sets()
         if current and current not in sets:
             sets.insert(0, current)
         self.set_name.addItems(sets)
         if current:
             self.set_name.setCurrentText(current)
+        self.delete_button.setEnabled(bool(self.value()))
 
         self.ok_cancel = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
@@ -1196,6 +1211,21 @@ class SetDialog(QtWidgets.QDialog):
     def value(self):
         """The picked set's name; ``""`` if there are none."""
         return self.set_name.currentText()
+
+    def accept(self):
+        if self.value():
+            self.on_pick(self.value())
+        super().accept()
+
+    def _delete_set(self):
+        """Delete the picked set from the scene (not its members), as one undo step."""
+        name = self.value()
+        try:
+            items.delete_set(name)
+        except (ValueError, RuntimeError) as e:
+            _warn(str(e))
+            return
+        self.set_name.removeItem(self.set_name.currentIndex())
 
     def _new_set(self):
         members = items.selected_names()

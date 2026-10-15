@@ -491,3 +491,25 @@ def test_create_set_needs_a_name_and_a_selection(new_scene):
     with pytest.raises(ValueError, match="name"):
         items.create_set("  ", [a])
     assert items.scene_sets() == []
+
+
+def test_delete_set_keeps_its_members_as_one_undo_step(new_scene):
+    a = cmds.createNode("transform", name="a_geo")
+    cmds.sets(a, name="render_set")
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+
+    items.delete_set("render_set")
+
+    assert not cmds.objExists("render_set") and cmds.objExists("a_geo")
+    cmds.undo()
+    assert items.find({"type": items.SET, "value": "render_set"}) == ["a_geo"]
+
+
+def test_delete_set_only_deletes_selection_sets(new_scene):
+    cmds.createNode("transform", name="a_geo")
+    with pytest.raises(ValueError, match="Not a selection set"):
+        items.delete_set("a_geo")
+    with pytest.raises(ValueError, match="Not a selection set"):
+        items.delete_set("initialShadingGroup")
+    assert cmds.objExists("a_geo")

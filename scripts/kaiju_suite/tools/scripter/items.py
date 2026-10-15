@@ -421,3 +421,11 @@ def create_set(name, members):
     if not members:
         raise ValueError("Nothing selected to make a set from.")
     return cmds.sets(members, name=name)
+
+
+@undoable
+def delete_set(name):
+    """Delete the selection set ``name`` (not its members), as one undo step."""
+    if name not in scene_sets():
+        raise ValueError(f"Not a selection set: {name}")
+    cmds.delete(name)

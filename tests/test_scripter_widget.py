@@ -608,14 +608,22 @@ def create_set(name, members):
     scene_sets.append(name + "1")
     return name + "1"
 items.create_set = create_set
+deleted = []
+def delete_set(name):
+    deleted.append(name)
+    scene_sets.remove(name)
+items.delete_set = delete_set
 QtWidgets.QInputDialog.getText = staticmethod(lambda *a, **k: ("new_set", True))
-set_dialog = widget.SetDialog(None, "render_set")
+picked_sets = []
+set_dialog = widget.SetDialog(None, "render_set", picked_sets.append)
 combo = set_dialog.set_name
 out["set_dialog"] = {
     "title": set_dialog.windowTitle(),
     "sets": [combo.itemText(i) for i in range(combo.count())],
     "current": set_dialog.value(),
     "new_button": [set_dialog.new_button.toolTip(), set_dialog.new_button.icon().isNull()],
+    "delete_button": [set_dialog.delete_button.toolTip(), set_dialog.delete_button.icon().isNull()],
+    "delete_beside_new": set_dialog.layout().itemAt(0).layout().itemAt(1).widget() is set_dialog.delete_button,
     "button_above_dropdown": set_dialog.layout().itemAt(0).layout().itemAt(0).widget() is set_dialog.new_button
     and set_dialog.layout().itemAt(1).widget() is combo,
 }
@@ -627,7 +635,26 @@ scene_selection.clear()
 before = len(warnings)
 set_dialog.new_button.click()
 out["set_dialog"]["nothing_selected_warns"] = [len(warnings) - before, len(made)]
-out["set_dialog"]["missing_current_kept"] = widget.SetDialog(None, "gone_set").value()
+out["set_dialog"]["missing_current_kept"] = widget.SetDialog(None, "gone_set", print).value()
+
+combo.setCurrentText("anim_set")
+set_dialog.delete_button.click()
+out["set_dialog"]["deleted"] = [deleted, [combo.itemText(i) for i in range(combo.count())]]
+combo.clear()
+out["set_dialog"]["delete_enabled_when_empty"] = set_dialog.delete_button.isEnabled()
+set_dialog.accept()
+out["set_dialog"]["empty_ok_picks_nothing"] = picked_sets
+
+# Adding a set entry opens the picker without blocking Maya; the editor waits.
+scene_sets[:] = ["anim_set", "render_set"]
+saved2 = []
+editor = widget.SelectionDialog(None, "hero", [], saved2.append)
+editor._add_set()
+set_window = editor.set_window
+out["set_window"] = {"modal": set_window.isModal(), "visible": set_window.isVisible(), "editor_locked": not editor.table.isEnabled()}
+set_window.set_name.setCurrentText("render_set")
+set_window.accept()
+out["set_window"]["after_ok"] = [editor.entries, editor.table.isEnabled(), editor.set_window is None]
 print(json.dumps(out))
 """
 
@@ -784,3 +811,19 @@ def test_set_picker_makes_a_new_set_from_the_selection(selection_dialog_probe):
     assert window["made"] == [["new_set", ["a_geo", "b_geo"]]]
     assert window["after_new"] == [["anim_set", "render_set", "new_set1"], "new_set1"]
     assert window["nothing_selected_warns"] == [1, 1]
+
+
+def test_set_picker_deletes_the_picked_set(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["delete_button"] == ["Delete Selection Set", False]
+    assert window["delete_beside_new"]
+    assert window["deleted"] == [["anim_set"], ["render_set", "new_set1"]]
+    assert not window["delete_enabled_when_empty"]
+    assert window["empty_ok_picks_nothing"] == []
+
+
+def test_set_picker_does_not_block_maya(selection_dialog_probe):
+    window = selection_dialog_probe["set_window"]
+    assert not window["modal"] and window["visible"]
+    assert window["editor_locked"]
+    assert window["after_ok"] == [[{"type": "set", "value": "render_set"}], True, True]
