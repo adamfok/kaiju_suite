@@ -1,5 +1,5 @@
 from maya import cmds
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
@@ -18,8 +18,6 @@ class CurveToolWindow(ToolWindow):
     TITLE = "Kaiju Curve Tool"
 
     def build_ui(self):
-        # Tabs, though there's only QC for now, so a Utilities tab can join it
-        # as in the other datatype tools.
         tabs = QtWidgets.QTabWidget()
         qc = QCTab(
             logic.QC_CHECKS,
@@ -29,6 +27,14 @@ class CurveToolWindow(ToolWindow):
             logic.select_problem,
         )
         tabs.addTab(qc, "QC")
+        # A placeholder, so every datatype tool has the same two tabs.
+        utilities = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(utilities)
+        empty = QtWidgets.QLabel("No curve utilities yet.")
+        empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        empty.setEnabled(False)
+        layout.addWidget(empty)
+        tabs.addTab(utilities, "Utilities")
         tabs.setCurrentIndex(settings.get(SETTINGS_KEY, "tab", 0))
         tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
         self.layout.addWidget(tabs)

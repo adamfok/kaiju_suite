@@ -1,4 +1,4 @@
-"""The Curve Tool window: one QC tab for now.
+"""The Curve Tool window: a QC tab and a Utilities tab (empty for now).
 
 maya.standalone runs a Qt application without widgets, so the window's
 build_ui runs on a stand-in widget off-screen, in a separate mayapy process
@@ -61,8 +61,8 @@ def test_the_window_is_the_kaiju_curve_tool(probe):
     assert probe["title"] == "Kaiju Curve Tool"
 
 
-def test_the_window_has_one_qc_tab(probe):
-    assert probe["tabs"] == ["QC"]
+def test_the_window_has_qc_and_utilities_tabs(probe):
+    assert probe["tabs"] == ["QC", "Utilities"]
 
 
 def test_the_qc_tab_lists_the_curve_checks(probe):
