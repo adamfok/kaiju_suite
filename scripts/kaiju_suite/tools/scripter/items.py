@@ -12,8 +12,8 @@
   any file Maya can import, into the root namespace; Export File exports
   the selection, overwriting the file. Not versioned.
 - **Selection** (``.sel``): a list of entries, as ``{"entries": [...]}``,
-  each ``{"type": ..., "value": ...}``: a picked object (its shortest unique
-  name, or a component), a name pattern (Maya wildcards, searched on every
+  each ``{"type": ..., "value": ...}``: selected objects (a list of their
+  shortest unique names, or components), a name pattern (Maya wildcards, searched on every
   run) or a selection set (its members read on every run). Running it
   replaces the selection with what they find. Not versioned.
 
@@ -226,10 +226,10 @@ def export_selected(file_path):
 
 # -- Selection --------------------------------------------------------------
 
-PICKED = "picked"
+SELECTED = "selected"
 PATTERN = "pattern"
 SET = "set"
-# How many entries a summary names before "...and N more".
+# How many names a summary lists before "...and N more".
 MAX_SUMMARY = 10
 
 
@@ -250,36 +250,40 @@ def write_entries(path, entries):
         json.dump({"entries": list(entries)}, f, indent=2)
 
 
-def picked_names():
-    """The scene selection as picked-entry names: the shortest unique ones."""
+def selected_names():
+    """The scene selection as a Selected entry saves it: the shortest unique names."""
     return cmds.ls(selection=True) or []
 
 
-def add_picked(entries, names):
-    """``entries`` with a picked entry added for each of ``names`` not already picked."""
-    entries = list(entries)
-    taken = {e["value"] for e in entries if e["type"] == PICKED}
-    for name in names:
-        if name not in taken:
-            entries.append({"type": PICKED, "value": name})
-            taken.add(name)
-    return entries
+def add_selected(entries, names):
+    """``entries`` with one Selected entry added holding ``names`` (each
+    once); unchanged when there are none."""
+    names = list(dict.fromkeys(names))
+    return list(entries) + ([{"type": SELECTED, "value": names}] if names else [])
+
+
+def _names(entry):
+    """What an entry lists by name: its objects, patterns or set."""
+    if entry["type"] == SELECTED:
+        return list(entry["value"])
+    if entry["type"] == SET:
+        return [f"set: {entry['value']}"]
+    return [entry["value"]]
 
 
 def entry_label(entry):
-    """How an entry reads in a list, e.g. ``body_geo``, ``*_geo``, ``set: render_set``."""
-    if entry["type"] == SET:
-        return f"set: {entry['value']}"
-    return entry["value"]
+    """How an entry reads in a list, e.g. ``body_geo, hair_geo``, ``*_geo``, ``set: render_set``."""
+    return ", ".join(_names(entry))
 
 
 def summary(entries):
-    """One line naming ``entries``, for a tooltip."""
+    """One line naming what ``entries`` hold, for a tooltip."""
     if not entries:
         return "No entries. Double-click to add some."
-    text = ", ".join(entry_label(e) for e in entries[:MAX_SUMMARY])
-    if len(entries) > MAX_SUMMARY:
-        text += f" ...and {len(entries) - MAX_SUMMARY} more"
+    names = [name for entry in entries for name in _names(entry)]
+    text = ", ".join(names[:MAX_SUMMARY])
+    if len(names) > MAX_SUMMARY:
+        text += f" ...and {len(names) - MAX_SUMMARY} more"
     return text
 
 
@@ -296,14 +300,8 @@ def _set_members(name, seen):
     return found
 
 
-def find(entry):
-    """What ``entry`` finds in the scene now, as shortest unique names.
-    Intermediate objects (e.g. a deformed mesh's ``...ShapeOrig``) are left out."""
-    kind, value = entry["type"], entry["value"]
-    if kind == SET:
-        names = _set_members(value, set()) if cmds.objExists(value) else []
-    else:
-        names = value.split() if kind == PATTERN else [value]
+def _ls(names):
+    """``names`` as they are in the scene now, leaving out intermediate objects."""
     if not names:
         return []
     try:
@@ -315,29 +313,56 @@ def find(entry):
     return [name for name in found if name not in intermediate]
 
 
+def lookup(entry):
+    """``(found, missing)`` for ``entry``: what it finds in the scene now, and
+    what it can't find (a Selected entry's missing objects, or the entry's
+    label when it finds nothing)."""
+    kind, value = entry["type"], entry["value"]
+    if kind == SELECTED:
+        found, missing = [], []
+        for name in value:
+            here = _ls([name])
+            found.extend(here)
+            if not here:
+                missing.append(name)
+        return found, missing
+    if kind == SET:
+        found = _ls(_set_members(value, set()) if cmds.objExists(value) else [])
+    else:
+        found = _ls(value.split())
+    return found, ([] if found else [entry_label(entry)])
+
+
+def find(entry):
+    """What ``entry`` finds in the scene now, as shortest unique names.
+    Intermediate objects (e.g. a deformed mesh's ``...ShapeOrig``) are left out."""
+    return lookup(entry)[0]
+
+
+def missing(entry):
+    """What ``entry`` can't find in the scene now (see :func:`lookup`)."""
+    return lookup(entry)[1]
+
+
 def resolve(entries):
-    """``(objects, empty)``: everything ``entries`` find, in entry order and
-    without repeats, and the entries that find nothing."""
-    objects, empty, seen = [], [], set()
+    """``(objects, missing)``: everything ``entries`` find, in entry order and
+    without repeats, and what they can't find."""
+    objects, missed = [], []
     for entry in entries:
-        found = find(entry)
-        if not found:
-            empty.append(entry)
-        for name in found:
-            if name not in seen:
-                seen.add(name)
-                objects.append(name)
-    return objects, empty
+        found, gone = lookup(entry)
+        objects.extend(found)
+        missed.extend(gone)
+    return list(dict.fromkeys(objects)), missed
 
 
 def select_entries(entries):
     """Replace the selection with what ``entries`` find. Raises, selecting
-    nothing new, if there are none or any of them finds nothing."""
+    nothing new, if there are none or anything is missing."""
     if not entries:
         raise ValueError("This Selection has no entries. Double-click it to add some.")
-    objects, empty = resolve(entries)
-    if empty:
-        raise ValueError("Found nothing for: " + ", ".join(entry_label(e) for e in empty))
+    objects, missed = resolve(entries)
+    if missed:
+        raise ValueError("Found nothing for: " + ", ".join(missed))
     cmds.select(objects, replace=True)
     return objects
 

@@ -521,10 +521,15 @@ class ScripterWindow(ToolWindow):
         entries = self.attempt(lambda: items.read_entries(path))
         if entries is None:
             return
-        dialog = SelectionDialog(self, os.path.splitext(os.path.basename(path))[0], entries)
-        if dialog.exec() == QtWidgets.QDialog.DialogCode.Accepted:
-            self.attempt(lambda: items.write_entries(path, dialog.entries))
+
+        def save(edited):
+            self.attempt(lambda: items.write_entries(path, edited))
             self.populate()
+
+        # Not modal, so you can select objects in Maya while it's open.
+        dialog = SelectionDialog(self, os.path.splitext(os.path.basename(path))[0], entries, save)
+        dialog.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose)
+        dialog.show()
 
     def _on_double_click(self, item, _column):
         path = item.data(0, PATH_ROLE)
@@ -640,7 +645,7 @@ class ScripterWindow(ToolWindow):
             default = os.path.splitext(os.path.basename(target))[0]
             create = lambda name: logic.create_file_item(kind, directory, name, target, index)  # noqa: E731
         elif kind == logic.SELECTION:
-            selection = items.picked_names()
+            selection = items.selected_names()
             create = lambda name: logic.create_selection_item(directory, name, selection, index)  # noqa: E731
         else:
             create = lambda name: logic.create_item(kind, directory, name, index)  # noqa: E731
@@ -771,19 +776,29 @@ class VersionsDialog(QtWidgets.QDialog):
         self._fill()
 
 
+class _EntryList(QtWidgets.QTreeWidget):
+    """The Selection editor's entries: clicking empty space clears the selection."""
+
+    def mousePressEvent(self, event):
+        if self.itemAt(event.position().toPoint()) is None:
+            self.clearSelection()
+        super().mousePressEvent(event)
+
+
 class SelectionDialog(QtWidgets.QDialog):
-    """Edit a Selection item's entries and preview what they find now.
-    The edited entries are in :attr:`entries` once it's accepted."""
+    """Edit a Selection item's entries and preview what they find now. It
+    isn't modal; OK calls ``on_save`` with the edited entries."""
 
-    TYPE_LABELS = {items.PICKED: "Picked", items.PATTERN: "Pattern", items.SET: "Set"}
+    TYPE_LABELS = {items.SELECTED: "Selected", items.PATTERN: "Pattern", items.SET: "Set"}
 
-    def __init__(self, window, name, entries):
+    def __init__(self, window, name, entries, on_save):
         super().__init__(window)
-        self.entries = list(entries)
+        self.entries = [dict(e) for e in entries]
+        self.on_save = on_save
         self.setWindowTitle(f"Selection: {name}")
         self.resize(460, 520)
 
-        self.table = QtWidgets.QTreeWidget()
+        self.table = _EntryList()
         self.table.setHeaderLabels(["Type", "Entry", "Found"])
         self.table.setRootIsDecorated(False)
         self.table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -829,7 +844,6 @@ class SelectionDialog(QtWidgets.QDialog):
         ok_cancel.rejected.connect(self.reject)
 
         layout = QtWidgets.QVBoxLayout(self)
-        layout.addWidget(QtWidgets.QLabel("Entries"))
         layout.addWidget(self.table, 1)
         layout.addLayout(buttons)
         layout.addLayout(self.preview_row)
@@ -837,12 +851,17 @@ class SelectionDialog(QtWidgets.QDialog):
         layout.addWidget(ok_cancel)
         self._rebuild()
 
+    def accept(self):
+        self.on_save(self.entries)
+        super().accept()
+
     def _rebuild(self):
         """Fill the entries list again after it was edited."""
         with QtCore.QSignalBlocker(self.table):
             self.table.clear()
             for index, entry in enumerate(self.entries):
-                row = QtWidgets.QTreeWidgetItem(self.table, [self.TYPE_LABELS.get(entry["type"], entry["type"]), entry["value"], ""])
+                label = items.entry_label(entry) if entry["type"] == items.SELECTED else entry["value"]
+                row = QtWidgets.QTreeWidgetItem(self.table, [self.TYPE_LABELS.get(entry["type"], entry["type"]), label, ""])
                 row.setData(0, PATH_ROLE, index)
         self._refresh()
 
@@ -853,24 +872,24 @@ class SelectionDialog(QtWidgets.QDialog):
         for i in range(self.table.topLevelItemCount()):
             row = self.table.topLevelItem(i)
             entry = self.entries[row.data(0, PATH_ROLE)]
-            found = items.find(entry)
+            found, missing = items.lookup(entry)
             row.setText(2, str(len(found)))
             for column in range(3):
-                row.setForeground(column, default if found else FAILED_COLOR)
-            row.setToolTip(1, "" if found else "Finds nothing in the scene now")
+                row.setForeground(column, FAILED_COLOR if missing else default)
+            row.setToolTip(1, f"Not in the scene now: {', '.join(missing)}" if missing else items.entry_label(entry))
             if row.isSelected():
                 chosen.append(entry)
-        self.previewed, _empty = items.resolve(chosen or self.entries)
+        self.previewed, _missing = items.resolve(chosen or self.entries)
         self.preview.clear()
         self.preview.addItems(self.previewed)
         self.count.setText(f"{len(self.previewed)} object{'' if len(self.previewed) == 1 else 's'}")
 
     def _add_selected(self):
-        names = items.picked_names()
+        names = items.selected_names()
         if not names:
             _warn("Nothing selected to add.")
             return
-        self.entries = items.add_picked(self.entries, names)
+        self.entries = items.add_selected(self.entries, names)
         self._rebuild()
 
     def _ask_pattern(self, current=""):

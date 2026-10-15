@@ -225,18 +225,18 @@ def test_export_refuses_formats_it_cant_write(tmp_path):
 # -- selection --------------------------------------------------------------
 
 
-def _picked(*names):
-    return [{"type": items.PICKED, "value": n} for n in names]
+def _selected(*names):
+    return {"type": items.SELECTED, "value": list(names)}
 
 
-def test_new_selection_item_saves_the_selection_as_picked_entries(tmp_path, new_scene):
+def test_new_selection_item_saves_the_selection_as_one_selected_entry(tmp_path, new_scene):
     a = cmds.createNode("transform", name="body_geo")
     b = cmds.createNode("transform", name="hair_geo")
 
     path = logic.create_selection_item(str(tmp_path), "hero", [a, b])
 
     assert path == os.path.join(str(tmp_path), "hero.sel")
-    assert items.read_entries(path) == _picked("body_geo", "hair_geo")
+    assert items.read_entries(path) == [_selected("body_geo", "hair_geo")]
     [entry] = logic.scan(str(tmp_path))
     assert (entry.kind, entry.type_label) == (items.SELECTION, "Selection")
     assert not versions.is_versioned(path)
@@ -250,7 +250,7 @@ def test_new_selection_item_with_nothing_selected_starts_empty(tmp_path, new_sce
 def test_entries_round_trip(tmp_path):
     path = logic.create_selection_item(str(tmp_path), "hero", [])
     entries = [
-        {"type": items.PICKED, "value": "body_geo"},
+        _selected("body_geo", "hair_geo"),
         {"type": items.PATTERN, "value": "*_geo"},
         {"type": items.SET, "value": "render_set"},
     ]
@@ -258,31 +258,33 @@ def test_entries_round_trip(tmp_path):
     assert items.read_entries(path) == entries
 
 
-def test_add_picked_keeps_order_and_skips_ones_already_there():
-    entries = _picked("a")
-    assert items.add_picked(entries, ["b", "a", "c", "b"]) == _picked("a", "b", "c")
+def test_add_selected_adds_one_entry_for_all_the_names():
+    entries = [_selected("a")]
+    assert items.add_selected(entries, ["b", "a", "c", "b"]) == [_selected("a"), _selected("b", "a", "c")]
+    assert items.add_selected(entries, []) == [_selected("a")]
 
 
-def test_picked_names_are_the_shortest_unique_ones(new_scene):
+def test_selected_names_are_the_shortest_unique_ones(new_scene):
     for group in ("L_arm", "R_arm"):
         cmds.createNode("transform", name="hand_geo", parent=cmds.createNode("transform", name=group))
     cmds.createNode("transform", name="body_geo")
     cmds.select("body_geo", "|L_arm|hand_geo")
 
-    assert items.picked_names() == ["body_geo", "L_arm|hand_geo"]
+    assert items.selected_names() == ["body_geo", "L_arm|hand_geo"]
 
 
-def test_picked_entry_finds_its_object_and_components(new_scene):
-    cube = cmds.polyCube(name="body_geo")[0]
-    assert items.find({"type": items.PICKED, "value": cube}) == ["body_geo"]
-    assert items.find({"type": items.PICKED, "value": "body_geo.f[0:2]"}) == ["body_geo.f[0:2]"]
-    assert items.find({"type": items.PICKED, "value": "gone"}) == []
+def test_selected_entry_finds_its_objects_and_components_in_order(new_scene):
+    cmds.polyCube(name="body_geo")
+    cmds.createNode("transform", name="a_geo")
+    entry = _selected("body_geo", "body_geo.f[0:2]", "a_geo", "gone")
+    assert items.find(entry) == ["body_geo", "body_geo.f[0:2]", "a_geo"]
+    assert items.missing(entry) == ["gone"]
 
 
-def test_picked_entry_still_finds_an_object_after_reparenting(new_scene):
+def test_selected_entry_still_finds_an_object_after_reparenting(new_scene):
     node = cmds.createNode("transform", name="body_geo")
     cmds.parent(node, cmds.createNode("transform", name="grp"))
-    assert items.find({"type": items.PICKED, "value": "body_geo"}) == ["body_geo"]
+    assert items.find(_selected("body_geo")) == ["body_geo"]
 
 
 def test_pattern_entry_uses_maya_wildcards(new_scene):
@@ -294,7 +296,9 @@ def test_pattern_entry_uses_maya_wildcards(new_scene):
         "body_geo",
         "hair_geo",
     ]
-    assert items.find({"type": items.PATTERN, "value": "*_nothing"}) == []
+    nothing = {"type": items.PATTERN, "value": "*_nothing"}
+    assert items.find(nothing) == []
+    assert items.missing(nothing) == ["*_nothing"]
 
 
 def test_set_entry_expands_nested_sets(new_scene):
@@ -304,6 +308,7 @@ def test_set_entry_expands_nested_sets(new_scene):
 
     assert sorted(items.find({"type": items.SET, "value": "outer_set"})) == ["a", "b", "c"]
     assert items.find({"type": items.SET, "value": "missing_set"}) == []
+    assert items.missing({"type": items.SET, "value": "missing_set"}) == ["set: missing_set"]
     assert items.find({"type": items.SET, "value": "a"}) == []
 
 
@@ -316,19 +321,19 @@ def test_set_entry_keeps_components(new_scene):
 def test_resolve_combines_in_entry_order_without_repeats(new_scene):
     for name in ("c_geo", "a_geo", "b_geo"):
         cmds.createNode("transform", name=name)
-    entries = _picked("c_geo") + [{"type": items.PATTERN, "value": "*_geo"}] + _picked("a_geo")
+    entries = [_selected("c_geo"), {"type": items.PATTERN, "value": "*_geo"}, _selected("a_geo")]
 
-    objects, empty = items.resolve(entries)
+    objects, missing = items.resolve(entries)
 
     assert objects[0] == "c_geo"
     assert sorted(objects) == ["a_geo", "b_geo", "c_geo"]
-    assert empty == []
+    assert missing == []
 
 
-def test_resolve_reports_entries_that_find_nothing(new_scene):
+def test_resolve_reports_what_is_missing(new_scene):
     cmds.createNode("transform", name="a_geo")
-    entries = _picked("a_geo", "gone") + [{"type": items.SET, "value": "no_set"}]
-    assert items.resolve(entries) == (["a_geo"], entries[1:])
+    entries = [_selected("a_geo", "gone"), {"type": items.SET, "value": "no_set"}]
+    assert items.resolve(entries) == (["a_geo"], ["gone", "set: no_set"])
 
 
 def test_running_a_selection_item_replaces_the_selection_in_order(tmp_path, new_scene):
@@ -351,16 +356,16 @@ def test_running_a_selection_item_finds_objects_made_by_earlier_steps(tmp_path, 
     assert cmds.ls(selection=True) == ["new_geo"]
 
 
-def test_selection_item_fails_naming_the_entries_that_found_nothing(tmp_path, new_scene):
+def test_selection_item_fails_naming_what_is_missing(tmp_path, new_scene):
     cmds.createNode("transform", name="here")
     path = logic.create_selection_item(str(tmp_path), "hero", ["here"])
-    items.write_entries(path, _picked("here", "gone") + [{"type": items.SET, "value": "no_set"}])
+    items.write_entries(path, [_selected("here", "gone"), {"type": items.SET, "value": "no_set"}])
     cmds.select(clear=True)
     runner = logic.Runner()
 
     assert runner.run([path]) == logic.FAILED
     message = runner.status(path)[1]
-    assert "gone" in message and "set: no_set" in message and "here," not in message
+    assert "gone" in message and "set: no_set" in message and "here" not in message
     assert cmds.ls(selection=True) == []
 
 
@@ -371,14 +376,21 @@ def test_empty_selection_item_fails(tmp_path, new_scene):
     assert "no entries" in runner.status(path)[1].lower()
 
 
-def test_summary_lists_the_entries(tmp_path):
-    entries = _picked("body_geo") + [
+def test_entry_labels():
+    assert items.entry_label(_selected("body_geo", "hair_geo")) == "body_geo, hair_geo"
+    assert items.entry_label({"type": items.PATTERN, "value": "*_geo"}) == "*_geo"
+    assert items.entry_label({"type": items.SET, "value": "render_set"}) == "set: render_set"
+
+
+def test_summary_lists_the_entries_names(tmp_path):
+    entries = [
+        _selected("body_geo", "hair_geo"),
         {"type": items.PATTERN, "value": "*_eye_geo"},
         {"type": items.SET, "value": "render_set"},
     ]
-    assert items.summary(entries) == "body_geo, *_eye_geo, set: render_set"
+    assert items.summary(entries) == "body_geo, hair_geo, *_eye_geo, set: render_set"
     assert items.summary([]) == "No entries. Double-click to add some."
-    many = _picked(*(f"n{i}" for i in range(12)))
+    many = [_selected(*(f"n{i}" for i in range(12)))]
     assert items.summary(many).endswith("n9 ...and 2 more")
 
 
@@ -396,4 +408,4 @@ def test_entries_skip_intermediate_objects(new_scene):
 
     assert items.find({"type": items.PATTERN, "value": "body_geoShape*"}) == ["body_geoShape"]
     assert items.find({"type": items.SET, "value": "geo_set"}) == ["body_geo"]
-    assert items.find({"type": items.PICKED, "value": "body_geoShapeOrig"}) == []
+    assert items.find(_selected("body_geoShapeOrig")) == []

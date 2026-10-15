@@ -262,10 +262,10 @@ def create_file_item(kind, directory, name, target, index=None):
 
 
 def create_selection_item(directory, name, selection, index=None):
-    """Create a Selection item with a picked entry for each name in
-    ``selection``, at ``index`` as in :func:`create_item`."""
+    """Create a Selection item with one Selected entry holding the names in
+    ``selection`` (none if it's empty), at ``index`` as in :func:`create_item`."""
     path = create_item(SELECTION, directory, name, index)
-    items.write_entries(path, items.add_picked([], selection))
+    items.write_entries(path, items.add_selected([], selection))
     return path
 
 
