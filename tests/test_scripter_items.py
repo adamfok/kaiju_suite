@@ -69,6 +69,38 @@ def test_publish_data_saves_a_new_version_only_when_it_changed(tmp_path, new_sce
     assert [v.description for v in versions.list_versions(path)][-1] == "Moved the knee"
 
 
+def test_publishing_unchanged_data_leaves_the_item_unmodified(tmp_path, new_scene):
+    """'No changes' puts the file back byte for byte, so the Version column
+    doesn't gain a ``*`` (on Windows a text-mode write turned LF into CRLF)."""
+    hip = _chain()[0]
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(hip))
+    with open(path, "rb") as f:
+        before = f.read()
+
+    with pytest.raises(ValueError, match="No changes"):
+        items.publish_data(path, _long(hip), "Same")
+
+    assert versions.label(path) == "v001"
+    assert not versions.has_unpublished(path)
+    with open(path, "rb") as f:
+        assert f.read() == before
+
+
+def test_unchanged_since_checks_the_selection_without_writing(tmp_path, new_scene):
+    """Publish asks this first, so "No changes" never costs a description."""
+    hip = _chain()[0]
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(hip))
+    with open(path, "rb") as f:
+        before = f.read()
+
+    assert items.unchanged_since(path, _long(hip)) == 1
+    cmds.setAttr("knee.translateX", 1)
+    assert items.unchanged_since(path, _long(hip)) is None
+    with open(path, "rb") as f:
+        assert f.read() == before  # only compared, not written
+    assert sorted(os.listdir(str(tmp_path))) == [".scripter", "skeleton.jnt"]  # no temporary files left
+
+
 def test_publish_data_checks_the_selection_before_writing(tmp_path, new_scene):
     path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
     with open(path, encoding="utf-8") as f:
@@ -104,6 +136,69 @@ def test_skin_item_round_trip(tmp_path, new_scene):
 def test_data_items_are_versioned(tmp_path, new_scene):
     path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
     assert versions.is_versioned(path)
+
+
+# -- Select Objects, and publishing again from the saved objects ------------
+
+
+def test_select_saved_selects_the_objects_in_the_file(tmp_path, new_scene):
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
+    cmds.createNode("transform", name="other")
+    cmds.select("other")
+
+    assert items.select_saved(path) == "Selected 3 objects from skeleton.jnt"
+    assert cmds.ls(selection=True) == ["hip", "knee", "ankle"]
+
+
+def test_select_saved_names_missing_and_ambiguous_objects(tmp_path, new_scene):
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
+    cmds.delete("ankle")
+    grp = cmds.createNode("transform", name="grp")
+    cmds.createNode("transform", name="knee", parent=grp)
+
+    message = items.select_saved(path)
+    assert message.startswith("Selected 1 object from skeleton.jnt. ")
+    assert "Missing in the scene: ankle" in message
+    assert "Several nodes are called knee" in message
+    assert cmds.ls(selection=True) == ["hip"]
+
+
+def test_select_saved_with_nothing_found_clears_the_selection(tmp_path, new_scene):
+    cube = cmds.polyCube(name="box", constructionHistory=False)[0]
+    path = logic.create_data_item(items.MESH, str(tmp_path), "body", _long(cube))
+    cmds.rename(cube, "crate")
+    cmds.select("crate")
+    assert items.select_saved(path).startswith("Selected 0 objects from body.mesh. Missing in the scene: box")
+    assert cmds.ls(selection=True) == []
+
+
+def test_saved_objects_of_a_skin_item_are_its_meshes(tmp_path, new_scene):
+    joints = _chain()
+    mesh = cmds.polyCylinder(name="leg", height=4, constructionHistory=False)[0]
+    cmds.skinCluster(*joints, mesh, toSelectedBones=True, name="leg_skin")
+    path = logic.create_data_item(items.SKIN, str(tmp_path), "leg", _long(mesh))
+    assert items.saved_objects(path) == (["|leg"], [])
+
+
+def test_publishing_the_saved_objects_updates_the_item_from_them(tmp_path, new_scene):
+    """What Publish does with nothing selected."""
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
+    cmds.select(clear=True)
+    found, problems = items.saved_objects(path)
+    assert (found, problems) == (["|hip", "|hip|knee", "|hip|knee|ankle"], [])
+    assert items.unchanged_since(path, found) == 1
+
+    cmds.setAttr("knee.translateX", 1)
+    assert items.unchanged_since(path, found) is None
+    assert items.publish_data(path, found, "Moved the knee") == 2
+    assert versions.list_versions(path)[-1].description == "Moved the knee"
+    assert cmds.ls(selection=True) == []  # the selection doesn't change
+
+
+def test_saved_objects_names_the_missing_ones(tmp_path, new_scene):
+    path = logic.create_data_item(items.JOINTS, str(tmp_path), "skeleton", _long(_chain()[0]))
+    cmds.delete("knee")  # ankle goes with it
+    assert items.saved_objects(path) == (["|hip"], ["Missing in the scene: knee, ankle"])
 
 
 # -- import file ------------------------------------------------------------

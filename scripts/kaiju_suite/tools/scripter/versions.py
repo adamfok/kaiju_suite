@@ -139,6 +139,20 @@ def publish(path, description=""):
     return number
 
 
+def unchanged_since(path, content=None):
+    """The number of the version ``path`` is at, if publishing now would only
+    save it again (``path`` as it is, or ``content`` bytes in its place);
+    otherwise ``None``. Check it before asking for a description."""
+    found = list_versions(path)
+    if not found:
+        return None
+    base = _base(path, found)
+    if content is None:
+        return None if _modified(path, base) else base.number
+    with open(base.path, "rb") as f:
+        return base.number if f.read() == content else None
+
+
 def has_unpublished(path):
     """Whether ``path`` was edited since the version it's at."""
     found = list_versions(path)

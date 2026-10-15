@@ -597,6 +597,8 @@ class ScripterWindow(ToolWindow):
             menu.addAction("Edit in VS Code", lambda: self.attempt(lambda: vscode.open_in_vscode(path)))
         if kind in items.FILE_KINDS:
             menu.addAction("Change File...", lambda: self._change_target(path))
+        if kind in items.DATATYPES:
+            menu.addAction("Select Objects", lambda: self._select_saved(path))
         if path and versions.is_versioned(path):
             menu.addSeparator()
             menu.addAction("Publish...", lambda: self._publish(path))
@@ -695,22 +697,80 @@ class ScripterWindow(ToolWindow):
             self.attempt(lambda: logic.delete_paths(paths))
             self.populate()
 
+    def _select_saved(self, path):
+        message = self.attempt(lambda: items.select_saved(path))
+        if message:
+            cmds.inViewMessage(assistMessage=message, position="topCenter", fade=True)
+
+    def _publish_source(self, path):
+        """``(objects, from_saved)`` to publish the data item at ``path``
+        from: the selection, or with nothing selected the objects saved in
+        it. Shows why not and returns ``None`` if they won't do."""
+        selection = cmds.ls(selection=True, long=True) or []
+        from_saved = not selection
+        if from_saved:
+            found = self.attempt(lambda: items.saved_objects(path))
+            if found is None:
+                return None
+            selection, problems = found
+            reason = "Nothing is selected, and the objects saved in it can't all be found:\n\n"
+        else:
+            problems = self.attempt(lambda: items.selection_problems(logic.kind_of(path), selection))
+            if problems is None:
+                return None
+            reason = ""
+        if problems:
+            title = f"Can't Publish {os.path.basename(path)}"
+            QtWidgets.QMessageBox.information(self, title, reason + "\n".join(problems))
+            return None
+        return selection, from_saved
+
     def _publish(self, path):
-        description, ok = QtWidgets.QInputDialog.getText(
-            self, f"Publish {os.path.basename(path)}", "What changed? (optional)"
-        )
+        name = os.path.basename(path)
+        is_data = logic.kind_of(path) in items.DATATYPES
+        from_saved = False
+        if is_data:
+            source = self._publish_source(path)
+            if source is None:
+                return
+            objects, from_saved = source
+        # Catch "nothing changed" before asking anything.
+        try:
+            same = items.unchanged_since(path, objects) if is_data else versions.unchanged_since(path)
+        except Exception as e:
+            log.exception("Kaiju Scripter publish check failed")
+            _warn(str(e))
+            return
+        if same:
+            cmds.inViewMessage(
+                assistMessage=f"Nothing to publish: {name} is the same as v{same:03d}",
+                position="topCenter",
+                fade=True,
+            )
+            return
+        if from_saved:
+            count = len(objects)
+            Button = QtWidgets.QMessageBox.StandardButton
+            answer = QtWidgets.QMessageBox.question(
+                self,
+                f"Publish {name}",
+                f"Nothing is selected. Update {name} from the {count} object{'s' if count != 1 else ''} "
+                "saved in it instead?",
+                Button.Yes | Button.No,
+                Button.Yes,
+            )
+            if answer != Button.Yes:
+                return
+        description, ok = QtWidgets.QInputDialog.getText(self, f"Publish {name}", "What changed? (optional)")
         if not ok:
             return
-        if logic.kind_of(path) in items.DATATYPES:
-            selection = cmds.ls(selection=True, long=True) or []
-            number = self.attempt(lambda: items.publish_data(path, selection, description))
+        if is_data:
+            number = self.attempt(lambda: items.publish_data(path, objects, description))
         else:
             number = self.attempt(lambda: versions.publish(path, description))
         self.populate()
         if number:
-            cmds.inViewMessage(
-                assistMessage=f"Published {os.path.basename(path)} v{number:03d}", position="topCenter", fade=True
-            )
+            cmds.inViewMessage(assistMessage=f"Published {name} v{number:03d}", position="topCenter", fade=True)
 
 
 class VersionsDialog(QtWidgets.QDialog):
