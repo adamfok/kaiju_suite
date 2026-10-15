@@ -9,5 +9,5 @@ TOOL = {
     "name": "Mesh Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "Check meshes for problems and fix some of them.",
+    "description": "QC the selected meshes and fix some of their problems.",
 }

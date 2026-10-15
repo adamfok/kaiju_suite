@@ -270,3 +270,13 @@ def test_select_problem_selects_what_it_points_at_that_still_exists(new_scene):
     assert cmds.ls(selection=True) == ["here.vtx[0:1]"]
     assert checks.select_problem("plain") == []
     assert cmds.ls(selection=True) == []
+
+
+def test_a_check_has_no_fix_and_runs_on_publish_unless_told():
+    check = checks.Check("k", "K", "d.", lambda nodes: [])
+    assert check.fix is None
+    assert check.publish is True
+
+    fixable = checks.Check("k", "K", "d.", lambda nodes: [], fix=print, publish=False)
+    assert fixable.fix is print
+    assert fixable.publish is False

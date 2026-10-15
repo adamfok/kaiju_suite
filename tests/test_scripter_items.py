@@ -634,8 +634,15 @@ def test_joints_items_open_the_joint_tool():
     assert registry.find(items.tool_for(items.JOINTS)) is not None
 
 
+def test_mesh_items_open_the_mesh_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.MESH) == "Mesh Tool"
+    assert registry.find(items.tool_for(items.MESH)) is not None
+
+
 def test_kinds_without_a_tool_have_none():
-    for kind in (items.MESH, items.SCRIPT, items.SELECTION):
+    for kind in (items.SCRIPT, items.SELECTION):
         assert items.tool_for(kind) is None
 
 
@@ -690,11 +697,14 @@ def test_publish_qc_runs_the_skin_checks_on_the_objects(tmp_path, new_scene):
     assert [check.key for check, _ in found] == ["skinned", "normalized", "influence_count", "small_weights", "unused"]
 
 
-def test_publish_qc_is_empty_for_kinds_without_checks(tmp_path, new_scene):
+def test_publish_qc_of_a_mesh_leaves_out_uvs_and_symmetry(tmp_path, new_scene):
     cube = cmds.polyCube(name="box", constructionHistory=False)[0]
     path = logic.create_data_item(items.MESH, str(tmp_path), "body", _long(cube))
 
-    assert items.publish_qc(path, _long(cube)) == []
+    keys = [check.key for check, _ in items.publish_qc(path, _long(cube))]
+
+    assert "uvs" not in keys and "symmetry" not in keys
+    assert "ngons" in keys and "history" in keys
 
 
 def test_publish_qc_runs_the_joint_checks_on_the_joints(tmp_path, new_scene):

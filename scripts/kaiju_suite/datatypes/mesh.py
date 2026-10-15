@@ -13,13 +13,21 @@ the world.
 Geometry goes through OpenMaya 2 for speed. The mesh shape is created by the
 API under a transform made with cmds, so undoing the transform's creation
 removes the shape with it and one undo still reverts a whole apply.
+
+:data:`CHECKS` are QC checks on given meshes (n-gons, non-manifold, lamina,
+zero-area faces, zero-length edges, missing UVs, locked normals, symmetry,
+unfrozen transforms, history, duplicate names, shape names), run by the Mesh
+Tool's QC tab and before Scripter publishes; Missing UVs and Not symmetric
+only run in the tool. Four have a ``fix``. Checks change nothing.
 """
 
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite import datatypes
+from kaiju_suite.core.checks import Check, Problem
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.datatypes import create_node, node_path, outside_parents, parent_of, unique_name
+from kaiju_suite.datatypes import create_node, node_path, outside_parents, parent_of, plural, short, unique_name
 
 KIND = "mesh"
 EXTENSION = ".mesh"
@@ -238,3 +246,218 @@ def compare_view(payload):
     # Files published before normals and colors were saved have neither: same as none.
     meshes = [{"normals": [], "color_sets": [], **r} for r in payload["meshes"]]
     return {**payload, "meshes": meshes}
+
+
+# -- QC checks --------------------------------------------------------------
+
+# How close counts as the same (scene units): edge lengths, face areas and
+# where a vertex's mirror image should be.
+TOLERANCE = 1e-4
+
+
+def _dag_path(transform):
+    return om.MSelectionList().add(_mesh_shape(transform)).getDagPath(0)
+
+
+def _items(transform, kind, indices):
+    return [f"{transform}.{kind}[{i}]" for i in indices]
+
+
+def _on_transform(components, mesh):
+    """``polyInfo``'s components (``bodyShape.e[2]``) named on the transform."""
+    return [f"{mesh}.{c.split('.', 1)[1]}" for c in cmds.ls(components, flatten=True)]
+
+
+def _find_ngons(mesh):
+    counts, _ = om.MFnMesh(_dag_path(mesh)).getVertices()
+    return _items(mesh, "f", [i for i, n in enumerate(counts) if n > 4])
+
+
+def _find_non_manifold(mesh):
+    found = cmds.polyInfo(mesh, nonManifoldEdges=True) or []
+    found += cmds.polyInfo(mesh, nonManifoldVertices=True) or []
+    return list(dict.fromkeys(_on_transform(found, mesh)))
+
+
+def _find_lamina(mesh):
+    return _on_transform(cmds.polyInfo(mesh, laminaFaces=True) or [], mesh)
+
+
+def _find_zero_area(mesh):
+    faces = om.MItMeshPolygon(_dag_path(mesh))
+    found = []
+    while not faces.isDone():
+        if faces.getArea(om.MSpace.kObject) < TOLERANCE * TOLERANCE:
+            found.append(faces.index())
+        faces.next()
+    return _items(mesh, "f", found)
+
+
+def _find_zero_length(mesh):
+    edges = om.MItMeshEdge(_dag_path(mesh))
+    found = []
+    while not edges.isDone():
+        if edges.length(om.MSpace.kObject) < TOLERANCE:
+            found.append(edges.index())
+        edges.next()
+    return _items(mesh, "e", found)
+
+
+def _find_uvs(mesh):
+    faces = om.MItMeshPolygon(_dag_path(mesh))
+    found = []
+    while not faces.isDone():
+        if not faces.hasUVs():
+            found.append(faces.index())
+        faces.next()
+    return _items(mesh, "f", found)
+
+
+def _find_normals(mesh):
+    fn = om.MFnMesh(_dag_path(mesh))
+    locked = {i for i in range(fn.numNormals) if fn.isNormalLocked(i)}
+    if not locked:
+        return []
+    _, normal_ids = fn.getNormalIds()
+    _, vertex_ids = fn.getVertices()
+    return _items(mesh, "vtx", sorted({v for v, n in zip(vertex_ids, normal_ids) if n in locked}))
+
+
+def _fix_normals(meshes):
+    for mesh in meshes:
+        cmds.polyNormalPerVertex(mesh, unFreezeNormal=True)
+
+
+def _cell(x, y, z):
+    return round(x / TOLERANCE), round(y / TOLERANCE), round(z / TOLERANCE)
+
+
+def _find_symmetry(mesh):
+    """Vertices with no vertex at their mirror image across the YZ plane
+    (object space)."""
+    points = om.MFnMesh(_dag_path(mesh)).getPoints(om.MSpace.kObject)
+    cells = {}
+    for p in points:
+        cells.setdefault(_cell(p.x, p.y, p.z), []).append(p)
+
+    def has_mirror(p):
+        x, y, z = _cell(-p.x, p.y, p.z)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for q in cells.get((x + dx, y + dy, z + dz), ()):
+                        if abs(q.x + p.x) < TOLERANCE and abs(q.y - p.y) < TOLERANCE and abs(q.z - p.z) < TOLERANCE:
+                            return True
+        return False
+
+    return _items(mesh, "vtx", [i for i, p in enumerate(points) if not has_mirror(p)])
+
+
+_IDENTITY = {"translate": (0, 0, 0), "rotate": (0, 0, 0), "scale": (1, 1, 1), "shear": (0, 0, 0)}
+
+
+def _find_transforms(mesh):
+    for attr, identity in _IDENTITY.items():
+        values = cmds.getAttr(f"{mesh}.{attr}")[0]
+        if any(abs(v - i) > TOLERANCE for v, i in zip(values, identity)):
+            return [mesh]
+    return []
+
+
+def _fix_transforms(meshes):
+    for mesh in meshes:
+        cmds.makeIdentity(mesh, apply=True, translate=True, rotate=True, scale=True, normal=False)
+
+
+# Nodes in a mesh's history that aren't modeling history.
+_NOT_HISTORY = ("geometryFilter", "tweak", "groupParts", "groupId", "shadingEngine", "objectSet")
+
+
+def _find_history(mesh):
+    found = cmds.listHistory(_mesh_shape(mesh), pruneDagObjects=True) or []
+    if any(not any(cmds.objectType(node, isAType=kind) for kind in _NOT_HISTORY) for node in found):
+        return [mesh]
+    return []
+
+
+def _fix_history(meshes):
+    # Keeps deformers (skin, blendShapes, ...) and removes the rest.
+    cmds.bakePartialHistory(meshes, prePostDeformers=True)
+
+
+def _find_names(mesh):
+    return [mesh] if len(cmds.ls(short_name(mesh))) > 1 else []
+
+
+def _find_shape_names(mesh):
+    return [mesh] if short_name(_mesh_shape(mesh)) != f"{short_name(mesh)}Shape" else []
+
+
+def _fix_shape_names(meshes):
+    for mesh in meshes:
+        cmds.rename(_mesh_shape(mesh), f"{short_name(mesh)}Shape")
+
+
+def _counted(singular, plural_form=None, after=""):
+    """Problem text counting what was found, e.g. ``3 faces with more than 4 sides``."""
+
+    def text(mesh, items):
+        return f"{plural(len(items), singular, plural_form)}{after}"
+
+    return text
+
+
+def _per_mesh(find, text):
+    """A check function: ``find(mesh)`` on each mesh among ``nodes``, one
+    :class:`Problem` per mesh that has something, selecting what it found."""
+
+    def run(nodes):
+        problems = []
+        for mesh in datatypes.meshes(nodes):
+            items = find(mesh)
+            if items:
+                problems.append(Problem(f"{short(mesh)}: {text(mesh, items)}", items))
+        return problems
+
+    return run
+
+
+def _with_meshes(fix):
+    """``fix(meshes)`` as a check's ``fix(nodes)``: on the meshes among ``nodes``."""
+    return lambda nodes: fix(datatypes.meshes(nodes))
+
+
+def _shape_name_text(mesh, items):
+    return f"shape is {short_name(_mesh_shape(mesh))}, not {short_name(mesh)}Shape"
+
+
+CHECKS = (
+    Check("ngons", "N-gons", "Faces with more than four sides.",
+          _per_mesh(_find_ngons, _counted("face", after=" with more than 4 sides"))),
+    Check("non_manifold", "Non-manifold", "Edges shared by more than two faces, and bow-tie vertices.",
+          _per_mesh(_find_non_manifold, _counted("non-manifold edge or vertex", "non-manifold edges or vertices"))),
+    Check("lamina", "Lamina faces", "Faces that share all their edges with another face.",
+          _per_mesh(_find_lamina, _counted("lamina face"))),
+    Check("zero_area", "Zero-area faces", "Faces with (almost) no area.",
+          _per_mesh(_find_zero_area, _counted("zero-area face"))),
+    Check("zero_length", "Zero-length edges", "Edges with (almost) no length.",
+          _per_mesh(_find_zero_length, _counted("zero-length edge"))),
+    Check("uvs", "Missing UVs", "Faces with no UVs in the current UV set. Not run before publishing.",
+          _per_mesh(_find_uvs, _counted("face", after=" without UVs")), publish=False),
+    Check("normals", "Locked normals", "Vertices with locked (user-set) normals.",
+          _per_mesh(_find_normals, _counted("vertex", "vertices", " with locked normals")),
+          fix=_with_meshes(_fix_normals)),
+    Check("symmetry", "Not symmetric",
+          "Vertices with no mirror vertex across X (object space). Not run before publishing.",
+          _per_mesh(_find_symmetry, _counted("vertex", "vertices", " with no mirror across X")), publish=False),
+    Check("transforms", "Unfrozen transform", "Translate, rotate, scale or shear not at their defaults.",
+          _per_mesh(_find_transforms, lambda mesh, items: "transform not frozen"),
+          fix=_with_meshes(_fix_transforms)),
+    Check("history", "Construction history", "Modeling history (deformers don't count).",
+          _per_mesh(_find_history, lambda mesh, items: "construction history"),
+          fix=_with_meshes(_fix_history)),
+    Check("names", "Duplicate name", "Another node has the same name; tools find meshes by name.",
+          _per_mesh(_find_names, lambda mesh, items: f"another node is called {short_name(mesh)}")),
+    Check("shape_names", "Shape name", "The shape isn't called <mesh>Shape.",
+          _per_mesh(_find_shape_names, _shape_name_text), fix=_with_meshes(_fix_shape_names)),
+)  # fmt: skip
