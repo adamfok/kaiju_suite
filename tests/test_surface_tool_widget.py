@@ -1,4 +1,4 @@
-"""The Surface Tool window: one QC tab for now.
+"""The Surface Tool window: a QC tab and a Utilities tab (empty for now).
 
 maya.standalone runs a Qt application without widgets, so the window's
 build_ui runs on a stand-in widget off-screen, in a separate mayapy process
@@ -22,6 +22,9 @@ app = QtWidgets.QApplication([])
 from kaiju_suite.core import checks
 from kaiju_suite.tools.surface_tool import logic, widget
 
+saved = {}
+widget.settings.get = lambda tool, key, default=None: saved.get(key, default)
+widget.settings.set = lambda tool, key, value: saved.__setitem__(key, value)
 logic.qc_settings = lambda: checks.defaults(logic.QC_CHECKS)
 warnings = []
 widget._warn = warnings.append
@@ -58,8 +61,8 @@ def test_the_window_is_the_kaiju_surface_tool(probe):
     assert probe["title"] == "Kaiju Surface Tool"
 
 
-def test_the_window_has_one_qc_tab_for_now(probe):
-    assert probe["tabs"] == ["QC"]
+def test_the_window_has_qc_and_utilities_tabs(probe):
+    assert probe["tabs"] == ["QC", "Utilities"]
 
 
 def test_the_qc_tab_lists_the_surface_checks(probe):
