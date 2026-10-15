@@ -235,7 +235,7 @@ def test_double_click_does_not_also_expand_or_collapse(folder_probe):
 def test_new_menu_shows_each_kinds_icon(folder_probe):
     # The same icon the item gets in the tree, so the menu previews it.
     assert sorted(folder_probe["new_icons"]) == sorted(
-        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh"]
+        ["Script", "Folder", "Separator", "Breakpoint", "Import File", "Export File", "Selection", "Joints", "Skin", "Mesh", "Animation"]
     )
     assert all(folder_probe["new_icons"].values()), folder_probe["new_icons"]
 
