@@ -532,12 +532,46 @@ out["select_all"] = [selected[-1], len(dialog.preview.selectedItems())]
 QTest.mouseClick(table.viewport(), QtCore.Qt.MouseButton.LeftButton, pos=QtCore.QPoint(10, table.viewport().height() - 5))
 out["empty_click"] = [len(table.selectedItems()), preview()]
 
-# Double-clicking a Selected row picks the scene selection again.
+# Double-clicking a Selected row opens a window for its objects; the row
+# changes only when that window's OK is pressed.
+SCENE["hair_geo"] = []
 dialog._edit_row(table.topLevelItem(0), 1)
-out["repicked"] = row(0)
+objects_window = dialog.objects_window
+objects_list = objects_window.list
+def object_rows():
+    return [objects_list.item(i).text() for i in range(objects_list.count())]
+out["objects_window"] = {
+    "modal": objects_window.isModal(),
+    "rows": object_rows(),
+    "missing_red": objects_list.item(1).foreground().color().getRgb()[:3] == widget.FAILED_COLOR.getRgb()[:3],
+    "empty_menu": actions(objects_window.menu(None)),
+    "row_menu": actions(objects_window.menu(objects_list.item(0))),
+    "entries_locked": not table.isEnabled(),
+}
+objects_list.clearSelection()
+objects_list.item(0).setSelected(True)
+out["objects_window"]["pick"] = selected[-1]
+objects_window.add_selected()
+out["objects_window"]["added"] = object_rows()
+objects_list.clearSelection()
+objects_list.item(0).setSelected(True)
+objects_window.remove_selected()
+out["objects_window"]["removed"] = object_rows()
+out["objects_window"]["row_before_ok"] = row(0)[:2]
+objects_window.reject()
+out["objects_window"]["after_cancel"] = [row(0), table.isEnabled()]
+
+dialog._edit_row(table.topLevelItem(0), 1)
+objects_window = dialog.objects_window
+objects_window.replace_with_selected()
+out["replaced"] = [objects_window.list.item(i).text() for i in range(objects_window.list.count())]
 scene_selection.clear()
-dialog._edit_row(table.topLevelItem(0), 1)
-out["repick_with_nothing_selected"] = [row(0), len(warnings)]
+objects_window.add_selected()
+objects_window.replace_with_selected()
+out["nothing_selected_warns"] = len(warnings)
+objects_window.accept()
+out["repicked"] = [row(0), table.isEnabled()]
+SCENE["hair_geo"] = ["hair_geo"]
 
 table.topLevelItem(1).setSelected(True)
 dialog.remove_selected()
@@ -612,10 +646,37 @@ def test_clicking_empty_space_previews_everything(selection_dialog_probe):
     assert selection_dialog_probe["empty_click"] == [0, ["body_geo", "hair_geo", "L_eye_geo", "R_eye_geo"]]
 
 
-def test_double_clicking_a_selected_entry_picks_the_scene_selection_again(selection_dialog_probe):
-    assert selection_dialog_probe["repicked"] == ["Selected", "new_geo", "1"]
-    # With nothing selected it warns and keeps the entry.
-    assert selection_dialog_probe["repick_with_nothing_selected"] == [["Selected", "new_geo", "1"], 1]
+def test_double_clicking_a_selected_entry_opens_its_objects(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert not window["modal"]
+    assert window["rows"] == ["body_geo", "hair_geo"]
+    assert window["missing_red"]
+    assert window["entries_locked"]
+
+
+def test_objects_window_menus(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert window["empty_menu"] == ["Add Selected", "Replace with Selected"]
+    assert window["row_menu"] == ["Remove"]
+
+
+def test_objects_window_picks_adds_and_removes(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert window["pick"] == ["body_geo"]
+    assert window["added"] == ["body_geo", "hair_geo", "new_geo"]
+    assert window["removed"] == ["hair_geo", "new_geo"]
+
+
+def test_objects_window_changes_nothing_until_ok(selection_dialog_probe):
+    window = selection_dialog_probe["objects_window"]
+    assert window["row_before_ok"] == ["Selected", "body_geo, hair_geo"]
+    assert window["after_cancel"] == [["Selected", "body_geo, hair_geo", "1"], True]
+
+
+def test_objects_window_replace_and_ok(selection_dialog_probe):
+    assert selection_dialog_probe["replaced"] == ["new_geo"]
+    assert selection_dialog_probe["nothing_selected_warns"] == 2
+    assert selection_dialog_probe["repicked"] == [["Selected", "new_geo", "1"], True]
 
 
 def test_ok_saves_the_entries(selection_dialog_probe):

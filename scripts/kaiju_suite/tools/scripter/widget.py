@@ -837,6 +837,9 @@ class SelectionDialog(QtWidgets.QDialog):
         )
         ok_cancel.accepted.connect(self.accept)
         ok_cancel.rejected.connect(self.reject)
+        self.ok_cancel = ok_cancel
+        # The open window editing a Selected entry's objects, if any.
+        self.objects_window = None
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.table, 1)
@@ -952,16 +955,13 @@ class SelectionDialog(QtWidgets.QDialog):
             self._rebuild()
 
     def _edit_row(self, row, _column):
-        """Change an entry: a Selected one takes the scene selection, a
-        pattern or set asks for its new value."""
+        """Change an entry: a Selected one in a window of its objects, a
+        pattern or set by asking for its new value."""
         entry = self.entries[row.data(0, PATH_ROLE)]
         if entry["type"] == items.SELECTED:
-            names = items.selected_names()
-            if not names:
-                _warn("Nothing selected: select the objects for this entry first.")
-                return
-            value = list(dict.fromkeys(names))
-        elif entry["type"] == items.PATTERN:
+            self._edit_objects(entry)
+            return
+        if entry["type"] == items.PATTERN:
             value = self._ask_pattern(entry["value"])
         elif entry["type"] == items.SET:
             value = self._ask_set(entry["value"])
@@ -971,7 +971,119 @@ class SelectionDialog(QtWidgets.QDialog):
             entry["value"] = value
             self._rebuild()
 
+    def _edit_objects(self, entry):
+        """Open a window on a Selected entry's objects. The entries list and
+        OK wait until it closes; its OK puts the objects back in the entry."""
+
+        def save(names):
+            entry["value"] = names
+            self._rebuild()
+
+        def closed():
+            self.objects_window = None
+            self.table.setEnabled(True)
+            self.ok_cancel.setEnabled(True)
+            self._refresh()
+
+        self.objects_window = SelectedObjectsDialog(self, entry["value"], save)
+        self.objects_window.finished.connect(closed)
+        self.table.setEnabled(False)
+        self.ok_cancel.setEnabled(False)
+        self.objects_window.show()
+
     def remove_selected(self):
         gone = {row.data(0, PATH_ROLE) for row in self.table.selectedItems()}
         self.entries = [e for i, e in enumerate(self.entries) if i not in gone]
         self._rebuild()
+
+
+class SelectedObjectsDialog(QtWidgets.QDialog):
+    """Edit the objects of one Selected entry. It isn't modal, so you can
+    select objects in Maya while it's open; OK calls ``on_save`` with them.
+
+    Right-click empty space to add the scene selection or replace them with
+    it, or an object to remove it. Picking objects selects them in the scene."""
+
+    def __init__(self, parent, names, on_save):
+        super().__init__(parent)
+        self.names = list(names)
+        self.on_save = on_save
+        self.setWindowTitle("Selected Objects")
+        self.resize(320, 400)
+
+        self.list = QtWidgets.QListWidget()
+        self.list.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.list.itemSelectionChanged.connect(self._select_picked)
+        self.list.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.list.customContextMenuRequested.connect(
+            lambda pos: self.menu(self.list.itemAt(pos)).exec(self.list.viewport().mapToGlobal(pos))
+        )
+
+        ok_cancel = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        ok_cancel.accepted.connect(self.accept)
+        ok_cancel.rejected.connect(self.reject)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(self.list, 1)
+        layout.addWidget(ok_cancel)
+        self._fill()
+
+    def accept(self):
+        if not self.names:
+            _warn("An entry needs at least one object: add some, or remove the entry instead.")
+            return
+        self.on_save(self.names)
+        super().accept()
+
+    def menu(self, item):
+        """Right-click menu: adding on empty space, Remove on an object."""
+        menu = QtWidgets.QMenu(self)
+        if item is None:
+            menu.addAction("Add Selected", self.add_selected)
+            menu.addAction("Replace with Selected", self.replace_with_selected)
+        else:
+            if not item.isSelected():
+                with QtCore.QSignalBlocker(self.list):
+                    self.list.clearSelection()
+                    item.setSelected(True)
+            menu.addAction("Remove", self.remove_selected)
+        return menu
+
+    def _fill(self):
+        with QtCore.QSignalBlocker(self.list):
+            self.list.clear()
+            for name in self.names:
+                item = QtWidgets.QListWidgetItem(name, self.list)
+                if items.missing({"type": items.SELECTED, "value": [name]}):
+                    item.setForeground(FAILED_COLOR)
+                    item.setToolTip("Not in the scene now")
+
+    def _select_picked(self):
+        picked = [item.text() for item in self.list.selectedItems() if item.foreground().color() != FAILED_COLOR]
+        if picked:
+            cmds.select(picked, replace=True)
+
+    def _scene_selection(self):
+        names = items.selected_names()
+        if not names:
+            _warn("Nothing selected in the scene.")
+        return names
+
+    def add_selected(self):
+        names = self._scene_selection()
+        if names:
+            self.names = list(dict.fromkeys(self.names + names))
+            self._fill()
+
+    def replace_with_selected(self):
+        names = self._scene_selection()
+        if names:
+            self.names = list(dict.fromkeys(names))
+            self._fill()
+
+    def remove_selected(self):
+        gone = {item.text() for item in self.list.selectedItems()}
+        self.names = [name for name in self.names if name not in gone]
+        self._fill()
