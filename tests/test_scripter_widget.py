@@ -173,6 +173,7 @@ widget.settings.set = lambda *a: None
 class Stand(QtWidgets.QWidget):
     root = root
     runner = None
+    copied = []
     attempt = staticmethod(lambda fn: fn())
     selected_paths = staticmethod(lambda: [])
     _delete_selected = staticmethod(lambda: None)
@@ -936,6 +937,116 @@ def test_entry_column_fills_the_width(selection_dialog_probe):
     assert selection_dialog_probe["columns_fill_the_list"]
 
 
+# Copy and Paste: the right-click entries, and Copy then Paste copying the
+# items into the clicked folder. Handlers run on a stand-in, as above.
+_COPY_PASTE_PROBE = r"""
+import json, os, sys, tempfile
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.scripter import widget
+
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+
+root = tempfile.mkdtemp()
+folder = os.path.join(root, "rig")
+os.mkdir(folder)
+script = os.path.join(root, "setup.py")
+with open(script, "w") as f:
+    f.write("x = 1\n")
+
+
+class Stand(QtWidgets.QWidget):
+    root = root
+    runner = None
+    copied = []
+    attempt = staticmethod(lambda fn: fn())
+    populate = staticmethod(lambda: None)
+    _delete_selected = staticmethod(lambda: None)
+    _run_selected = staticmethod(lambda: None)
+    _on_context_menu = widget.ScripterWindow._on_context_menu
+    _copy_selected = widget.ScripterWindow._copy_selected
+    _paste = widget.ScripterWindow._paste
+    _new_target = widget.ScripterWindow._new_target
+    _find_item = widget.ScripterWindow._find_item
+
+
+stand = Stand()
+stand.selected = []
+stand.selected_paths = lambda: list(stand.selected)
+stand.tree = widget._Tree(stand)
+folder_item = QtWidgets.QTreeWidgetItem(stand.tree, ["rig"])
+folder_item.setData(0, widget.PATH_ROLE, folder)
+script_item = QtWidgets.QTreeWidgetItem(stand.tree, ["setup"])
+script_item.setData(0, widget.PATH_ROLE, script)
+
+menus = []
+
+
+class RecordingMenu(QtWidgets.QMenu):
+    def exec(self, *_):
+        menus.append({a.text(): a.isEnabled() for a in self.actions() if a.text()})
+
+
+QtWidgets.QMenu = RecordingMenu
+stand.tree.itemAt = lambda pos: folder_item
+
+out = {}
+stand._on_context_menu(stand.tree.rect().center())
+out["menu_nothing_selected"] = menus[-1]
+
+stand.selected = [script]
+stand._on_context_menu(stand.tree.rect().center())
+out["menu_selected"] = menus[-1]
+
+stand._copy_selected()
+out["copied"] = stand.copied
+stand._on_context_menu(stand.tree.rect().center())
+out["menu_after_copy"] = menus[-1]
+
+# Closing Scripter and opening it again (or on another library) keeps what was copied.
+reopened = Stand()
+out["copied_after_reopen"] = reopened.copied
+
+stand._paste(folder_item)
+out["in_folder"] = sorted(n for n in os.listdir(folder) if not n.startswith("."))
+out["original_kept"] = os.path.isfile(script)
+
+print(json.dumps(out))
+"""
+
+
+@pytest.fixture(scope="module")
+def copy_paste_probe():
+    done = subprocess.run(
+        [sys.executable, "-c", _COPY_PASTE_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120
+    )
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_copy_is_offered_only_with_something_selected(copy_paste_probe):
+    assert "Copy" not in copy_paste_probe["menu_nothing_selected"]
+    assert copy_paste_probe["menu_selected"]["Copy"] is True
+
+
+def test_paste_is_greyed_until_something_is_copied(copy_paste_probe):
+    assert copy_paste_probe["menu_selected"]["Paste"] is False
+    assert copy_paste_probe["menu_after_copy"]["Paste"] is True
+
+
+def test_copy_then_paste_on_a_folder_copies_into_it(copy_paste_probe):
+    assert copy_paste_probe["copied"] and copy_paste_probe["copied"][0].endswith("setup.py")
+    assert copy_paste_probe["in_folder"] == ["setup.py"]
+    assert copy_paste_probe["original_kept"] is True
+
+
+def test_what_was_copied_survives_reopening_scripter(copy_paste_probe):
+    assert copy_paste_probe["copied_after_reopen"] == copy_paste_probe["copied"]
+
+
 # Double-clicking a data item whose kind has a tool (Skin: the SkinCluster
 # Tool) opens it on the item's objects; other data items show their info,
 # which a right-click "Info..." also shows.
@@ -965,6 +1076,7 @@ widget.versions.is_versioned = lambda path: False
 class Stand(QtWidgets.QWidget):
     root = root
     runner = None
+    copied = []
     attempt = staticmethod(lambda fn: fn())
     selected_paths = staticmethod(lambda: [])
     _delete_selected = staticmethod(lambda: None)

@@ -246,6 +246,10 @@ class _Tree(QtWidgets.QTreeWidget):
 
 class ScripterWindow(ToolWindow):
     TITLE = "Kaiju Scripter"
+    # Paths of the items Copy picked, for Paste. Kept by the class, so it lasts
+    # the Maya session: you can open another scripts folder, or close and
+    # reopen Scripter, and paste them there.
+    copied = []
 
     def build_ui(self):
         style = self.style()
@@ -278,6 +282,8 @@ class ScripterWindow(ToolWindow):
         for keys, fn in (
             (QtGui.QKeySequence.StandardKey.Delete, self._delete_selected),
             (QtGui.QKeySequence(QtCore.Qt.Key.Key_F2), self._rename_current),
+            (QtGui.QKeySequence.StandardKey.Copy, self._copy_selected),
+            (QtGui.QKeySequence.StandardKey.Paste, lambda: self._paste(self.tree.currentItem())),
         ):
             shortcut = QtGui.QShortcut(keys, self.tree)
             shortcut.setContext(QtCore.Qt.ShortcutContext.WidgetWithChildrenShortcut)
@@ -638,6 +644,10 @@ class ScripterWindow(ToolWindow):
             history = menu.addAction("Versions...", lambda: VersionsDialog(self, path).exec())
             history.setEnabled(versions.count(path) > 0)
         menu.addSeparator()
+        if selected:
+            menu.addAction("Copy", self._copy_selected)
+        paste = menu.addAction("Paste", lambda: self._paste(item))
+        paste.setEnabled(bool(self.copied))
         if path:
             menu.addAction("Rename", lambda: self._rename(path))
             menu.addAction("Delete", self._delete_selected)
@@ -693,6 +703,27 @@ class ScripterWindow(ToolWindow):
             self.attempt(lambda: script_editor.open_in_script_editor(path))
         elif path and kind == logic.SELECTION:
             self._edit_selection(path)
+
+    def _copy_selected(self):
+        paths = self.selected_paths()
+        if paths:
+            type(self).copied = paths
+
+    def _paste(self, item):
+        """Paste copies of the copied items where New would put one (see
+        :meth:`_new_target`), and select them."""
+        if not self.copied:
+            return
+        directory, index = self._new_target(item)
+        if not directory or not os.path.isdir(directory):
+            return
+        pasted = self.attempt(lambda: logic.paste(self.copied, directory, index))
+        self.populate()
+        self.tree.clearSelection()
+        for path in pasted or []:
+            found = self._find_item(path)
+            if found:
+                found.setSelected(True)
 
     def _rename_current(self):
         item = self.tree.currentItem()
