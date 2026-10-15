@@ -3,7 +3,8 @@
 - **Script** (``.py``): run in ``__main__``, like the Script Editor.
 - **Folder**, **Separator** (``.sep``) and **Breakpoint** (``.brk``): see
   :mod:`.logic`; they don't run themselves.
-- **Joints** (``.jnt``), **Skin** (``.skin``) and **Mesh** (``.mesh``): data
+- **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``) and
+  **NurbsCurve** (``.curve``): data
   published from the selection with :mod:`kaiju_suite.datatypes`, and
   applied back when run. Versioned like scripts. A kind with a tool in
   :data:`TOOLS` opens it on double-click, with the item's objects selected
@@ -21,6 +22,9 @@
   shortest unique names, or components), a name pattern (Maya wildcards, searched on every
   run) or a selection set (its members read on every run). Running it
   replaces the selection with what they find. Not versioned.
+- **Animation** (``.anim``): keys published from the selection, like the
+  data kinds above (:mod:`kaiju_suite.datatypes.animation`); opens the
+  Animation Tool on double-click.
 
 No Qt here.
 """
@@ -34,7 +38,8 @@ from maya import cmds
 from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.datatypes import joints, mesh, pose, skin
+from kaiju_suite.datatypes import animation, joints, mesh, pose, skin
+from kaiju_suite.datatypes import curves as curve_data
 from kaiju_suite.tools.scripter import versions
 
 SCRIPT = "Script"
@@ -47,6 +52,8 @@ MESH = "Mesh"
 IMPORT_FILE = "Import File"
 EXPORT_FILE = "Export File"
 SELECTION = "Selection"
+NURBS_CURVE = "NurbsCurve"
+ANIMATION = "Animation"
 POSE = "Pose"
 
 EXTENSIONS = {
@@ -59,17 +66,19 @@ EXTENSIONS = {
     IMPORT_FILE: ".import",
     EXPORT_FILE: ".export",
     SELECTION: ".sel",
+    NURBS_CURVE: curve_data.EXTENSION,
+    ANIMATION: animation.EXTENSION,
     POSE: pose.EXTENSION,
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 # Data published from the selection, by kind.
-DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, POSE: pose}
+DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh, NURBS_CURVE: curve_data, ANIMATION: animation, POSE: pose}
 # The tool each data kind opens on double-click, by its registry name.
-TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", POSE: "Pose Tool"}
+TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool", NURBS_CURVE: "Curve Tool", ANIMATION: "Animation Tool", POSE: "Pose Tool"}
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
-RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, POSE)
+RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION, NURBS_CURVE, ANIMATION, POSE)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {
