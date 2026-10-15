@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Scripter: the right-click **New** menu shows each kind's icon next to its name (the same icon the new item gets in the tree)
 - Scripter: right-clicking a breakpoint no longer offers **Run**, only **Continue** (a breakpoint never ran anything). Fix: running a selection that has nothing to run, such as only a breakpoint, no longer clears a paused run, so **Continue** still works
 - Fix: a long path in Scripter's scripts-folder box no longer stops you making the window narrower. The box shrinks with the window, and its dropdown still opens wide enough to show full paths
 - Scripter: selecting an item gives its folder a grey background, so you can tell at a glance which folder it is in. With several items selected, each one's folder is grey
