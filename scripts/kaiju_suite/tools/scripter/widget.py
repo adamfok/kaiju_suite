@@ -65,6 +65,7 @@ ICONS = {
     items.PROXIMITY_WRAP: "scripter_proximity_wrap.svg",
     logic.DELTAMUSH: "scripter_deltamush.svg",
     items.NURBS_SURFACE: "scripter_nurbs_surface.svg",
+    items.LOFT: "scripter_loft.svg",
 }
 # The right-click New menu, in order.
 NEW_KINDS = (
@@ -86,6 +87,7 @@ NEW_KINDS = (
     items.PROXIMITY_WRAP,
     logic.DELTAMUSH,
     items.NURBS_SURFACE,
+    items.LOFT,
 )
 # Dividers in the New menu after these kinds.
 NEW_MENU_BREAKS = (logic.BREAKPOINT, logic.SELECTION)
