@@ -25,6 +25,7 @@ BASE_FILE = "base"
 DESCRIPTIONS_FILE = "descriptions.json"
 # Scripts, and Joints, Skin and Mesh items (see .items).
 VERSIONED_EXTENSIONS = (".py", ".jnt", ".skin", ".mesh")
+VERSIONED_EXTENSIONS += (".bshp",)  # BlendShapes
 
 NO_DESCRIPTION = "(no description)"
 

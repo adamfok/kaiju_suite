@@ -18,6 +18,9 @@
   shortest unique names, or components), a name pattern (Maya wildcards, searched on every
   run) or a selection set (its members read on every run). Running it
   replaces the selection with what they find. Not versioned.
+- **BlendShapes** (``.bshp``): the blendShapes on the selected meshes, a
+  data item like Joints, Skin and Mesh; double-click opens the BlendShape
+  Tool. Pose readers and target drivers aren't saved.
 
 No Qt here.
 """
@@ -31,7 +34,7 @@ from maya import cmds
 from kaiju_suite import datatypes, registry
 from kaiju_suite.core import paths
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.datatypes import joints, mesh, skin
+from kaiju_suite.datatypes import blendshape, joints, mesh, skin
 from kaiju_suite.tools.scripter import versions
 
 SCRIPT = "Script"
@@ -44,6 +47,7 @@ MESH = "Mesh"
 IMPORT_FILE = "Import File"
 EXPORT_FILE = "Export File"
 SELECTION = "Selection"
+BLENDSHAPES = "BlendShapes"
 
 EXTENSIONS = {
     SCRIPT: ".py",
@@ -55,16 +59,20 @@ EXTENSIONS = {
     IMPORT_FILE: ".import",
     EXPORT_FILE: ".export",
     SELECTION: ".sel",
+    BLENDSHAPES: blendshape.EXTENSION,
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
 # Data published from the selection, by kind.
 DATATYPES = {JOINTS: joints, SKIN: skin, MESH: mesh}
+DATATYPES[BLENDSHAPES] = blendshape
 # The tool each data kind opens on double-click, by its registry name.
 TOOLS = {SKIN: "SkinCluster Tool", JOINTS: "Joint Tool", MESH: "Mesh Tool"}
+TOOLS[BLENDSHAPES] = "BlendShape Tool"
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
 RUNNABLE = (SCRIPT, JOINTS, SKIN, MESH, IMPORT_FILE, EXPORT_FILE, SELECTION)
+RUNNABLE += (BLENDSHAPES,)
 
 # Export File formats by extension: (plug-in it needs or None, Maya file type).
 EXPORT_FORMATS = {
