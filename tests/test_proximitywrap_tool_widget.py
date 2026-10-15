@@ -1,4 +1,4 @@
-"""The ProximityWrap Tool window: a QC tab (no Utilities tab yet).
+"""The ProximityWrap Tool window: a QC tab and a Utilities tab (empty for now).
 
 maya.standalone runs a Qt application without widgets, so the window's
 build_ui runs on a stand-in widget off-screen, in a separate mayapy process
@@ -22,6 +22,9 @@ app = QtWidgets.QApplication([])
 from kaiju_suite.core import checks
 from kaiju_suite.tools.proximitywrap_tool import logic, widget
 
+saved = {}
+widget.settings.get = lambda tool, key, default=None: saved.get(key, default)
+widget.settings.set = lambda tool, key, value: saved.__setitem__(key, value)
 logic.qc_settings = lambda: checks.defaults(logic.QC_CHECKS)
 warnings = []
 widget._warn = warnings.append
@@ -54,8 +57,8 @@ def probe():
     return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
 
 
-def test_the_window_has_only_a_qc_tab(probe):
-    assert probe["tabs"] == ["QC"]
+def test_the_window_has_qc_and_utilities_tabs(probe):
+    assert probe["tabs"] == ["QC", "Utilities"]
     assert probe["title"] == "Kaiju ProximityWrap Tool"
 
 

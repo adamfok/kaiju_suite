@@ -1,6 +1,7 @@
 from maya import cmds
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
+from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
 from kaiju_suite.tools.proximitywrap_tool import logic
 from kaiju_suite.ui.base_window import ToolWindow
@@ -15,7 +16,6 @@ class ProximityWrapToolWindow(ToolWindow):
     TITLE = "Kaiju ProximityWrap Tool"
 
     def build_ui(self):
-        # Tabs, so a Utilities tab can join the QC tab later.
         tabs = QtWidgets.QTabWidget()
         qc = QCTab(
             logic.QC_CHECKS,
@@ -25,6 +25,16 @@ class ProximityWrapToolWindow(ToolWindow):
             logic.select_problem,
         )
         tabs.addTab(qc, "QC")
+        # A placeholder, so every datatype tool has the same two tabs.
+        utilities = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(utilities)
+        empty = QtWidgets.QLabel("No proximityWrap utilities yet.")
+        empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        empty.setEnabled(False)
+        layout.addWidget(empty)
+        tabs.addTab(utilities, "Utilities")
+        tabs.setCurrentIndex(settings.get(logic.SETTINGS_KEY, "tab", 0))
+        tabs.currentChanged.connect(lambda index: settings.set(logic.SETTINGS_KEY, "tab", index))
         self.layout.addWidget(tabs)
 
     def _run_qc(self):
