@@ -38,6 +38,7 @@ VERSIONED_EXTENSIONS = (
     ".pwrap",
     ".dmsh",
     ".surface",
+    ".loft",
 )
 
 NO_DESCRIPTION = "(no description)"

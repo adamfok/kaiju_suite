@@ -1021,6 +1021,57 @@ def test_publish_qc_runs_the_surface_checks(tmp_path, new_scene):
     assert found["rational"] == ["ribbon: 1 CV with weights (weights aren't saved)"]
 
 
+# -- Loft -------------------------------------------------------------------
+
+
+def _loft_curves():
+    a = cmds.curve(name="crv_a", degree=3, point=[(0, 0, 0), (1, 0.5, 0), (2, 0, 0), (3, 0, 0)])
+    b = cmds.curve(name="crv_b", degree=3, point=[(0, 0, 2), (1, 0.5, 2), (2, 0, 2), (3, 0, 2)])
+    return [a, b]
+
+
+def test_loft_item_round_trip_with_live_history_as_one_undo_step(tmp_path, new_scene):
+    surface = cmds.loft(*_loft_curves(), name="ribbon", constructionHistory=True)[0]
+    path = logic.create_data_item(items.LOFT, str(tmp_path), "ribbons", _long(surface))
+
+    assert path == os.path.join(str(tmp_path), "ribbons.loft")
+    assert versions.is_versioned(path) and versions.label(path) == "v001"
+    assert items.describe(path) == ["1 loft", "ribbon (2 curves)"]
+    [entry] = logic.scan(str(tmp_path))
+    assert (entry.kind, entry.type_label) == (items.LOFT, "Loft")
+
+    cmds.file(new=True, force=True)
+    _loft_curves()
+    cmds.undoInfo(state=True)
+    cmds.flushUndo()
+    assert logic.Runner().run([path]) == logic.DONE
+    shape = cmds.listRelatives("ribbon", shapes=True, fullPath=True)[0]
+    assert cmds.nodeType(cmds.listConnections(f"{shape}.create")[0]) == "loft"
+
+    cmds.undo()
+    assert not cmds.objExists("ribbon")
+    assert not cmds.ls(type="loft")
+
+
+def test_loft_items_open_the_loft_tool():
+    from kaiju_suite import registry
+
+    assert items.tool_for(items.LOFT) == "Loft Tool"
+    assert registry.find(items.tool_for(items.LOFT)) is not None
+
+
+def test_publish_qc_runs_the_loft_checks(tmp_path, new_scene):
+    a, b = _loft_curves()
+    cmds.reverseCurve(b, constructionHistory=False, replaceOriginal=True)
+    surface = cmds.loft(a, b, name="ribbon", autoReverse=False, constructionHistory=True)[0]
+    path = logic.create_data_item(items.LOFT, str(tmp_path), "ribbons", _long(surface))
+
+    found = dict((check.key, problems) for check, problems in items.publish_qc(path, _long(surface)))
+
+    assert list(found) == ["not_loft", "unsupported", "names", "flipped"]
+    assert found["flipped"] == ["ribbon: flipped 1 curve: crv_b"]
+
+
 # Every data kind is registered the same way, so a new kind can't be left out
 # of a list.
 

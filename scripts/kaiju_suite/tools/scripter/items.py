@@ -4,7 +4,8 @@
 - **Folder**, **Separator** (``.sep``) and **Breakpoint** (``.brk``): see
   :mod:`.logic`; they don't run themselves.
 - **Joints** (``.jnt``), **Skin** (``.skin``), **Mesh** (``.mesh``),
-  **NurbsCurve** (``.curve``), **NurbsSurface** (``.surface``),
+  **NurbsCurve** (``.curve``), **NurbsSurface** (``.surface``), **Loft**
+  (``.loft``, lofted surfaces rebuilt with live history from their curves),
   **ControlShape** (``.ctrl``), **DeltaMush** (``.dmsh``), **ProximityWrap**
   (``.pwrap``, proximityWraps only), **BlendShapes** (``.bshp``, without pose
   readers or target drivers), **Pose** (``.pose``, attribute values set back
@@ -42,6 +43,7 @@ from kaiju_suite.datatypes import (
     controlshape,
     deltamush,
     joints,
+    loft,
     mesh,
     nurbs_surface,
     pose,
@@ -69,6 +71,7 @@ BLENDSHAPES = "BlendShapes"
 PROXIMITY_WRAP = "ProximityWrap"
 DELTAMUSH = "DeltaMush"
 NURBS_SURFACE = "NurbsSurface"
+LOFT = "Loft"
 
 EXTENSIONS = {
     SCRIPT: ".py",
@@ -88,6 +91,7 @@ EXTENSIONS = {
     PROXIMITY_WRAP: proximity_wrap.EXTENSION,
     DELTAMUSH: deltamush.EXTENSION,
     NURBS_SURFACE: nurbs_surface.EXTENSION,
+    LOFT: loft.EXTENSION,
 }
 _KIND_OF_EXT = {ext: kind for kind, ext in EXTENSIONS.items()}
 
@@ -104,6 +108,7 @@ DATATYPES = {
     PROXIMITY_WRAP: proximity_wrap,
     DELTAMUSH: deltamush,
     NURBS_SURFACE: nurbs_surface,
+    LOFT: loft,
 }
 # The tool each data kind opens on double-click, by its registry name.
 TOOLS = {
@@ -118,6 +123,7 @@ TOOLS = {
     PROXIMITY_WRAP: "ProximityWrap Tool",
     DELTAMUSH: "DeltaMush Tool",
     NURBS_SURFACE: "Surface Tool",
+    LOFT: "Loft Tool",
 }
 FILE_KINDS = (IMPORT_FILE, EXPORT_FILE)
 # What a run runs (breakpoints pause it instead).
