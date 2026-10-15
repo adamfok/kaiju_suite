@@ -1256,7 +1256,9 @@ class SetDialog(QtWidgets.QDialog):
         if not members:
             _warn("Nothing selected to make a set from.")
             return
-        name, ok = QtWidgets.QInputDialog.getText(self, "New Selection Set", "Name:", text="selection_set")
+        # Named after the entry's missing set, if any, so making it again fixes the entry.
+        default = self.current or "selection_set"
+        name, ok = QtWidgets.QInputDialog.getText(self, "New Selection Set", "Name:", text=default)
         if not ok or not name.strip():
             return
         try:
@@ -1264,5 +1266,5 @@ class SetDialog(QtWidgets.QDialog):
         except (ValueError, RuntimeError) as e:
             _warn(str(e))
             return
-        self.set_name.addItem(made)
+        self._fill()
         self.set_name.setCurrentText(made)

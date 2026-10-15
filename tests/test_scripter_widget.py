@@ -613,7 +613,11 @@ def delete_set(name):
     deleted.append(name)
     scene_sets.remove(name)
 items.delete_set = delete_set
-QtWidgets.QInputDialog.getText = staticmethod(lambda *a, **k: ("new_set", True))
+asked_names = []
+def get_text(*args, **kwargs):
+    asked_names.append(kwargs.get("text"))
+    return ("new_set", True)
+QtWidgets.QInputDialog.getText = staticmethod(get_text)
 picked_sets = []
 set_dialog = widget.SetDialog(None, "render_set", picked_sets.append)
 combo = set_dialog.set_name
@@ -636,6 +640,24 @@ before = len(warnings)
 set_dialog.new_button.click()
 out["set_dialog"]["nothing_selected_warns"] = [len(warnings) - before, len(made)]
 out["set_dialog"]["missing_current_kept"] = widget.SetDialog(None, "gone_set", print).value()
+out["set_dialog"]["default_name"] = asked_names[0]
+
+# A missing set's name is the default for a new set, which then replaces it.
+missing = widget.SetDialog(None, "gone_set", print)
+scene_selection[:] = ["a_geo"]
+QtWidgets.QInputDialog.getText = staticmethod(lambda *a, **k: (asked_names.append(k.get("text")), (k.get("text"), True))[1])
+def create_named(name, members):
+    scene_sets.append(name)
+    return name
+items.create_set = create_named
+missing.new_button.click()
+out["set_dialog"]["missing_default"] = asked_names[-1]
+out["set_dialog"]["after_remaking_missing"] = [
+    [missing.set_name.itemText(i) for i in range(missing.set_name.count())], missing.value()
+]
+scene_sets.remove("gone_set")
+scene_selection.clear()
+items.create_set = create_set
 
 # Sets made or deleted in the scene show up when the dropdown is opened.
 scene_sets.append("fx_set")
@@ -848,3 +870,12 @@ def test_set_dropdown_rereads_the_scene_when_opened(selection_dialog_probe):
     window = selection_dialog_probe["set_dialog"]
     assert window["reopened"] == [["anim_set", "new_set1", "fx_set"], "new_set1"]
     assert window["picked_set_gone"] == [["anim_set", "fx_set"], "anim_set"]
+
+
+def test_new_set_is_named_after_a_missing_set(selection_dialog_probe):
+    window = selection_dialog_probe["set_dialog"]
+    assert window["default_name"] == "selection_set"
+    assert window["missing_default"] == "gone_set"
+    # Making it again lists it once, picked.
+    names, picked = window["after_remaking_missing"]
+    assert names.count("gone_set") == 1 and picked == "gone_set"
