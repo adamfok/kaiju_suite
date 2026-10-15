@@ -5,6 +5,7 @@ from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
 from kaiju_suite.tools.joint_tool import logic
 from kaiju_suite.ui.base_window import ToolWindow
+from kaiju_suite.ui.qc_tab import QCTab
 
 SETTINGS_KEY = "joint_tool"
 _SIGNED = [("+X", "x"), ("+Y", "y"), ("+Z", "z"), ("-X", "-x"), ("-Y", "-y"), ("-Z", "-z")]
@@ -22,14 +23,35 @@ class JointToolWindow(ToolWindow):
     TITLE = "Kaiju Joint Tool"
 
     def build_ui(self):
-        self.layout.addWidget(self._orient_box())
-        self.layout.addWidget(self._mirror_box())
-        self.layout.addWidget(self._insert_box())
-        self.layout.addWidget(self._display_box())
+        tabs = QtWidgets.QTabWidget()
+        qc = QCTab(logic.QC_CHECKS, logic.qc_settings(), logic.save_qc_setting, self._run_qc, logic.select_problem)
+        tabs.addTab(qc, "QC")
+        utilities = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(utilities)
+        layout.addWidget(self._orient_box())
+        layout.addWidget(self._mirror_box())
+        layout.addWidget(self._insert_box())
+        layout.addWidget(self._display_box())
         self.status = QtWidgets.QLabel()
         self.status.setWordWrap(True)
-        self.layout.addWidget(self.status)
-        self.layout.addStretch()
+        layout.addWidget(self.status)
+        layout.addStretch()
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        scroll.setWidget(utilities)
+        tabs.addTab(scroll, "Utilities")
+        tabs.setCurrentIndex(settings.get(SETTINGS_KEY, "tab", 0))
+        tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
+        self.layout.addWidget(tabs)
+
+    def _run_qc(self):
+        """The QC results for the selection, or ``None`` after warning why not."""
+        try:
+            return logic.run_qc(selected())
+        except ValueError as e:
+            _warn(str(e))
+            return None
 
     # -- layout ----------------------------------------------------------------
 

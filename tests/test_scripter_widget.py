@@ -1060,7 +1060,7 @@ from kaiju_suite.tools.scripter import widget
 
 root = tempfile.mkdtemp()
 paths = {}
-for name in ("leg.skin", "skeleton.jnt"):
+for name in ("leg.skin", "skeleton.jnt", "body.mesh"):
     paths[name] = os.path.join(root, name)
     open(paths[name], "w").close()
 
@@ -1128,10 +1128,14 @@ def test_double_click_on_a_skin_item_opens_the_skincluster_tool(data_probe):
 
 
 def test_double_click_on_a_data_item_without_a_tool_shows_its_info(data_probe):
-    assert data_probe["double_click"]["skeleton.jnt"] == [["describe", "skeleton.jnt"], ["box", "skeleton.jnt"]]
+    assert data_probe["double_click"]["body.mesh"] == [["describe", "body.mesh"], ["box", "body.mesh"]]
 
 
-@pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt"])
+def test_double_click_on_a_joints_item_opens_the_joint_tool(data_probe):
+    assert data_probe["double_click"]["skeleton.jnt"] == [["tool", "skeleton.jnt"]]
+
+
+@pytest.mark.parametrize("name", ["leg.skin", "skeleton.jnt", "body.mesh"])
 def test_data_items_have_right_click_info(data_probe, name):
     assert "Info..." in data_probe["menus"][name]
     assert data_probe["info"][name] == [["describe", name], ["box", name]]

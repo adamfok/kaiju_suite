@@ -5,12 +5,21 @@ always creates new joints and never changes existing ones: a name that's
 taken gets the next free one (``spine_jnt`` → ``spine_jnt1``). A joint whose
 parent isn't in the file goes under the scene's node of that name, if there
 is one, otherwise under the world.
+
+:data:`CHECKS` are QC checks on given joints and every joint below them
+(rotate not zero, scale not one, end joint orient, overlapping joints,
+duplicate names, unmatched mirror), run by the Joint Tool's QC tab and
+before Scripter publishes. They change nothing.
 """
+
+import math
 
 from maya import cmds
 
+from kaiju_suite.core.checks import Check, Problem
+from kaiju_suite.core.naming import opposite_name
 from kaiju_suite.core.selection import short_name
-from kaiju_suite.datatypes import create_node, node_path, outside_parents, parent_of
+from kaiju_suite.datatypes import create_node, node_path, outside_parents, parent_of, short
 
 KIND = "joints"
 EXTENSION = ".jnt"
@@ -120,3 +129,134 @@ def describe(payload):
 def compare_view(payload):
     # parent_index shifts whenever joints are added or removed; the parent's name says enough.
     return {**payload, "joints": [{k: v for k, v in r.items() if k != "parent_index"} for r in payload["joints"]]}
+
+
+# -- QC checks --------------------------------------------------------------
+
+# How far from zero (or one) a rotate, scale or joint orient value may be.
+_VALUE_TOLERANCE = 1e-4
+
+
+def vector_text(values):
+    """``(10, 0, -5.5)``: values rounded to 3 decimals, without trailing zeros."""
+    return "(" + ", ".join(f"{round(v, 3) + 0:g}" for v in values) + ")"
+
+
+def _checked(nodes):
+    """The joints among ``nodes`` and every joint below them, long names."""
+    return _joints_under(cmds.ls(nodes, type="joint", long=True) or []) if nodes else []
+
+
+def _off(values, target):
+    return any(abs(v - target) > _VALUE_TOLERANCE for v in values)
+
+
+def _value_check(attr, target, what):
+    def run(nodes):
+        problems = []
+        for joint in _checked(nodes):
+            values = cmds.getAttr(f"{joint}.{attr}")[0]
+            if _off(values, target):
+                problems.append(Problem(f"{short(joint)}: {what} {vector_text(values)}", [short(joint)]))
+        return problems
+
+    return run
+
+
+def _check_end_orient(nodes):
+    problems = []
+    for joint in _checked(nodes):
+        if cmds.listRelatives(joint, children=True, type="joint"):
+            continue
+        values = cmds.getAttr(f"{joint}.jointOrient")[0]
+        if _off(values, 0):
+            problems.append(Problem(f"{short(joint)}: end joint has joint orient {vector_text(values)}", [short(joint)]))
+    return problems
+
+
+def _position(node):
+    return cmds.xform(node, query=True, worldSpace=True, translation=True)
+
+
+def _check_overlapping(nodes, tolerance=0.001):
+    problems = []
+    for joint in _checked(nodes):
+        parent = parent_of(joint)
+        if not parent or cmds.nodeType(parent) != "joint":
+            continue
+        if math.dist(_position(joint), _position(parent)) <= tolerance:
+            problems.append(
+                Problem(f"{short(joint)}: at the same position as {short(parent)}", [short(joint), short(parent)])
+            )
+    return problems
+
+
+def _check_duplicate_names(nodes):
+    problems = []
+    for joint in _checked(nodes):
+        name = short_name(joint)
+        same = sorted(cmds.ls(name) or [])
+        if len(same) > 1:
+            problems.append(Problem(f"{short(joint)}: {len(same)} nodes are called {name}", same))
+    return problems
+
+
+def _check_mirror(nodes, tolerance=0.01):
+    problems, seen = [], set()
+    for joint in _checked(nodes):
+        name = short_name(joint)
+        opposite = opposite_name(name)
+        if opposite is None or joint in seen:
+            continue
+        found = cmds.ls(opposite, type="joint", long=True) or []
+        if not found:
+            problems.append(Problem(f"{short(joint)}: no {opposite}", [short(joint)]))
+            continue
+        seen.update((joint, found[0]))
+        x, y, z = _position(joint)
+        off = math.dist((-x, y, z), _position(found[0]))
+        if off > tolerance:
+            problems.append(
+                Problem(
+                    f"{short(joint)}: {short(found[0])} isn't at its mirrored position (off by {off:.3g})",
+                    [short(joint), short(found[0])],
+                )
+            )
+    return problems
+
+
+CHECKS = (
+    Check(
+        "rotate",
+        "Rotate not zero",
+        "Joints with rotate values: a joint's orientation belongs in its joint orient.",
+        _value_check("rotate", 0, "rotate is"),
+    ),
+    Check("scale", "Scale not one", "Joints whose scale isn't 1.", _value_check("scale", 1, "scale is")),
+    Check(
+        "end_orient",
+        "End joint orient",
+        "End joints (no child joint) with a joint orient; they usually take their parent's orientation.",
+        _check_end_orient,
+    ),
+    Check(
+        "overlapping",
+        "Overlapping joints",
+        "Joints at the same position as their parent joint, give or take the tolerance.",
+        _check_overlapping,
+        {"tolerance": 0.001},
+    ),
+    Check(
+        "duplicate_names",
+        "Duplicate names",
+        "Joints whose name another node also has; Joints items and skins find joints by name.",
+        _check_duplicate_names,
+    ),
+    Check(
+        "mirror",
+        "Unmatched mirror",
+        "Left or right joints whose other-side joint is missing, or isn't at the mirrored position across X.",
+        _check_mirror,
+        {"tolerance": 0.01},
+    ),
+)

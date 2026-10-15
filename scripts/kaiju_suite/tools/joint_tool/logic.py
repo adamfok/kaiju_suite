@@ -9,16 +9,27 @@ edited joint keep their world position and orientation.
 
 Every function that changes the scene is one undo step and raises
 ``ValueError``, changing nothing, when its input is wrong.
+
+The QC tab runs the joint checks (:data:`kaiju_suite.datatypes.joints.CHECKS`)
+on the selected joints and the joints below them with :func:`run_qc`, with
+options saved per user and shared with Scripter's Publish;
+:func:`select_problem` selects what a problem points at.
 """
 
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite import datatypes
+from kaiju_suite.core import checks
 from kaiju_suite.core import orient as _orient
 from kaiju_suite.core.naming import expand_pattern, opposite_name
 from kaiju_suite.core.nodes import unique_name
 from kaiju_suite.core.selection import short_name
 from kaiju_suite.core.undo import undoable
+from kaiju_suite.datatypes import joints as joint_data
+
+# The checks the QC tab runs (see run_qc).
+QC_CHECKS = joint_data.CHECKS
 
 AXES = ("x", "y", "z")
 SIGNED_AXES = ("x", "y", "z", "-x", "-y", "-z")
@@ -297,3 +308,31 @@ def set_radius(joints, radius, hierarchy=False):
     for joint in joints:
         cmds.setAttr(f"{joint}.radius", radius)
     return joints
+
+
+# -- QC ---------------------------------------------------------------------
+
+
+def qc_settings():
+    """The QC options this user saved (defaults for the rest); Scripter's
+    Publish of a Joints item uses the same ones."""
+    return datatypes.qc_settings(joint_data)
+
+
+def save_qc_setting(key, option, value):
+    """Save one QC option for this user."""
+    datatypes.save_qc_setting(joint_data, key, option, value)
+
+
+def run_qc(selection, settings=None):
+    """Run the joint checks on the joints in ``selection`` (long names) and
+    every joint below them. Returns ``(check, problems)`` pairs. Changes
+    nothing. Raises ``ValueError`` if no joints are selected."""
+    if not selection or not cmds.ls(selection, type="joint"):
+        raise ValueError("No joints selected. Select the root joints to check.")
+    return datatypes.run_qc(joint_data, selection, settings)
+
+
+def select_problem(problem):
+    """Select the joints ``problem`` points at that are still in the scene."""
+    return checks.select_problem(problem)
