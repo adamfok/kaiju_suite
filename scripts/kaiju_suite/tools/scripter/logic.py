@@ -39,6 +39,7 @@ from kaiju_suite.tools.scripter.items import (  # noqa: F401 (re-exported)
     kind_of,
     run_script,
 )
+from kaiju_suite.tools.scripter.items import BLENDSHAPES  # noqa: F401 (re-exported)
 from kaiju_suite.tools.scripter.versions import HIDDEN_DIR  # noqa: F401 (everything Scripter keeps in a folder)
 
 log = get_logger(__name__)
