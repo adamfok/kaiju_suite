@@ -78,3 +78,10 @@ def test_discovering_utilities_does_not_load_their_windows():
         if name.startswith("kaiju_suite.tools.") and name.endswith(".widget")
     ]
     assert loaded == []
+
+
+def test_there_is_no_rigging_package():
+    # Rig modules and guide modules were removed with the Assembler that built them.
+    import importlib.util
+
+    assert importlib.util.find_spec("kaiju_suite.rigging") is None

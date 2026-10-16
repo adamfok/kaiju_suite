@@ -23,7 +23,7 @@ file header's ``kaiju`` value), ``EXTENSION`` and these functions:
 format is :mod:`kaiju_suite.core.datafile`'s.
 
 Imports go ``tools`` → ``datatypes`` → ``core``: nothing here imports
-``tools``, ``ui``, ``rigging`` or Qt. Warnings go through ``cmds.warning``.
+``tools``, ``ui`` or Qt. Warnings go through ``cmds.warning``.
 """
 
 from maya import cmds
