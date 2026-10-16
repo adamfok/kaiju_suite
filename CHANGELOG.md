@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Developers: removed the `rigging` package (rig modules such as Simple IK, IK/FK and Space Switch, and the Chain and Leg guide modules) and its tests. Nothing used it once the Assembler was gone
 - The **Kaiju ▸ Utilities** menu is now **Kaiju ▸ Utility Tools**. The tools in it are unchanged
 - Trimmed for the first release: features that weren't tested in production are gone. Removed the **Assembler** (with its Rig Module Editor and Guide Module Editor), the **Asset Library**, and the empty **Constraint Tool**, **Deformer Tool** and **Material Tool**. Use **Builder** to build rigs
 - The **Utilities** tab of the Animation, BlendShape, ControlShape, DeltaMush, Joint, Pose and SkinCluster Tools is now empty, like the Curve, Loft, Mesh, ProximityWrap and Surface Tools'. Their **QC** tabs are unchanged. Removed with it: Mirror Animation, IK/FK Switch and Reset Controls; corrective sculpting, pose readers and target editing; the control shape library and shape editing, color and line width; adding and painting deltaMush; joint Orient, Mirror, Insert Joints and Display; pose Mirror, Select and Reset; Copy Skin, Mirror Skin, weight clean-up, influences and Export/Import Weights

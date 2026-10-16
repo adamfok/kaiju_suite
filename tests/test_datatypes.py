@@ -10,7 +10,7 @@ from maya import cmds
 from kaiju_suite import datatypes
 
 PACKAGE = os.path.dirname(datatypes.__file__)
-FORBIDDEN = ("kaiju_suite.tools", "kaiju_suite.ui", "kaiju_suite.rigging", "PySide6", "PySide2", "shiboken")
+FORBIDDEN = ("kaiju_suite.tools", "kaiju_suite.ui", "PySide6", "PySide2", "shiboken")
 
 
 def _imports(path):
