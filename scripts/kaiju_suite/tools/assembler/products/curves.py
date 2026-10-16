@@ -3,7 +3,7 @@ as new curves (guide curves for Spline IK, wire deformer curves, ...).
 
 The saving and rebuilding are :mod:`kaiju_suite.datatypes.curves`, shared
 with the other tools; this is the Assembler step. It keeps the ``.crv``
-extension its items always had (Scripter's NurbsCurve items use the
+extension its items always had (Builder's NurbsCurve items use the
 datatype's ``.curve``; the contents are the same).
 """
 

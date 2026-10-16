@@ -1,6 +1,6 @@
 """Loft Tool: QC for lofted NURBS surfaces. No Qt.
 
-The checks live in :data:`kaiju_suite.datatypes.loft.CHECKS`, so Scripter's
+The checks live in :data:`kaiju_suite.datatypes.loft.CHECKS`, so Builder's
 Publish of a Loft item runs them too. :func:`run_qc` runs them on the
 selected surfaces; :func:`select_problem` selects the surfaces, curves or
 loft nodes a problem points at. Nothing here changes the scene, so there's
@@ -18,7 +18,7 @@ QC_CHECKS = loft.CHECKS
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a Loft item uses the same ones."""
     return datatypes.qc_settings(loft)
 

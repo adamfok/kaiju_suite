@@ -1,4 +1,4 @@
-"""Kaiju Scripter logic: the tree, its order and enabled flags, and Run."""
+"""Kaiju Builder logic: the tree, its order and enabled flags, and Run."""
 
 import json
 import os
@@ -8,7 +8,7 @@ import pytest
 from maya import cmds
 
 from kaiju_suite.core import settings
-from kaiju_suite.tools.scripter import logic
+from kaiju_suite.tools.builder import logic
 
 
 def _write(path, text=""):
@@ -69,14 +69,14 @@ def test_scan_nests_folders(tmp_path):
     assert _names(arms.children) == ["left.py"]
 
 
-def test_new_items_go_where_asked_and_the_order_is_kept_in_scripter_folder(tmp_path):
+def test_new_items_go_where_asked_and_the_order_is_kept_in_builder_folder(tmp_path):
     first = logic.create_item(logic.SCRIPT, str(tmp_path), "first")
     logic.create_item(logic.SCRIPT, str(tmp_path), "last")
     logic.create_item(logic.SEPARATOR, str(tmp_path), "zzz", index=1)
 
     assert _names(logic.scan(str(tmp_path))) == ["first.py", "zzz.sep", "last.py"]
     assert first == os.path.join(str(tmp_path), "first.py")
-    with open(tmp_path / ".scripter" / "order.json", encoding="utf-8") as f:
+    with open(tmp_path / ".builder" / "order.json", encoding="utf-8") as f:
         assert json.load(f)["order"] == ["first.py", "zzz.sep", "last.py"]
     assert not (tmp_path / ".assembler.json").exists()
 
@@ -431,7 +431,7 @@ def test_start_new_scene_drops_changes_without_asking(new_scene):
 
 
 def test_only_python_opens_in_the_script_editor(tmp_path):
-    from kaiju_suite.tools.scripter import script_editor
+    from kaiju_suite.tools.builder import script_editor
 
     with pytest.raises(ValueError):
         script_editor.open_in_script_editor(_write(tmp_path / "old.mel"))
@@ -442,9 +442,9 @@ def test_the_tool_is_registered_without_loading_qt():
 
     from kaiju_suite import registry
 
-    tool = registry.find("Scripter")
+    tool = registry.find("Builder")
     assert tool is not None and callable(tool["launch"])
-    assert "kaiju_suite.tools.scripter.widget" not in sys.modules
+    assert "kaiju_suite.tools.builder.widget" not in sys.modules
 
 
 def test_type_column_text(tmp_path):
@@ -455,3 +455,80 @@ def test_type_column_text(tmp_path):
     labels = [e.type_label for e in logic.scan(str(tmp_path))]
     assert labels == ["Script", "", logic.SEPARATOR_TEXT, "Breakpoint"]
     assert logic.SEPARATOR_TEXT == "====="
+
+
+# -- moving over from Kaiju Scripter ------------------------------------------
+
+
+def _legacy_order(folder, order):
+    os.makedirs(os.path.join(str(folder), logic.LEGACY_HIDDEN_DIR), exist_ok=True)
+    _write(os.path.join(str(folder), logic.LEGACY_HIDDEN_DIR, logic.ORDER_FILE), json.dumps({"order": order}))
+
+
+def test_scan_moves_a_scripter_folder_over_keeping_its_order(tmp_path):
+    _script(tmp_path, "a")
+    _script(tmp_path, "b")
+    sub = tmp_path / "Sub"
+    sub.mkdir()
+    _script(sub, "c")
+    _script(sub, "d")
+    _legacy_order(tmp_path, ["b.py", "a.py", "Sub"])
+    _legacy_order(sub, ["d.py", "c.py"])
+
+    entries = logic.scan(str(tmp_path))
+
+    assert _names(entries) == ["b.py", "a.py", "Sub"]
+    assert _names(entries[2].children) == ["d.py", "c.py"]
+    for folder in (tmp_path, sub):
+        assert os.path.isdir(os.path.join(str(folder), logic.HIDDEN_DIR))
+        assert not os.path.exists(os.path.join(str(folder), logic.LEGACY_HIDDEN_DIR))
+
+
+def test_scan_leaves_an_existing_builder_folder_alone(tmp_path):
+    _script(tmp_path, "a")
+    _script(tmp_path, "b")
+    _legacy_order(tmp_path, ["b.py", "a.py"])
+    os.makedirs(os.path.join(str(tmp_path), logic.HIDDEN_DIR))
+    _write(os.path.join(str(tmp_path), logic.HIDDEN_DIR, logic.ORDER_FILE), json.dumps({"order": ["a.py", "b.py"]}))
+
+    assert _names(logic.scan(str(tmp_path))) == ["a.py", "b.py"]
+    assert os.path.isdir(os.path.join(str(tmp_path), logic.LEGACY_HIDDEN_DIR))
+
+
+@pytest.fixture
+def legacy_settings():
+    names = ("recent_folders", "name_column_hidden")
+    keys = [settings._key(tool, name) for tool in (logic.LEGACY_SETTINGS_KEY, logic.SETTINGS_KEY) for name in names]
+    saved = {key: cmds.optionVar(query=key) for key in keys if cmds.optionVar(exists=key)}
+    for key in keys:
+        cmds.optionVar(remove=key)
+    yield
+    for key in keys:
+        cmds.optionVar(remove=key)
+    for key, value in saved.items():
+        if isinstance(value, int):
+            cmds.optionVar(intValue=(key, value))
+        else:
+            cmds.optionVar(stringValue=(key, value))
+
+
+def test_migrate_settings_moves_scripter_settings_to_builder(legacy_settings):
+    settings.set(logic.LEGACY_SETTINGS_KEY, "recent_folders", '["C:/rig"]')
+    settings.set(logic.LEGACY_SETTINGS_KEY, "name_column_hidden", True)
+
+    logic.migrate_settings()
+
+    assert settings.get(logic.SETTINGS_KEY, "recent_folders") == '["C:/rig"]'
+    assert settings.get(logic.SETTINGS_KEY, "name_column_hidden") == 1
+    assert settings.get(logic.LEGACY_SETTINGS_KEY, "recent_folders") is None
+    assert settings.get(logic.LEGACY_SETTINGS_KEY, "name_column_hidden") is None
+
+
+def test_migrate_settings_keeps_builder_settings_already_saved(legacy_settings):
+    settings.set(logic.LEGACY_SETTINGS_KEY, "recent_folders", '["C:/old"]')
+    settings.set(logic.SETTINGS_KEY, "recent_folders", '["C:/new"]')
+
+    logic.migrate_settings()
+
+    assert settings.get(logic.SETTINGS_KEY, "recent_folders") == '["C:/new"]'
+    assert settings.get(logic.LEGACY_SETTINGS_KEY, "recent_folders") is None

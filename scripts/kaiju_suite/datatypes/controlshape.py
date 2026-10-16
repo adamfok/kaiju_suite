@@ -15,7 +15,7 @@ with a warning. Rational curve weights aren't saved.
 
 :data:`CHECKS` are QC checks on given controls (no curve shapes, shape name
 mismatch, no color, duplicate names, rational curves), run by the
-ControlShape Tool's QC tab and before Scripter publishes. They change
+ControlShape Tool's QC tab and before Builder publishes. They change
 nothing.
 """
 

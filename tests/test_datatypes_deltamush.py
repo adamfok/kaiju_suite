@@ -1,7 +1,7 @@
 """DeltaMush save/load (kaiju_suite.datatypes.deltamush), without the Assembler.
 
 The Assembler's DeltaMush product (tests/test_assembler_deltamush.py) and
-Kaiju Scripter's DeltaMush items both go through this module.
+Kaiju Builder's DeltaMush items both go through this module.
 """
 
 import pytest

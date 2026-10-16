@@ -1,5 +1,5 @@
 """Small status icons drawn with QPainter: a check, a cross and a pause sign,
-as coloured lines on a clear background (Scripter's status column).
+as coloured lines on a clear background (Builder's status column).
 
 Each icon is drawn at several sizes, so it stays sharp under Maya's UI scaling.
 Shapes are laid out on a 16x16 grid and scaled to the size drawn."""

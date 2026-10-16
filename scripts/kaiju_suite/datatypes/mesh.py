@@ -17,7 +17,7 @@ removes the shape with it and one undo still reverts a whole apply.
 :data:`CHECKS` are QC checks on given meshes (n-gons, non-manifold, lamina,
 zero-area faces, zero-length edges, missing UVs, locked normals, symmetry,
 unfrozen transforms, history, duplicate names, shape names), run by the Mesh
-Tool's QC tab and before Scripter publishes; Missing UVs and Not symmetric
+Tool's QC tab and before Builder publishes; Missing UVs and Not symmetric
 only run in the tool. Four have a ``fix``. Checks change nothing.
 """
 

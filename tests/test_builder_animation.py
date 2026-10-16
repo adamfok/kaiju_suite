@@ -1,4 +1,4 @@
-"""Kaiju Scripter's Animation item (``.anim``): keys published from the
+"""Kaiju Builder's Animation item (``.anim``): keys published from the
 selection through kaiju_suite.datatypes.animation, versioned, applied back
 when run; double-click opens the Animation Tool; Publish runs its QC first."""
 
@@ -10,7 +10,7 @@ import sys
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.scripter import items, logic, versions
+from kaiju_suite.tools.builder import items, logic, versions
 
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 
@@ -117,7 +117,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import items, widget
+from kaiju_suite.tools.builder import items, widget
 
 path = os.path.join(tempfile.mkdtemp(), "walk.anim")
 open(path, "w").close()
@@ -129,8 +129,8 @@ widget.QtWidgets.QMessageBox.information = staticmethod(lambda *a: calls.append(
 
 class Stand(QtWidgets.QWidget):
     attempt = staticmethod(lambda fn: fn())
-    _on_double_click = widget.ScripterWindow._on_double_click
-    _show_info = widget.ScripterWindow._show_info
+    _on_double_click = widget.BuilderWindow._on_double_click
+    _show_info = widget.BuilderWindow._show_info
 
 
 stand = Stand()
@@ -160,5 +160,5 @@ def test_double_click_on_an_animation_item_opens_the_animation_tool(probe):
 
 def test_the_new_menu_offers_animation_with_its_icon(probe):
     assert probe["in_new_menu"]
-    assert probe["icon_file"] == "scripter_animation.svg"
+    assert probe["icon_file"] == "builder_animation.svg"
     assert not probe["icon_null"]

@@ -1,8 +1,8 @@
-"""Kaiju Scripter logic: a folder of scripts, in your order, run on demand.
+"""Kaiju Builder logic: a folder of scripts, in your order, run on demand.
 
 The tree is the folder on disk; its items are the kinds in :mod:`.items`
 (scripts, folders, separators, breakpoints, data and file items). Each folder keeps its order and disabled items in
-``<folder>/.scripter/order.json``, by name; anything not listed there comes
+``<folder>/.builder/order.json``, by name; anything not listed there comes
 after, sorted by name. Dot-names and ``__pycache__`` aren't shown.
 
 :class:`Runner` runs the selected items and keeps each one's status, in
@@ -21,8 +21,8 @@ from maya import cmds
 from kaiju_suite.core import settings
 from kaiju_suite.core.log import get_logger
 from kaiju_suite.core.undo import undo_chunk
-from kaiju_suite.tools.scripter import items, versions
-from kaiju_suite.tools.scripter.items import (  # noqa: F401 (re-exported)
+from kaiju_suite.tools.builder import items, versions
+from kaiju_suite.tools.builder.items import (  # noqa: F401 (re-exported)
     BLENDSHAPES,
     BREAKPOINT,
     CONTROLSHAPE,
@@ -41,11 +41,13 @@ from kaiju_suite.tools.scripter.items import (  # noqa: F401 (re-exported)
     kind_of,
     run_script,
 )
-from kaiju_suite.tools.scripter.versions import HIDDEN_DIR  # noqa: F401 (everything Scripter keeps in a folder)
+from kaiju_suite.tools.builder.versions import HIDDEN_DIR, LEGACY_HIDDEN_DIR  # noqa: F401 (everything Builder keeps in a folder)
 
 log = get_logger(__name__)
 
-SETTINGS_KEY = "scripter"
+SETTINGS_KEY = "builder"
+# The settings key from when the tool was Kaiju Scripter; see migrate_settings.
+LEGACY_SETTINGS_KEY = "scripter"
 # How many folders the folder dropdown remembers.
 MAX_RECENT = 10
 
@@ -85,6 +87,7 @@ class Entry:
 
 def scan(root):
     """The items under ``root`` as a list of :class:`Entry`, in its order."""
+    migrate_hidden_dir(root)
     disabled = set(_load_meta(root)["disabled"])
     entries = []
     for name in _ordered_names(root):
@@ -428,6 +431,35 @@ def delete_paths(paths):
         _forget(path)
 
 
+# -- moving over from Kaiju Scripter ----------------------------------------
+
+
+def migrate_hidden_dir(directory):
+    """Rename ``directory``'s ``.scripter`` folder to ``.builder``, keeping its order and versions.
+
+    A ``.builder`` folder already there wins and the old one is left alone.
+    """
+    legacy = os.path.join(directory, LEGACY_HIDDEN_DIR)
+    current = os.path.join(directory, HIDDEN_DIR)
+    if os.path.isdir(legacy) and not os.path.exists(current):
+        try:
+            os.rename(legacy, current)
+        except OSError:
+            log.exception("Cannot rename %s to %s", legacy, current)
+
+
+def migrate_settings():
+    """Move this user's Kaiju Scripter settings over to Builder's; ones Builder already has win."""
+    legacy_prefix = f"{settings.PREFIX}_{LEGACY_SETTINGS_KEY}_"
+    for key in cmds.optionVar(list=True) or []:
+        if not key.startswith(legacy_prefix):
+            continue
+        name = key[len(legacy_prefix):]
+        if settings.get(SETTINGS_KEY, name) is None:
+            settings.set(SETTINGS_KEY, name, cmds.optionVar(query=key))
+        cmds.optionVar(remove=key)
+
+
 # -- recent folders ---------------------------------------------------------
 
 
@@ -560,7 +592,7 @@ class Runner:
         return self._run(steps)
 
     def _run(self, steps):
-        with undo_chunk("Kaiju Scripter Run"):
+        with undo_chunk("Kaiju Builder Run"):
             for i, path in enumerate(steps):
                 if kind_of(path) == BREAKPOINT:
                     self._status[path] = (PAUSED, "")

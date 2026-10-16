@@ -20,7 +20,7 @@ saved still need the same vertex count.
 
 :data:`CHECKS` are QC checks on the blendShapes of given meshes (no
 blendShape, above skin, empty targets, duplicate names), run by the
-BlendShape Tool's QC tab and before Scripter publishes. They change nothing.
+BlendShape Tool's QC tab and before Builder publishes. They change nothing.
 """
 
 import re

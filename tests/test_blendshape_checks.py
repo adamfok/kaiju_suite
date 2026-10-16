@@ -1,5 +1,5 @@
 """datatypes.blendshape.CHECKS: QC checks on given meshes' blendShapes, run
-by the BlendShape Tool's QC tab and before Scripter publishes a BlendShapes
+by the BlendShape Tool's QC tab and before Builder publishes a BlendShapes
 item. They report problems and change nothing."""
 
 from maya import cmds

@@ -4,7 +4,7 @@ options has an options button (sliders icon) on its row that opens them
 (:class:`QCOptionsDialog`); hover the check to see them. A check with a
 ``fix`` gets a Fix button (wrench icon) at the right of its row when a
 run finds something. Also :class:`QCResultsDialog`, results in a dialog with a
-go-ahead button (Scripter's Publish shows it when QC finds problems).
+go-ahead button (Builder's Publish shows it when QC finds problems).
 
 The tool passes in its checks (:class:`kaiju_suite.core.checks.Check`) and
 callbacks, so this never imports ``datatypes`` or a tool:

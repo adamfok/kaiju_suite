@@ -1,5 +1,5 @@
 """Loft Tool: QC for lofted NURBS surfaces. The checks live in
-kaiju_suite.datatypes.loft (CHECKS), shared with Scripter's Publish."""
+kaiju_suite.datatypes.loft (CHECKS), shared with Builder's Publish."""
 
 import pytest
 from maya import cmds
@@ -131,7 +131,7 @@ def test_run_qc_needs_a_surface(new_scene):
         logic.run_qc(box)
 
 
-def test_run_qc_uses_the_settings_shared_with_scripter(new_scene, monkeypatch):
+def test_run_qc_uses_the_settings_shared_with_builder(new_scene, monkeypatch):
     surface, _ = _ribbon()
     seen = []
     monkeypatch.setattr(logic.datatypes, "run_qc", lambda module, nodes, settings=None: seen.append(module) or [])

@@ -1,11 +1,11 @@
-"""Kaiju Scripter Copy and Paste: every item kind, folders, versions and names."""
+"""Kaiju Builder Copy and Paste: every item kind, folders, versions and names."""
 
 import os
 
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.scripter import items, logic, versions
+from kaiju_suite.tools.builder import items, logic, versions
 
 
 def _write(path, text=""):
@@ -177,7 +177,7 @@ def test_pasting_a_file_item_with_no_file_set_copies_it_as_it_is(folders):
 
 
 def test_paste_copies_a_build_from_one_library_to_another(tmp_path):
-    # Two scripts folders, as picked in Scripter's folder box.
+    # Two scripts folders, as picked in Builder's folder box.
     lib_a = str(tmp_path / "lib_a")
     lib_b = str(tmp_path / "lib_b")
     os.makedirs(lib_a)

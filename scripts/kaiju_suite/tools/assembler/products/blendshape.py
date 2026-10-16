@@ -1,7 +1,7 @@
 """BlendShapes (.bshp): blendShape nodes saved as data and rebuilt by name.
 
 The saving and rebuilding are :mod:`kaiju_suite.datatypes.blendshape`,
-shared with Kaiju Scripter's BlendShapes items; this is the Assembler step.
+shared with Kaiju Builder's BlendShapes items; this is the Assembler step.
 """
 
 from kaiju_suite.datatypes import blendshape

@@ -141,7 +141,7 @@ def test_vertex_ranges_fold_runs_of_indices(indices, expected):
     assert skin.vertex_ranges("m", indices) == expected
 
 
-# -- QC through datatypes (shared by the tool and Scripter's Publish) ---------
+# -- QC through datatypes (shared by the tool and Builder's Publish) ---------
 
 
 @pytest.fixture

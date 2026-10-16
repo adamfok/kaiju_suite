@@ -1,5 +1,5 @@
 """datatypes.controlshape.CHECKS: QC checks on given controls, run by the
-ControlShape Tool's QC tab and before Scripter publishes a ControlShape
+ControlShape Tool's QC tab and before Builder publishes a ControlShape
 item. They report problems and change nothing."""
 
 from maya import cmds, mel

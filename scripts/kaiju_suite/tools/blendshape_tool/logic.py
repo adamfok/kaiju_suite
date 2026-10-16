@@ -22,7 +22,7 @@ weight. Every scene change is one undo step.
 
 The QC tab runs the blendShape checks
 (:data:`kaiju_suite.datatypes.blendshape.CHECKS`) on the selected meshes with
-:func:`run_qc`, with options saved per user and shared with Scripter's
+:func:`run_qc`, with options saved per user and shared with Builder's
 Publish; :func:`select_problem` selects what a problem points at.
 """
 
@@ -403,7 +403,7 @@ def target_driver(node, name):
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a BlendShapes item uses the same ones."""
     return datatypes.qc_settings(blendshape_data)
 

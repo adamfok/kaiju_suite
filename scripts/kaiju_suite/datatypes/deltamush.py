@@ -13,7 +13,7 @@ need the same vertex count.
 
 :data:`CHECKS` are QC checks on the deltaMush nodes of given meshes (no
 deltaMush, below skin, disabled, empty weights, duplicate mesh names), run
-by the DeltaMush Tool's QC tab and before Scripter publishes. They change
+by the DeltaMush Tool's QC tab and before Builder publishes. They change
 nothing.
 """
 

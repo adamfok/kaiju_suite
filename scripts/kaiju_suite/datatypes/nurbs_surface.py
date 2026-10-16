@@ -1,5 +1,5 @@
 """NurbsSurface (.surface): NURBS surfaces saved as data and rebuilt as new
-surfaces (ribbons, sliding surfaces, follicle surfaces, ...). Scripter only;
+surfaces (ribbons, sliding surfaces, follicle surfaces, ...). Builder only;
 there's no Assembler product.
 
 :func:`gather` saves each given surface (its transform, or one of its
@@ -21,7 +21,7 @@ exact and the whole apply undoes in one step.
 
 :data:`CHECKS` are QC checks on given surfaces (duplicate names, rational
 CVs, trimmed surfaces, construction history), run by the Surface Tool's QC
-tab and before Scripter publishes. Checks change nothing.
+tab and before Builder publishes. Checks change nothing.
 """
 
 from maya import cmds, mel
@@ -242,7 +242,7 @@ def _per_surface(find, text):
 
 
 CHECKS = (
-    Check("names", "Duplicate name", "Another node has the same name; Scripter finds surfaces by name.",
+    Check("names", "Duplicate name", "Another node has the same name; Builder finds surfaces by name.",
           _per_surface(_find_names, lambda surface, items: f"another node is called {short_name(surface)}")),
     Check("rational", "Rational CVs",
           "CVs with a weight other than 1. Weights aren't saved: the rebuilt surface has every weight at 1.",

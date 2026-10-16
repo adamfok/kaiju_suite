@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from kaiju_suite.core import checks, settings
 from kaiju_suite.core.log import get_logger
-from kaiju_suite.tools.scripter import items, logic, script_editor, versions, vscode
+from kaiju_suite.tools.builder import items, logic, script_editor, versions, vscode
 from kaiju_suite.ui import icons, status_icons
 from kaiju_suite.ui.base_window import ToolWindow
 from kaiju_suite.ui.qc_tab import QCResultsDialog
@@ -52,25 +52,25 @@ STATUS_ICONS = {
 STATUS_TIPS = {logic.RAN: "Ran", logic.PAUSED: "Paused here. Right-click > Continue to run the rest."}
 # Each item kind's icon in the module's icons/ folder.
 ICONS = {
-    logic.SCRIPT: "scripter_script.svg",
-    logic.FOLDER: "scripter_folder.svg",
-    logic.SEPARATOR: "scripter_separator.svg",
-    logic.BREAKPOINT: "scripter_breakpoint.svg",
-    logic.IMPORT_FILE: "scripter_import_file.svg",
-    logic.EXPORT_FILE: "scripter_export_file.svg",
-    logic.JOINTS: "scripter_joints.svg",
-    logic.SKIN: "scripter_skin.svg",
-    logic.MESH: "scripter_mesh.svg",
-    logic.SELECTION: "scripter_selection.svg",
-    items.NURBS_CURVE: "scripter_nurbs_curve.svg",
-    items.ANIMATION: "scripter_animation.svg",
-    logic.POSE: "scripter_pose.svg",
-    logic.CONTROLSHAPE: "scripter_controlshape.svg",
-    logic.BLENDSHAPES: "scripter_blendshapes.svg",
-    items.PROXIMITY_WRAP: "scripter_proximity_wrap.svg",
-    logic.DELTAMUSH: "scripter_deltamush.svg",
-    items.NURBS_SURFACE: "scripter_nurbs_surface.svg",
-    items.LOFT: "scripter_loft.svg",
+    logic.SCRIPT: "builder_script.svg",
+    logic.FOLDER: "builder_folder.svg",
+    logic.SEPARATOR: "builder_separator.svg",
+    logic.BREAKPOINT: "builder_breakpoint.svg",
+    logic.IMPORT_FILE: "builder_import_file.svg",
+    logic.EXPORT_FILE: "builder_export_file.svg",
+    logic.JOINTS: "builder_joints.svg",
+    logic.SKIN: "builder_skin.svg",
+    logic.MESH: "builder_mesh.svg",
+    logic.SELECTION: "builder_selection.svg",
+    items.NURBS_CURVE: "builder_nurbs_curve.svg",
+    items.ANIMATION: "builder_animation.svg",
+    logic.POSE: "builder_pose.svg",
+    logic.CONTROLSHAPE: "builder_controlshape.svg",
+    logic.BLENDSHAPES: "builder_blendshapes.svg",
+    items.PROXIMITY_WRAP: "builder_proximity_wrap.svg",
+    logic.DELTAMUSH: "builder_deltamush.svg",
+    items.NURBS_SURFACE: "builder_nurbs_surface.svg",
+    items.LOFT: "builder_loft.svg",
 }
 # The right-click New menu, in order.
 NEW_KINDS = (
@@ -129,7 +129,7 @@ def row_color(kind, palette):
 
 
 def _warn(message):
-    cmds.warning(f"Kaiju Scripter: {message}")
+    cmds.warning(f"Kaiju Builder: {message}")
 
 
 def _open_in_file_browser(path):
@@ -287,11 +287,11 @@ class _Tree(QtWidgets.QTreeWidget):
         self.owner.populate()
 
 
-class ScripterWindow(ToolWindow):
-    TITLE = "Kaiju Scripter"
+class BuilderWindow(ToolWindow):
+    TITLE = "Kaiju Builder"
     # Paths of the items Copy picked, for Paste. Kept by the class, so it lasts
     # the Maya session: you can open another scripts folder, or close and
-    # reopen Scripter, and paste them there.
+    # reopen Builder, and paste them there.
     copied = []
 
     def build_ui(self):
@@ -573,7 +573,7 @@ class ScripterWindow(ToolWindow):
         try:
             return fn()
         except Exception as e:
-            log.exception("Kaiju Scripter action failed")
+            log.exception("Kaiju Builder action failed")
             _warn(str(e))
             return None
 
@@ -897,7 +897,7 @@ class ScripterWindow(ToolWindow):
         try:
             same = items.unchanged_since(path, objects) if is_data else versions.unchanged_since(path)
         except Exception as e:
-            log.exception("Kaiju Scripter publish check failed")
+            log.exception("Kaiju Builder publish check failed")
             _warn(str(e))
             return
         if same:
@@ -1089,9 +1089,9 @@ class SelectionDialog(QtWidgets.QDialog):
         add_row = QtWidgets.QHBoxLayout()
         self.add_buttons = []
         for tip, icon_file, slot in (
-            ("Add Selected", "scripter_add_selected.svg", self._add_selected),
-            ("Add Pattern", "scripter_add_pattern.svg", self._add_pattern),
-            ("Add Selection Set", "scripter_add_set.svg", self._add_set),
+            ("Add Selected", "builder_add_selected.svg", self._add_selected),
+            ("Add Pattern", "builder_add_pattern.svg", self._add_pattern),
+            ("Add Selection Set", "builder_add_set.svg", self._add_set),
         ):
             button = QtWidgets.QToolButton()
             button.setIcon(icons.same_when_selected(icons.icon(icon_file)))
@@ -1102,7 +1102,7 @@ class SelectionDialog(QtWidgets.QDialog):
             self.add_buttons.append(button)
         add_row.addStretch(1)
         self.delete_button = QtWidgets.QToolButton()
-        self.delete_button.setIcon(icons.same_when_selected(icons.icon("scripter_delete.svg")))
+        self.delete_button.setIcon(icons.same_when_selected(icons.icon("builder_delete.svg")))
         self.delete_button.setToolTip("Remove")
         self.delete_button.setAutoRaise(True)
         self.delete_button.clicked.connect(self.remove_selected)
@@ -1293,9 +1293,9 @@ class SelectedObjectsDialog(QtWidgets.QDialog):
         button_row = QtWidgets.QHBoxLayout()
         self.buttons = []
         for tip, icon_file, slot in (
-            ("Add Selected", "scripter_add_selected.svg", self.add_selected),
-            ("Replace with Selected", "scripter_replace_selected.svg", self.replace_with_selected),
-            ("Remove", "scripter_remove.svg", self.remove_selected),
+            ("Add Selected", "builder_add_selected.svg", self.add_selected),
+            ("Replace with Selected", "builder_replace_selected.svg", self.replace_with_selected),
+            ("Remove", "builder_remove.svg", self.remove_selected),
         ):
             button = QtWidgets.QToolButton()
             button.setIcon(icons.same_when_selected(icons.icon(icon_file)))
@@ -1423,12 +1423,12 @@ class SetDialog(QtWidgets.QDialog):
         self.on_pick = on_pick
         self.setWindowTitle("Selection Set")
         self.new_button = QtWidgets.QToolButton()
-        self.new_button.setIcon(icons.same_when_selected(icons.icon("scripter_add_set.svg")))
+        self.new_button.setIcon(icons.same_when_selected(icons.icon("builder_add_set.svg")))
         self.new_button.setToolTip("New Selection Set from Selected")
         self.new_button.setAutoRaise(True)
         self.new_button.clicked.connect(self._new_set)
         self.delete_button = QtWidgets.QToolButton()
-        self.delete_button.setIcon(icons.same_when_selected(icons.icon("scripter_delete_set.svg")))
+        self.delete_button.setIcon(icons.same_when_selected(icons.icon("builder_delete_set.svg")))
         self.delete_button.setToolTip("Delete Selection Set")
         self.delete_button.setAutoRaise(True)
         self.delete_button.clicked.connect(self._delete_set)

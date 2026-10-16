@@ -1,10 +1,10 @@
-"""Kaiju Scripter version history: Publish, Versions, Restore, descriptions."""
+"""Kaiju Builder version history: Publish, Versions, Restore, descriptions."""
 
 import os
 
 import pytest
 
-from kaiju_suite.tools.scripter import logic, versions
+from kaiju_suite.tools.builder import logic, versions
 
 
 def _set(path, text):
@@ -39,7 +39,7 @@ def test_publish_saves_numbered_versions_with_descriptions(script):
     assert [v.description for v in found] == ["First", versions.NO_DESCRIPTION]
     assert _text(found[0].path) == "print('one')\n"
     assert found[0].path == os.path.join(
-        os.path.dirname(script), ".scripter", "versions", "setup.py", "v001.py"
+        os.path.dirname(script), ".builder", "versions", "setup.py", "v001.py"
     )
 
 

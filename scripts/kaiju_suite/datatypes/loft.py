@@ -1,6 +1,6 @@
 """Loft (.loft): lofted NURBS surfaces saved with their loft settings and
 input curves, and rebuilt with live history (ribbons lofted between curves,
-...). Scripter only; there's no Assembler product.
+...). Builder only; there's no Assembler product.
 
 :func:`gather` saves each given surface (its transform, or its surface shape
 or CVs) whose shape is driven by a ``loft`` node: the surface's name, parent
@@ -21,7 +21,7 @@ the next free one.
 
 :data:`CHECKS` are QC checks on given surfaces (not a loft, unsupported
 inputs, duplicate names, flipped curves), run by the Loft Tool's QC tab and
-before Scripter publishes. Checks change nothing.
+before Builder publishes. Checks change nothing.
 """
 
 from maya import cmds
@@ -336,7 +336,7 @@ CHECKS = (
           "A loft input isn't a NURBS curve (an isoparm or curve-on-surface), which can't be found by name.",
           _per_surface(_find_unsupported, lambda surface, items: "lofted from something that isn't a curve")),
     Check("names", "Duplicate names",
-          "The surface or an input curve has a name another node also has; Scripter finds them by name.",
+          "The surface or an input curve has a name another node also has; Builder finds them by name.",
           _per_surface(_find_names,
                        lambda surface, items: f"names also used by other nodes: {', '.join(short_name(i) for i in items)}")),
     Check("flipped", "Flipped curves",

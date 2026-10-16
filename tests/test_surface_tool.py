@@ -1,5 +1,5 @@
 """Surface Tool: QC for NURBS surfaces. The checks live in
-kaiju_suite.datatypes.nurbs_surface (CHECKS), shared with Scripter's Publish."""
+kaiju_suite.datatypes.nurbs_surface (CHECKS), shared with Builder's Publish."""
 
 import pytest
 from maya import cmds

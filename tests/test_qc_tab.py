@@ -215,7 +215,7 @@ def test_a_run_that_fails_leaves_the_tab_as_it_was(probe):
     assert probe["status_after_failed_run"] is True
 
 
-# The dialog Scripter shows when QC finds problems before publishing.
+# The dialog Builder shows when QC finds problems before publishing.
 _DIALOG_PROBE = r"""
 import json, os, sys
 os.environ["QT_QPA_PLATFORM"] = "offscreen"

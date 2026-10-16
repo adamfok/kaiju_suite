@@ -1,7 +1,7 @@
 """Surface Tool: QC for NURBS surfaces. No Qt.
 
 The checks live in :data:`kaiju_suite.datatypes.nurbs_surface.CHECKS`, so
-Scripter's Publish of a NurbsSurface item runs them too. :func:`run_qc` runs
+Builder's Publish of a NurbsSurface item runs them too. :func:`run_qc` runs
 them on the selected surfaces; :func:`select_problem` selects the surfaces
 or CVs a problem points at. Nothing here changes the scene, so there's
 nothing to undo.
@@ -18,7 +18,7 @@ QC_CHECKS = nurbs_surface.CHECKS
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a NurbsSurface item uses the same ones."""
     return datatypes.qc_settings(nurbs_surface)
 
