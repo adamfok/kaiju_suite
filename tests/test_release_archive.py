@@ -31,10 +31,13 @@ pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
 
 
 def _export_ignored(path):
+    """Whether git archive leaves ``path`` out: it, or a folder above it, is export-ignore."""
+    parts = path.split("/")
+    candidates = ["/".join(parts[: i + 1]) for i in range(len(parts))]
     out = subprocess.run(
-        ["git", "check-attr", "export-ignore", "--", path], cwd=ROOT, capture_output=True, text=True, check=True
+        ["git", "check-attr", "export-ignore", "--", *candidates], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout
-    return out.strip().endswith(": set")
+    return any(line.endswith(": set") for line in out.splitlines())
 
 
 @pytest.mark.parametrize("path", SHIPPED)
