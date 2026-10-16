@@ -12,12 +12,9 @@ Tests need `mayapy` (they start `maya.standalone`), not system Python. The inter
 Run the suite after every change. It takes about 90s.
 
 ## Architecture rules (keep these)
-- Imports only go one way: `tools` → `ui` → `core`, `tools` → `rigging` → `core`, and `tools` → `datatypes` → `core`. `core` never imports `ui`, `rigging`, `datatypes` or `tools`; `rigging` and `datatypes` never import `ui`, `tools` or each other. Tools never import each other.
-- Rig module algorithms live in `rigging/rig_module/modules/`; Assembler Rig Module items only hold their parameters.
-- Guide modules live in `rigging/guide_module/modules/`, built from the planar chains in `rigging/guide_module/planar_chain.py`; Assembler Guide items only hold their layout.
-- Naming: say "rig module" (code: `rig_module`, `RigModule`) for the parameter-driven rig builders, and "guide module" for guide layouts (Chain, Hand, Leg...). Never a bare "module", which is ambiguous between the two (and with Python modules).
-- Saving and loading rig data (gather a payload from the scene, apply it back, describe it) lives in `datatypes/<kind>.py`, so the Assembler and the tools share one file format. The exceptions are rig modules and guide modules, which own their file formats in `rigging/rig_module/spec.py` and `rigging/guide_module/spec.py`. Assembler data products only hold the step part (New, Publish, versions, Run). `datatypes` warns with `cmds.warning`, never the Assembler's `runlog`.
-- No Qt in `core/`, `rigging/`, `datatypes/` or in any tool's `logic.py`. Qt goes only in `ui/` and `tools/<tool>/widget.py`.
+- Imports only go one way: `tools` → `ui` → `core` and `tools` → `datatypes` → `core`. `core` never imports `ui`, `datatypes` or `tools`; `datatypes` never imports `ui` or `tools`. Tools never import each other.
+- Saving and loading rig data (gather a payload from the scene, apply it back, describe it) lives in `datatypes/<kind>.py`, so Builder's data items and the Utility Tools share one file format. Builder items only hold the step part (New, Publish, versions, Run). `datatypes` warns with `cmds.warning`.
+- No Qt in `core/`, `datatypes/` or in any tool's `logic.py`. Qt goes only in `ui/` and `tools/<tool>/widget.py`.
 - A tool's `__init__.py` must not import Qt or its widget at module level. `show()` imports the widget lazily, because the registry imports every tool package when it builds the menu.
 - Wrap scene-changing logic functions with `@undoable` from `core.undo`, so one user action is one undo step.
 - When renaming or reparenting several nodes, track them by UUID, not by long path: paths go stale once a parent changes (see `outliner_tool/logic.py`).

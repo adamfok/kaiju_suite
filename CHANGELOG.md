@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Developers: removed `core.attributes`, `core.colors`, `core.mirror` and `core.orient`, which nothing used any more
 - Developers: removed the `rigging` package (rig modules such as Simple IK, IK/FK and Space Switch, and the Chain and Leg guide modules) and its tests. Nothing used it once the Assembler was gone
 - The **Kaiju ▸ Utilities** menu is now **Kaiju ▸ Utility Tools**. The tools in it are unchanged
 - Trimmed for the first release: features that weren't tested in production are gone. Removed the **Assembler** (with its Rig Module Editor and Guide Module Editor), the **Asset Library**, and the empty **Constraint Tool**, **Deformer Tool** and **Material Tool**. Use **Builder** to build rigs
