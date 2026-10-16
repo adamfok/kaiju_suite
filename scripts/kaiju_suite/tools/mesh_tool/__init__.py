@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "Mesh Tool",
-    "category": "Utilities",
+    "category": "Utility Tools",
     "launch": show,
     "description": "QC the selected meshes and fix some of their problems.",
 }

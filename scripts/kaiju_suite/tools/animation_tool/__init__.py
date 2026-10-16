@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "Animation Tool",
-    "category": "Utilities",
+    "category": "Utility Tools",
     "launch": show,
     "description": "QC the selected animated nodes.",
 }

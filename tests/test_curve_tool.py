@@ -16,7 +16,7 @@ def _curve(name, points=((0, 0, 0), (1, 2, 0), (3, 1, 1), (4, 4, 2))):
 def test_the_tool_is_in_the_menu_under_utilities():
     tool = registry.find("Curve Tool")
     assert tool is not None
-    assert tool["category"] == "Utilities"
+    assert tool["category"] == "Utility Tools"
     assert callable(tool["launch"])
 
 

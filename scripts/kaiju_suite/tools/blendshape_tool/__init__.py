@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "BlendShape Tool",
-    "category": "Utilities",
+    "category": "Utility Tools",
     "launch": show,
     "description": "QC the selected meshes' blendShapes.",
 }

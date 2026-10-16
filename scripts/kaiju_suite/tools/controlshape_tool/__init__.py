@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "ControlShape Tool",
-    "category": "Utilities",
+    "category": "Utility Tools",
     "launch": show,
     "description": "QC the selected controls.",
 }

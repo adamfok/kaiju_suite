@@ -4,7 +4,7 @@ import pytest
 
 from kaiju_suite import registry
 
-# The tools under Kaiju > Utilities, one per Builder data item kind.
+# The tools under Kaiju > Utility Tools, one per Builder data item kind.
 UTILITIES = [
     "Animation Tool",
     "BlendShape Tool",
@@ -56,15 +56,15 @@ def test_removed_tools_are_gone(name):
     assert registry.find(name) is None
 
 
-def test_utilities_sit_under_the_utilities_menu():
+def test_utilities_sit_under_the_utility_tools_menu():
     found = {tool["name"]: tool for tool in registry.discover()}
 
     for name in UTILITIES:
-        assert found[name].get("category") == "Utilities", name
+        assert found[name].get("category") == "Utility Tools", name
 
 
-def test_nothing_else_sits_under_the_utilities_menu():
-    names = {tool["name"] for tool in registry.discover() if tool.get("category") == "Utilities"}
+def test_nothing_else_sits_under_the_utility_tools_menu():
+    names = {tool["name"] for tool in registry.discover() if tool.get("category") == "Utility Tools"}
 
     assert names == set(UTILITIES)
 
