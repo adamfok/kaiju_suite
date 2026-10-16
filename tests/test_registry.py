@@ -40,10 +40,10 @@ def test_top_level_tools_sort_before_categories(fake_tools):
     assert names == ["Alpha", "Zed", "Aardvark"]
 
 
-def test_assembler_and_outliner_tool_sit_at_the_top_of_the_menu():
+def test_builder_and_outliner_tool_sit_at_the_top_of_the_menu():
     found = {tool["name"]: tool for tool in registry.discover()}
 
-    assert "category" not in found["Assembler"]
+    assert "category" not in found["Builder"]
     assert "category" not in found["Outliner Tool"]
 
 
@@ -52,13 +52,8 @@ def test_menu_tools_leave_out_tools_marked_menu_false(fake_tools):
     fake_tools("hidden", '{"name": "Hidden", "launch": show, "menu": False}')
 
     assert [tool["name"] for tool in registry.menu_tools()] == ["Shown"]
-    # Still discovered, so the Assembler can open it by name.
+    # Still discovered, so another tool can open it by name.
     assert registry.find("Hidden")["name"] == "Hidden"
-
-
-def test_rig_module_editor_is_not_in_the_menu():
-    assert "Rig Module Editor" not in [tool["name"] for tool in registry.menu_tools()]
-    assert registry.find("Rig Module Editor") is not None
 
 
 def test_run_startup_calls_each_tools_startup_hook_once(fake_tools):

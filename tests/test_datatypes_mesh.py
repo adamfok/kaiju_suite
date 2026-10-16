@@ -7,7 +7,6 @@ this module.
 from maya import cmds
 
 from kaiju_suite.datatypes import mesh
-from kaiju_suite.tools.assembler.products import mesh as mesh_product
 
 
 def _cube(name="box"):
@@ -46,7 +45,3 @@ def test_describe_and_nodes(new_scene):
     payload = mesh.gather(cmds.ls([_cube("a"), _cube("b")], long=True))
     assert mesh.describe(payload) == ["2 meshes", "a, b"]
     assert mesh.nodes(payload) == ["a", "b"]
-
-
-def test_assembler_product_uses_the_datatype():
-    assert mesh_product.PRODUCT.datatype is mesh

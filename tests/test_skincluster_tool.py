@@ -409,17 +409,6 @@ def test_export_and_import_weights(new_scene, tmp_path):
     assert _all_weights(plane) == before
 
 
-def test_exported_file_is_an_assembler_skin_file(new_scene, tmp_path):
-    from kaiju_suite.tools.assembler.products import skin as skin_product
-
-    plane, _ = _skinned_source()
-    before = _all_weights(plane)
-    path = logic.export_weights(str(tmp_path / "src.skin"), [plane])
-    cmds.skinCluster(logic.skin_cluster(plane), edit=True, unbind=True)
-    skin_product.PRODUCT.run(path)
-    assert _all_weights(plane) == before
-
-
 def test_export_needs_skinned_meshes(new_scene, tmp_path):
     bare = _plane("bare")
     with pytest.raises(ValueError, match="No skinCluster on: bare"):

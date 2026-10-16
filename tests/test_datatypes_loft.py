@@ -74,12 +74,6 @@ def test_kind_and_extension():
     assert loft.EXTENSION == ".loft"
 
 
-def test_there_is_no_assembler_product():
-    from kaiju_suite.tools.assembler import products
-
-    assert all(getattr(p, "datatype", None) is not loft for p in products.all_products())
-
-
 # -- gather -----------------------------------------------------------------
 
 

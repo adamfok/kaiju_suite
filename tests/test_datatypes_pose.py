@@ -13,7 +13,6 @@ from maya import cmds
 from kaiju_suite import datatypes
 from kaiju_suite.core import checks
 from kaiju_suite.datatypes import pose
-from kaiju_suite.tools.assembler.products import pose as pose_product
 
 
 def _ctrl(name="ctrl", parent=None):
@@ -41,12 +40,6 @@ def _long(*nodes):
 def test_kind_and_extension():
     assert pose.KIND == "pose"
     assert pose.EXTENSION == ".pose"
-
-
-def test_assembler_product_uses_the_datatype():
-    assert pose_product.PRODUCT.datatype is pose
-    assert pose_product.PRODUCT.kind == "pose"
-    assert pose_product.PRODUCT.extensions == (".pose",)
 
 
 def test_gather_then_apply_sets_the_values_back(new_scene):

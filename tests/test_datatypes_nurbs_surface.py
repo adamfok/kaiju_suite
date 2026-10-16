@@ -54,12 +54,6 @@ def test_kind_and_extension():
     assert nurbs_surface.EXTENSION == ".surface"
 
 
-def test_there_is_no_assembler_product():
-    from kaiju_suite.tools.assembler import products
-
-    assert all(getattr(p, "datatype", None) is not nurbs_surface for p in products.all_products())
-
-
 @pytest.mark.parametrize("degree", [1, 3])
 def test_open_surfaces_round_trip(new_scene, degree):
     plane = cmds.nurbsPlane(name="ribbon", degree=degree, patchesU=4, patchesV=2, lengthRatio=0.5,

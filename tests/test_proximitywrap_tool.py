@@ -46,12 +46,6 @@ def test_the_wrap_tool_is_now_the_proximitywrap_tool():
     assert registry.find("Wrap Tool") is None
 
 
-def test_the_assembler_wrap_product_opens_it():
-    from kaiju_suite.tools.assembler.products import wrap
-
-    assert wrap.PRODUCT.utility == "ProximityWrap Tool"
-
-
 # -- the checks -------------------------------------------------------------
 
 

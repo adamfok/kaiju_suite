@@ -13,8 +13,6 @@ from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.datatypes import curves
-from kaiju_suite.tools.assembler import versions as assembler_versions
-from kaiju_suite.tools.assembler.products import curves as curves_product
 
 
 def _curve(name, parent=None):
@@ -96,25 +94,4 @@ def test_save_and_load_through_datatypes(new_scene, tmp_path):
     path = datatypes.save(curves, str(tmp_path / "spine.curve"), [_curve("spine_crv")])
     cmds.file(new=True, force=True)
     assert datatypes.load(curves, path) == "Created 1 curve"
-    assert cmds.objExists("spine_crv")
-
-
-def test_assembler_product_uses_the_datatype_and_keeps_crv():
-    product = curves_product.PRODUCT
-    assert product.datatype is curves
-    assert product.kind == "curves"
-    assert product.extension == ".crv"
-    assert product.extensions == (".crv",)
-
-
-def test_an_assembler_crv_file_renamed_to_curve_loads(new_scene, tmp_path):
-    spine = _curve("spine_crv")
-    crv = curves_product.PRODUCT.create(str(tmp_path), "guides")
-    cmds.select(spine)
-    assembler_versions.publish_action(crv).fn()
-    curve_path = os.path.join(str(tmp_path), "guides.curve")
-    shutil.copyfile(crv, curve_path)
-
-    cmds.file(new=True, force=True)
-    assert datatypes.load(curves, curve_path) == "Created 1 curve"
     assert cmds.objExists("spine_crv")

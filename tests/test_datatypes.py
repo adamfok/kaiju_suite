@@ -7,7 +7,6 @@ import pytest
 from maya import cmds
 
 from kaiju_suite import datatypes
-from kaiju_suite.tools.assembler import runlog
 
 PACKAGE = os.path.dirname(datatypes.__file__)
 FORBIDDEN = ("kaiju_suite.tools", "kaiju_suite.ui", "kaiju_suite.rigging", "PySide6", "PySide2", "shiboken")
@@ -43,12 +42,12 @@ def test_require_nodes_names_every_missing_node(new_scene):
     assert str(info.value) == "Missing influences: a, b"
 
 
-def test_skip_missing_warns_through_maya(new_scene):
+def test_skip_missing_warns_through_maya(new_scene, monkeypatch):
     cmds.createNode("transform", name="there")
-    # The Assembler's run log picks up plain Maya warnings.
-    with runlog.capture() as run:
-        assert datatypes.skip_missing(["there", "gone"], "meshes") == {"gone"}
-    assert run.warnings == ["Skipped missing meshes: gone"]
+    warnings = []
+    monkeypatch.setattr(cmds, "warning", warnings.append)
+    assert datatypes.skip_missing(["there", "gone"], "meshes") == {"gone"}
+    assert warnings == ["Skipped missing meshes: gone"]
 
 
 def test_meshes_takes_transforms_shapes_and_components(new_scene):

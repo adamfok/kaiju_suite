@@ -3,29 +3,22 @@ import sys
 import pytest
 
 from kaiju_suite import registry
-from kaiju_suite.tools.assembler import logic, products
 
-# Product name -> the utility tool double-clicking its items opens.
-UTILITIES = {
-    "Guide": "Guide Module Editor",
-    "Joints": "Joint Tool",
-    "Mesh": "Mesh Tool",
-    "SkinCluster": "SkinCluster Tool",
-    "DeltaMush": "DeltaMush Tool",
-    "BlendShapes": "BlendShape Tool",
-    "Material": "Material Tool",
-    "Pose": "Pose Tool",
-    "Animation": "Animation Tool",
-    "ControlShape": "ControlShape Tool",
-    "Constraints": "Constraint Tool",
-    "Deformers": "Deformer Tool",
-    "Wrap": "ProximityWrap Tool",
-    "Rig Module": "Rig Module Editor",
-}
-
-
-def _product(name):
-    return next(p for p in products.all_products() if p.name == name)
+# The tools under Kaiju > Utilities, one per Builder data item kind.
+UTILITIES = [
+    "Animation Tool",
+    "BlendShape Tool",
+    "ControlShape Tool",
+    "Curve Tool",
+    "DeltaMush Tool",
+    "Joint Tool",
+    "Loft Tool",
+    "Mesh Tool",
+    "Pose Tool",
+    "ProximityWrap Tool",
+    "SkinCluster Tool",
+    "Surface Tool",
+]
 
 
 def test_find_returns_the_tool_with_that_name():
@@ -40,11 +33,22 @@ def test_there_is_no_scene_tool():
     assert registry.find("Scene Tool") is None
 
 
-# Full tools that double as a product's utility keep their own menu category.
-ELSEWHERE = {}
-
 # Tools that were removed; nothing should register them any more.
-REMOVED = ["Rig Validator", "Offset & Snap Tool", "Attribute Manager", "Space Switch Tool", "Selection Sets", "Wrap Tool"]
+REMOVED = [
+    "Rig Validator",
+    "Offset & Snap Tool",
+    "Attribute Manager",
+    "Space Switch Tool",
+    "Selection Sets",
+    "Wrap Tool",
+    "Assembler",
+    "Asset Library",
+    "Guide Module Editor",
+    "Rig Module Editor",
+    "Constraint Tool",
+    "Deformer Tool",
+    "Material Tool",
+]
 
 
 @pytest.mark.parametrize("name", REMOVED)
@@ -55,8 +59,14 @@ def test_removed_tools_are_gone(name):
 def test_utilities_sit_under_the_utilities_menu():
     found = {tool["name"]: tool for tool in registry.discover()}
 
-    for name in UTILITIES.values():
-        assert found[name].get("category") == ELSEWHERE.get(name, "Utilities"), name
+    for name in UTILITIES:
+        assert found[name].get("category") == "Utilities", name
+
+
+def test_nothing_else_sits_under_the_utilities_menu():
+    names = {tool["name"] for tool in registry.discover() if tool.get("category") == "Utilities"}
+
+    assert names == set(UTILITIES)
 
 
 def test_discovering_utilities_does_not_load_their_windows():
@@ -65,87 +75,6 @@ def test_discovering_utilities_does_not_load_their_windows():
     loaded = [
         name
         for name in sys.modules
-        if name.startswith("kaiju_suite.tools.") and name.endswith(".widget") and ".assembler." not in name
+        if name.startswith("kaiju_suite.tools.") and name.endswith(".widget")
     ]
     assert loaded == []
-
-
-@pytest.mark.parametrize("product_name, utility", sorted(UTILITIES.items()))
-def test_each_product_opens_its_utility(product_name, utility):
-    tool = logic.utility_for(_product(product_name))
-
-    assert tool["name"] == utility
-    assert callable(tool["launch"])
-
-
-@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator", "Import Scene", "New Scene", "Guides to Joints"])
-def test_scripts_folders_separators_and_scenes_have_no_utility(product_name):
-    assert logic.utility_for(_product(product_name)) is None
-
-
-# Data products with no utility tool: double-click shows their Info window.
-NO_UTILITY = ("Curves", "Pose Correctives", "Set Driven Keys", "Connections", "Sets & Layers", "QC", "Attributes", "Export Scene")
-
-
-@pytest.mark.parametrize("product_name", NO_UTILITY)
-def test_data_products_without_a_utility(product_name):
-    assert logic.utility_for(_product(product_name)) is None
-
-
-def test_every_other_product_has_a_utility():
-    names = {p.name for p in products.all_products()} - {"Script", "Folder", "Separator", "Import Scene", "New Scene", "Guides to Joints", *NO_UTILITY}
-
-    assert names == set(UTILITIES)
-
-
-@pytest.mark.parametrize("product_name", sorted(set(UTILITIES) | {"Import Scene", *NO_UTILITY}))
-def test_products_with_an_info_window_get_right_click_info(product_name):
-    assert logic.has_info(_product(product_name))
-
-
-@pytest.mark.parametrize("product_name", ["Script", "Folder", "Separator", "New Scene", "Guides to Joints"])
-def test_products_without_an_info_window_get_no_right_click_info(product_name):
-    assert not logic.has_info(_product(product_name))
-
-
-# -- opening a utility on an item --------------------------------------------
-
-
-@pytest.fixture
-def fake_utility(monkeypatch):
-    """Make every product's utility a recording stand-in; returns the calls."""
-    calls = []
-    tool = {"name": "Fake", "launch": lambda: calls.append(("launch",))}
-    monkeypatch.setattr(logic, "utility_for", lambda product: tool)
-    return tool, calls
-
-
-def test_open_utility_launches_a_tool_that_takes_no_file(fake_utility):
-    tool, calls = fake_utility
-
-    logic.open_utility(_product("Mesh"), "a.mesh")
-
-    assert calls == [("launch",)]
-
-
-def test_open_utility_passes_the_item_to_a_tool_that_opens_files(fake_utility):
-    tool, calls = fake_utility
-    tool["open"] = lambda path: calls.append(("open", path))
-
-    logic.open_utility(_product("Rig Module"), "L_arm.rig")
-
-    assert calls == [("open", "L_arm.rig")]
-
-
-def test_open_utility_says_when_the_tool_is_missing(monkeypatch):
-    monkeypatch.setattr(logic, "utility_for", lambda product: None)
-
-    with pytest.raises(LookupError) as info:
-        logic.open_utility(_product("Mesh"), "a.mesh")
-    assert "Mesh Tool" in str(info.value)
-
-
-def test_rig_module_editor_opens_files():
-    tool = registry.find("Rig Module Editor")
-
-    assert callable(tool["open"]) and callable(tool["launch"])

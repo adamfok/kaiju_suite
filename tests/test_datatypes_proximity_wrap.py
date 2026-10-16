@@ -10,8 +10,6 @@ from maya import cmds, mel
 
 from kaiju_suite import datatypes
 from kaiju_suite.datatypes import proximity_wrap
-from kaiju_suite.tools.assembler import data
-from kaiju_suite.tools.assembler.products import wrap
 
 SETTINGS = {"wrapMode": 0, "falloffScale": 1.5, "smoothNormals": 2, "envelope": 0.8}
 DRIVER_SETTINGS = {"driverFalloffStart": 0.05, "driverFalloffEnd": 2.0, "driverStrength": 0.7}
@@ -202,21 +200,3 @@ def test_save_and_load_a_pwrap_file(new_scene, tmp_path):
     datatypes.load(proximity_wrap, path)
 
     assert cmds.ls(type="proximityWrap") == ["shirt_pwrap"]
-
-
-def test_the_assembler_wrap_product_saves_proximity_wraps_with_this_code(new_scene, tmp_path):
-    # The .wrap format is unchanged: its proximityWrap records are this module's.
-    body = _body()
-    shirt = _cloth()
-    coat = _cloth("coat", 1.3)
-    _wrap(shirt, body, "shirt_wrap")
-    _proximity(coat, body, "coat_pwrap")
-    path = wrap.PRODUCT.create(str(tmp_path), "wrap")
-    cmds.select(shirt, coat)
-    from kaiju_suite.tools.assembler import versions
-
-    versions.publish_action(path).fn()
-
-    records = {r["name"]: r for r in data.read(path, "wrap")["deformers"]}
-    assert records["coat_pwrap"] == proximity_wrap.gather(_long(coat))["deformers"][0]
-    assert records["shirt_wrap"]["type"] == "wrap"

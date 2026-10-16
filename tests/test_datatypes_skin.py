@@ -9,7 +9,6 @@ from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.datatypes import skin
-from kaiju_suite.tools.assembler import runlog
 
 JOINTS = ("hip", "knee", "ankle")
 
@@ -66,13 +65,14 @@ def test_gather_then_apply_restores_the_weights(new_scene):
     assert _weights("leg") == before
 
 
-def test_apply_skips_a_missing_mesh_with_a_maya_warning(new_scene):
+def test_apply_skips_a_missing_mesh_with_a_maya_warning(new_scene, monkeypatch):
     mesh, _ = _rig()
     payload = skin.gather([mesh])
     cmds.delete(mesh)
-    with runlog.capture() as run:
-        assert skin.apply(payload) == "Bound 0 meshes"
-    assert run.warnings == ["Skipped missing meshes: leg"]
+    warnings = []
+    monkeypatch.setattr(cmds, "warning", warnings.append)
+    assert skin.apply(payload) == "Bound 0 meshes"
+    assert warnings == ["Skipped missing meshes: leg"]
 
 
 def test_gather_needs_skinned_meshes(new_scene):

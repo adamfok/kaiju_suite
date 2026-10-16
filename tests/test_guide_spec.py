@@ -7,7 +7,6 @@ from maya import cmds
 
 from kaiju_suite.core import datafile
 from kaiju_suite.rigging.guide_module import planar_chain, spec
-from kaiju_suite.tools.assembler import runlog
 
 ONE_GUIDE = "Select guides of one guide module, not arm_guides_grp, leg_guides_grp."
 ARM = {
@@ -132,10 +131,11 @@ def test_apply_stops_on_an_unknown_guide_module(new_scene):
         spec.apply({"guide_module": "nope", "layout": {}})
 
 
-def test_apply_does_not_warn(new_scene):
-    with runlog.capture() as run:
-        spec.apply({"guide_module": "chain", "layout": ARM})
-    assert run.warnings == []
+def test_apply_does_not_warn(new_scene, monkeypatch):
+    warnings = []
+    monkeypatch.setattr(cmds, "warning", warnings.append)
+    spec.apply({"guide_module": "chain", "layout": ARM})
+    assert warnings == []
 
 
 def test_selection_problems(new_scene):

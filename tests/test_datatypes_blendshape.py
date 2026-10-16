@@ -8,7 +8,6 @@ from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.datatypes import blendshape
-from kaiju_suite.tools.assembler.products import blendshape as blendshape_product
 
 
 def _base(name="face"):
@@ -33,12 +32,6 @@ def _y(mesh, vertex):
 def test_kind_and_extension():
     assert blendshape.KIND == "blendshape"
     assert blendshape.EXTENSION == ".bshp"
-
-
-def test_the_assembler_product_uses_the_datatype():
-    assert blendshape_product.PRODUCT.datatype is blendshape
-    assert blendshape_product.PRODUCT.kind == "blendshape"
-    assert blendshape_product.PRODUCT.extensions == (".bshp",)
 
 
 def test_gather_then_apply_rebuilds_the_blendshape(new_scene):
