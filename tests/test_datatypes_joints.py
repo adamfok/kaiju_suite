@@ -1,8 +1,4 @@
-"""Joints save/load (kaiju_suite.datatypes.joints), without the Assembler.
-
-The Assembler's Joints product (tests/test_assembler_joints.py) goes
-through this module.
-"""
+"""Joints save/load (kaiju_suite.datatypes.joints)."""
 
 import pytest
 from maya import cmds

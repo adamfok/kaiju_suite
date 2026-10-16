@@ -1,8 +1,4 @@
-"""Skin weights save/load (kaiju_suite.datatypes.skin), without the Assembler.
-
-The Assembler's SkinCluster product (tests/test_assembler_skin.py) and the
-SkinCluster Tool both go through this module.
-"""
+"""Skin weights save/load (kaiju_suite.datatypes.skin)."""
 
 import pytest
 from maya import cmds

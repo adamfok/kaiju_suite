@@ -1,8 +1,4 @@
-"""ControlShape save/load (kaiju_suite.datatypes.controlshape), without the Assembler.
-
-The Assembler's ControlShape product (tests/test_assembler_controlshape.py)
-goes through this module.
-"""
+"""ControlShape save/load (kaiju_suite.datatypes.controlshape)."""
 
 import pytest
 from maya import cmds

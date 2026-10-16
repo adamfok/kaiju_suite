@@ -19,12 +19,13 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
+from kaiju_suite.core import checks
 from kaiju_suite.tools.skincluster_tool import logic, widget
 
 saved = {}
 widget.settings.get = lambda tool, key, default=None: saved.get(key, default)
 widget.settings.set = lambda tool, key, value: saved.__setitem__(key, value)
-logic.qc_settings = logic.qc_defaults
+logic.qc_settings = lambda: checks.defaults(logic.QC_CHECKS)
 warnings = []
 widget._warn = warnings.append
 widget.selected = lambda: []
@@ -40,6 +41,7 @@ out = {
     "tabs": [tabs.tabText(i) for i in range(tabs.count())],
     "qc_checks": [qc.results.topLevelItem(i).text(0) for i in range(qc.results.topLevelItemCount())],
     "utility_boxes": [b.title() for b in utilities.findChildren(QtWidgets.QGroupBox)],
+    "utility_labels": [label.text() for label in utilities.findChildren(QtWidgets.QLabel)],
 }
 [run] = [b for b in qc.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"]
 run.click()
@@ -71,8 +73,9 @@ def test_the_qc_tab_lists_the_skin_checks(probe):
     ]
 
 
-def test_the_utilities_tab_holds_the_skin_tools(probe):
-    assert probe["utility_boxes"] == ["Copy Skin", "Mirror Skin", "Clean Up", "Weights", "Influences", "Files"]
+def test_the_utilities_tab_is_an_empty_placeholder(probe):
+    assert probe["utility_boxes"] == []
+    assert probe["utility_labels"] == ["No skin utilities yet."]
 
 
 def test_checking_with_no_meshes_selected_warns(probe):

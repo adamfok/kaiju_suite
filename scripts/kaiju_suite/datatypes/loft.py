@@ -1,6 +1,6 @@
 """Loft (.loft): lofted NURBS surfaces saved with their loft settings and
 input curves, and rebuilt with live history (ribbons lofted between curves,
-...). Builder only; there's no Assembler product.
+...). Used by Builder's Loft items.
 
 :func:`gather` saves each given surface (its transform, or its surface shape
 or CVs) whose shape is driven by a ``loft`` node: the surface's name, parent

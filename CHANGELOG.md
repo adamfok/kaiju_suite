@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Trimmed for the first release: features that weren't tested in production are gone. Removed the **Assembler** (with its Rig Module Editor and Guide Module Editor), the **Asset Library**, and the empty **Constraint Tool**, **Deformer Tool** and **Material Tool**. Use **Builder** to build rigs
+- The **Utilities** tab of the Animation, BlendShape, ControlShape, DeltaMush, Joint, Pose and SkinCluster Tools is now empty, like the Curve, Loft, Mesh, ProximityWrap and Surface Tools'. Their **QC** tabs are unchanged. Removed with it: Mirror Animation, IK/FK Switch and Reset Controls; corrective sculpting, pose readers and target editing; the control shape library and shape editing, color and line width; adding and painting deltaMush; joint Orient, Mirror, Insert Joints and Display; pose Mirror, Select and Reset; Copy Skin, Mirror Skin, weight clean-up, influences and Export/Import Weights
 - Kaiju Scripter is now **Kaiju Builder** (**Kaiju ▸ Builder**). Nothing to do by hand: the first time Builder shows a folder, its hidden `.scripter` folder (item order, disabled items and version history) is renamed to `.builder`, and your Scripter settings (recent folders, hidden columns, column widths) move over when the window opens
 - Developers: the tool package moved from `tools/scripter/` to `tools/builder/` (`BuilderWindow`), its tests to `tests/test_builder*.py` and its icons to `icons/builder_*.svg`
 - Scripter: the **Type** column and its header are aligned to the right

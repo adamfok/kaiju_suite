@@ -13,10 +13,6 @@ missing is skipped with a warning. Ambiguous names, a changed vertex count
 on a mesh with painted weights, or a name taken by another node stop the
 apply before anything changes.
 
-The Assembler's Wrap product (``.wrap``) saves wraps and proximityWraps
-together; it records and rebuilds its proximityWraps with :func:`record`,
-:func:`check` and :func:`rebuild`, so both files hold the same records.
-
 :data:`CHECKS` are QC checks on the proximityWraps of given meshes (no
 proximityWrap, missing driver, below skin, disabled, duplicate names), run
 by the ProximityWrap Tool's QC tab and before Builder publishes. They
@@ -146,8 +142,7 @@ def check(records, label="ProximityWrap"):
     raising before anything changes if a name is ambiguous, a painted mesh's
     vertex count differs, or a deformer's name is taken by another node.
 
-    Works on any record with this module's layout and a ``type`` (the
-    Assembler's Wrap records too); ``label`` names what's applied in the error.
+    Works on any record with this module's layout and a ``type``; ``label`` names what's applied in the error.
     """
     names = [m["mesh"] for r in records for m in r["meshes"]] + [d["mesh"] for r in records for d in r["drivers"]]
     transforms, problems = {}, []

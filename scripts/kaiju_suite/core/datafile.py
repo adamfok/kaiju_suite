@@ -2,8 +2,7 @@
 
     {"kaiju": "joints", "format": 1, "data": {...}}
 
-Shared by the Assembler's rig-data products and by rig module parameter
-files. No Qt here.
+Shared by the datatypes and by rig module parameter files. No Qt here.
 """
 
 import json

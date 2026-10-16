@@ -1,4 +1,5 @@
-"""Shared save/load helpers in kaiju_suite.datatypes, used by the Assembler and the tools."""
+"""Shared save/load helpers in kaiju_suite.datatypes, used by Builder and the
+tools."""
 
 import ast
 import os

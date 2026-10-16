@@ -9,5 +9,5 @@ TOOL = {
     "name": "Pose Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "QC, mirror, flip and reset poses.",
+    "description": "QC the selected poses.",
 }

@@ -1,6 +1,5 @@
-"""NurbsSurface save/load (kaiju_suite.datatypes.nurbs_surface): NURBS
-surfaces saved as data and rebuilt as new surfaces. Builder only; there's
-no Assembler product."""
+"""NurbsSurface save/load (kaiju_suite.datatypes.nurbs_surface): NURBS surfaces
+saved as data and rebuilt as new surfaces. Builder only."""
 
 import pytest
 from maya import cmds

@@ -1,6 +1,6 @@
 """Loft save/load (kaiju_suite.datatypes.loft): lofted NURBS surfaces saved
 with their loft settings and input curves, and rebuilt with live history.
-Builder only; there's no Assembler product."""
+Builder only."""
 
 import pytest
 from maya import cmds

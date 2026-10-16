@@ -2,8 +2,7 @@
 
 A record holds a curve's degree, form, knots and CVs (in its transform's
 object space, relative to a pivot), plus its color overrides and line width
-when they were saved. The Assembler's ControlShape items and the
-ControlShape Tool's library both store shapes this way. Rational curve
+when they were saved. ControlShape items store shapes this way. Rational curve
 weights aren't saved.
 """
 

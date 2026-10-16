@@ -9,5 +9,5 @@ TOOL = {
     "name": "SkinCluster Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "QC the selected skins; copy skin by closest point, UV or topology; mirror, clean up and edit weights and influences.",
+    "description": "QC the selected skins.",
 }

@@ -1,6 +1,5 @@
-"""Guide module files (kaiju_suite.rigging.guide_module.spec), without the
-Assembler. The Assembler's Guide product (tests/test_assembler_guides.py)
-goes through this module. One file holds one guide module's layout."""
+"""Guide module files (kaiju_suite.rigging.guide_module.spec). One file holds
+one guide module's layout."""
 
 import pytest
 from maya import cmds

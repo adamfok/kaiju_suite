@@ -9,5 +9,5 @@ TOOL = {
     "name": "Joint Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "QC the selected joints; orient, mirror, split and display joints.",
+    "description": "QC the selected joints.",
 }

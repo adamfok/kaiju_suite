@@ -1,8 +1,4 @@
-"""Mesh save/load (kaiju_suite.datatypes.mesh), without the Assembler.
-
-The Assembler's Mesh product (tests/test_assembler_mesh.py) goes through
-this module.
-"""
+"""Mesh save/load (kaiju_suite.datatypes.mesh)."""
 
 from maya import cmds
 

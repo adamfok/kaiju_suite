@@ -1,9 +1,4 @@
-"""Curves save/load (kaiju_suite.datatypes.curves), without the Assembler.
-
-The Assembler's Curves product (tests/test_assembler_curves.py) goes through
-this module, keeping its own ``.crv`` extension; Builder's NurbsCurve items
-use ``.curve``. The file contents are the same.
-"""
+"""Curves save/load (kaiju_suite.datatypes.curves)."""
 
 import os
 import shutil

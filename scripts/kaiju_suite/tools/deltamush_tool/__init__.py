@@ -9,5 +9,5 @@ TOOL = {
     "name": "DeltaMush Tool",
     "category": "Utilities",
     "launch": show,
-    "description": "QC the selected meshes' deltaMush; add one and paint or set where it acts.",
+    "description": "QC the selected meshes' deltaMush.",
 }

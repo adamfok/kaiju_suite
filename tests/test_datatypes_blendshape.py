@@ -1,8 +1,4 @@
-"""BlendShape save/load (kaiju_suite.datatypes.blendshape), without the Assembler.
-
-The Assembler's BlendShapes product (tests/test_assembler_blendshape.py)
-goes through this module; the file format is unchanged.
-"""
+"""BlendShape save/load (kaiju_suite.datatypes.blendshape)."""
 
 from maya import cmds
 

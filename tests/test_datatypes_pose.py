@@ -1,9 +1,4 @@
-"""Pose save/load (kaiju_suite.datatypes.pose) and its QC checks, without the
-Assembler.
-
-The Assembler's Pose product (tests/test_assembler_pose.py) goes through
-this module; its file format is unchanged.
-"""
+"""Pose save/load (kaiju_suite.datatypes.pose) and its QC checks."""
 
 import json
 

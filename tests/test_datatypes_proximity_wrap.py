@@ -1,9 +1,4 @@
-"""ProximityWrap save/load (kaiju_suite.datatypes.proximity_wrap), without the Assembler.
-
-The Assembler's Wrap product (tests/test_assembler_wrap.py) saves wraps and
-proximityWraps in ``.wrap`` files; its proximityWrap half goes through this
-module.
-"""
+"""ProximityWrap save/load (kaiju_suite.datatypes.proximity_wrap)."""
 
 import pytest
 from maya import cmds, mel

@@ -1,8 +1,4 @@
-"""Animation save/load (kaiju_suite.datatypes.animation), without the Assembler.
-
-The Assembler's Animation product (tests/test_assembler_animation.py) goes
-through this module; the file format is unchanged.
-"""
+"""Animation save/load (kaiju_suite.datatypes.animation)."""
 
 from maya import cmds
 
