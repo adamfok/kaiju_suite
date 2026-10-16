@@ -1,9 +1,7 @@
 """Vertex matching between meshes, or between a mesh and saved points. No Qt here.
 
-Used wherever data made on one mesh has to go onto another: the SkinCluster
-Tool's Copy Skin (closest point, UV or topology), and the Assembler's
-SkinCluster, DeltaMush and BlendShapes items when a mesh's vertex count
-changed since publish (they match by closest point to the saved positions).
+For wherever data made on one mesh has to go onto another, matching by
+closest point, UV or topology.
 
 :func:`closest_indices` is a plain nearest-neighbour search (a k-d tree in
 pure Python) on 2D or 3D points, so it works on UVs as well as positions.

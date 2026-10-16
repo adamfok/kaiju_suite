@@ -3,7 +3,6 @@ import json
 import pytest
 
 from kaiju_suite.core import datafile
-from kaiju_suite.tools.assembler import data
 
 
 def test_write_then_read_round_trips_with_a_header(tmp_path):
@@ -44,10 +43,3 @@ def test_read_rejects_bad_files(tmp_path, content):
 
 def test_data_format_error_is_a_value_error():
     assert issubclass(datafile.DataFormatError, ValueError)
-
-
-def test_assembler_data_uses_the_core_file_helpers():
-    assert data.read is datafile.read
-    assert data.write is datafile.write
-    assert data.DataFormatError is datafile.DataFormatError
-    assert data.FORMAT == datafile.FORMAT

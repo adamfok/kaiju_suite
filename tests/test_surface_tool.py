@@ -45,7 +45,7 @@ def test_the_tool_is_registered_under_utilities():
     tool = registry.find("Surface Tool")
 
     assert tool is not None
-    assert tool.get("category") == "Utilities"
+    assert tool.get("category") == "Utility Tools"
     assert callable(tool["launch"])
 
 

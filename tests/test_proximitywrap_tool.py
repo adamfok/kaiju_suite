@@ -42,14 +42,8 @@ def _run(key, nodes):
 
 def test_the_wrap_tool_is_now_the_proximitywrap_tool():
     tool = registry.find("ProximityWrap Tool")
-    assert tool is not None and tool.get("category") == "Utilities"
+    assert tool is not None and tool.get("category") == "Utility Tools"
     assert registry.find("Wrap Tool") is None
-
-
-def test_the_assembler_wrap_product_opens_it():
-    from kaiju_suite.tools.assembler.products import wrap
-
-    assert wrap.PRODUCT.utility == "ProximityWrap Tool"
 
 
 # -- the checks -------------------------------------------------------------

@@ -1,7 +1,6 @@
 """Custom attributes and channel lock/hide state, read as data and applied back.
 
-Shared by the Assembler's Attributes product and any tool that manages
-attributes. A custom attribute is a dict::
+For any tool that manages attributes. A custom attribute is a dict::
 
     {"name": "ikFk", "type": "double", "min": 0.0, "max": 1.0, "default": 1.0,
      "keyable": True, "channel_box": False, "locked": False}

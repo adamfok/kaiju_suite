@@ -16,8 +16,7 @@ parent isn't in the file goes under the scene's node of that name, if there
 is one, otherwise under the world. If several nodes have that parent name,
 it stops before creating anything.
 
-Builder's NurbsCurve items use ``.curve``; the Assembler's Curves items
-keep ``.crv``. The file contents are the same.
+Builder's NurbsCurve items use ``.curve``.
 
 :data:`CHECKS` are QC checks on given curves (duplicate names, rational
 curves, construction history, degenerate curves), run by the Curve Tool's

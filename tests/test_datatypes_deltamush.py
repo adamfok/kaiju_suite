@@ -1,15 +1,10 @@
-"""DeltaMush save/load (kaiju_suite.datatypes.deltamush), without the Assembler.
-
-The Assembler's DeltaMush product (tests/test_assembler_deltamush.py) and
-Kaiju Builder's DeltaMush items both go through this module.
-"""
+"""DeltaMush save/load (kaiju_suite.datatypes.deltamush)."""
 
 import pytest
 from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.datatypes import deltamush
-from kaiju_suite.tools.assembler import runlog
 
 
 def _mesh(name="body"):
@@ -52,14 +47,15 @@ def test_gather_then_apply_restores_the_deltamush(new_scene):
     assert cmds.getAttr("body_dm.weightList[0].weights[3]") == pytest.approx(0.25)
 
 
-def test_apply_skips_a_missing_mesh_with_a_maya_warning(new_scene):
+def test_apply_skips_a_missing_mesh_with_a_maya_warning(new_scene, monkeypatch):
     mesh = _mesh()
     _mush(mesh)
     payload = deltamush.gather(_long(mesh))
     cmds.delete(mesh)
-    with runlog.capture() as run:
-        assert deltamush.apply(payload) == "Created no deltaMush nodes"
-    assert run.warnings == ["Skipped missing meshes: body"]
+    warnings = []
+    monkeypatch.setattr(cmds, "warning", warnings.append)
+    assert deltamush.apply(payload) == "Created no deltaMush nodes"
+    assert warnings == ["Skipped missing meshes: body"]
 
 
 def test_gather_needs_meshes_with_a_deltamush(new_scene):

@@ -1,6 +1,5 @@
-"""NurbsSurface save/load (kaiju_suite.datatypes.nurbs_surface): NURBS
-surfaces saved as data and rebuilt as new surfaces. Builder only; there's
-no Assembler product."""
+"""NurbsSurface save/load (kaiju_suite.datatypes.nurbs_surface): NURBS surfaces
+saved as data and rebuilt as new surfaces. Builder only."""
 
 import pytest
 from maya import cmds
@@ -52,12 +51,6 @@ def _round_trip(transform):
 def test_kind_and_extension():
     assert nurbs_surface.KIND == "nurbs_surface"
     assert nurbs_surface.EXTENSION == ".surface"
-
-
-def test_there_is_no_assembler_product():
-    from kaiju_suite.tools.assembler import products
-
-    assert all(getattr(p, "datatype", None) is not nurbs_surface for p in products.all_products())
 
 
 @pytest.mark.parametrize("degree", [1, 3])

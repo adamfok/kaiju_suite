@@ -1,6 +1,6 @@
 """NurbsSurface (.surface): NURBS surfaces saved as data and rebuilt as new
-surfaces (ribbons, sliding surfaces, follicle surfaces, ...). Builder only;
-there's no Assembler product.
+surfaces (ribbons, sliding surfaces, follicle surfaces, ...). Used by
+Builder's NurbsSurface items.
 
 :func:`gather` saves each given surface (its transform, or one of its
 surface shapes or CVs): name, parent name, local transform (translate,

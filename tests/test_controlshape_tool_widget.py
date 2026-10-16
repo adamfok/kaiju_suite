@@ -45,6 +45,7 @@ out = {
     "tabs": [tabs.tabText(i) for i in range(tabs.count())],
     "qc_checks": [qc.results.topLevelItem(i).text(0) for i in range(qc.results.topLevelItemCount())],
     "utility_boxes": [b.title() for b in utilities.findChildren(QtWidgets.QGroupBox)],
+    "utility_labels": [label.text() for label in utilities.findChildren(QtWidgets.QLabel)],
 }
 [run] = [b for b in qc.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"]
 run.click()
@@ -76,8 +77,9 @@ def test_the_qc_tab_lists_the_controlshape_checks(probe):
     ]
 
 
-def test_the_utilities_tab_holds_the_existing_boxes(probe):
-    assert probe["utility_boxes"] == ["Library", "Edit Shapes", "Color && Line Width"]
+def test_the_utilities_tab_is_an_empty_placeholder(probe):
+    assert probe["utility_boxes"] == []
+    assert probe["utility_labels"] == ["No control shape utilities yet."]
 
 
 def test_checking_with_nothing_selected_warns(probe):

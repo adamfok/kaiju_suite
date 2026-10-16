@@ -42,7 +42,6 @@ _SETTINGS = (
 )
 _DIGITS = 6
 
-# The Assembler's Wrap product imports these three by these names.
 _shape = mesh_shape
 _mesh_transforms = datatypes.meshes
 

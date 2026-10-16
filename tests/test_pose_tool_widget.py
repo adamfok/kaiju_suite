@@ -41,6 +41,7 @@ out = {
     "tabs": [tabs.tabText(i) for i in range(tabs.count())],
     "qc_checks": [qc.results.topLevelItem(i).text(0) for i in range(qc.results.topLevelItemCount())],
     "utility_boxes": [b.title() for b in utilities.findChildren(QtWidgets.QGroupBox)],
+    "utility_labels": [label.text() for label in utilities.findChildren(QtWidgets.QLabel)],
 }
 [run] = [b for b in qc.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"]
 run.click()
@@ -66,8 +67,9 @@ def test_the_qc_tab_lists_the_pose_checks(probe):
     assert probe["qc_checks"] == ["Driven attributes", "Nothing to save", "Duplicate names"]
 
 
-def test_the_utilities_tab_holds_the_pose_tools(probe):
-    assert probe["utility_boxes"] == ["Mirror", "Select", "Reset"]
+def test_the_utilities_tab_is_an_empty_placeholder(probe):
+    assert probe["utility_boxes"] == []
+    assert probe["utility_labels"] == ["No pose utilities yet."]
 
 
 def test_checking_with_nothing_selected_warns(probe):

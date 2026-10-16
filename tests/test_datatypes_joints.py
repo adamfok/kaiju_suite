@@ -1,14 +1,9 @@
-"""Joints save/load (kaiju_suite.datatypes.joints), without the Assembler.
-
-The Assembler's Joints product (tests/test_assembler_joints.py) goes
-through this module.
-"""
+"""Joints save/load (kaiju_suite.datatypes.joints)."""
 
 import pytest
 from maya import cmds
 
 from kaiju_suite.datatypes import joints
-from kaiju_suite.tools.assembler.products import joints as joints_product
 
 
 def _chain():
@@ -50,7 +45,3 @@ def test_describe_and_nodes(new_scene):
     payload = joints.gather(cmds.ls(_chain()[0], long=True))
     assert joints.describe(payload) == ["3 joints", "Roots: hip"]
     assert joints.nodes(payload) == ["hip", "knee", "ankle"]
-
-
-def test_assembler_product_uses_the_datatype():
-    assert joints_product.PRODUCT.datatype is joints

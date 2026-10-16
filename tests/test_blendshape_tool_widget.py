@@ -42,6 +42,7 @@ out = {
     "tabs": [tabs.tabText(i) for i in range(tabs.count())],
     "qc_checks": [qc.results.topLevelItem(i).text(0) for i in range(qc.results.topLevelItemCount())],
     "utility_boxes": [b.title() for b in utilities.findChildren(QtWidgets.QGroupBox)],
+    "utility_labels": [label.text() for label in utilities.findChildren(QtWidgets.QLabel)],
     "fix_rows": sorted(qc.fix_buttons),
 }
 [run] = [b for b in qc.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"]
@@ -72,8 +73,9 @@ def test_no_check_has_a_fix(probe):
     assert probe["fix_rows"] == []
 
 
-def test_the_utilities_tab_holds_the_blendshape_tools(probe):
-    assert probe["utility_boxes"] == ["Corrective", "Targets", "Pose Reader"]
+def test_the_utilities_tab_is_an_empty_placeholder(probe):
+    assert probe["utility_boxes"] == []
+    assert probe["utility_labels"] == ["No blendShape utilities yet."]
 
 
 def test_checking_with_no_meshes_selected_warns(probe):

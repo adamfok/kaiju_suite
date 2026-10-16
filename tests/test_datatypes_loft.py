@@ -1,6 +1,6 @@
 """Loft save/load (kaiju_suite.datatypes.loft): lofted NURBS surfaces saved
 with their loft settings and input curves, and rebuilt with live history.
-Builder only; there's no Assembler product."""
+Builder only."""
 
 import pytest
 from maya import cmds
@@ -72,12 +72,6 @@ def _round_trip(surface, curves):
 def test_kind_and_extension():
     assert loft.KIND == "loft"
     assert loft.EXTENSION == ".loft"
-
-
-def test_there_is_no_assembler_product():
-    from kaiju_suite.tools.assembler import products
-
-    assert all(getattr(p, "datatype", None) is not loft for p in products.all_products())
 
 
 # -- gather -----------------------------------------------------------------

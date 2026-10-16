@@ -731,7 +731,7 @@ def test_nurbs_curve_items_are_curve_files():
     assert items.DATATYPES[items.NURBS_CURVE] is curves
     assert items.NURBS_CURVE in items.RUNNABLE
     assert items.kind_of("spine.curve") == items.NURBS_CURVE
-    assert items.kind_of("spine.crv") is None  # the Assembler's Curves items
+    assert items.kind_of("spine.crv") is None  # not a NurbsCurve extension
 
 
 def test_new_nurbs_curve_item_publishes_the_selection_as_v001(tmp_path, new_scene):

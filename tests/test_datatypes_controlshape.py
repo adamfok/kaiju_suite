@@ -1,15 +1,10 @@
-"""ControlShape save/load (kaiju_suite.datatypes.controlshape), without the Assembler.
-
-The Assembler's ControlShape product (tests/test_assembler_controlshape.py)
-goes through this module.
-"""
+"""ControlShape save/load (kaiju_suite.datatypes.controlshape)."""
 
 import pytest
 from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.datatypes import controlshape
-from kaiju_suite.tools.assembler.products import controlshape as controlshape_product
 
 
 def _circle_ctrl(name="ctrl"):
@@ -97,9 +92,3 @@ def test_save_and_load_a_file(new_scene, tmp_path):
 
     assert datatypes.load(controlshape, path) == "Replaced the shapes of 1 control"
     assert len(_shapes(ctrl)) == 1
-
-
-def test_assembler_product_uses_the_datatype():
-    assert controlshape_product.PRODUCT.datatype is controlshape
-    assert controlshape_product.PRODUCT.kind == "controlShape"
-    assert controlshape_product.PRODUCT.extension == ".ctrl"

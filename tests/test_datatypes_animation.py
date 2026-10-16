@@ -1,14 +1,9 @@
-"""Animation save/load (kaiju_suite.datatypes.animation), without the Assembler.
-
-The Assembler's Animation product (tests/test_assembler_animation.py) goes
-through this module; the file format is unchanged.
-"""
+"""Animation save/load (kaiju_suite.datatypes.animation)."""
 
 from maya import cmds
 
 from kaiju_suite import datatypes
 from kaiju_suite.datatypes import animation
-from kaiju_suite.tools.assembler.products import animation as animation_product
 
 
 def _box(name="box"):
@@ -83,7 +78,3 @@ def test_save_and_load_through_a_file(new_scene, tmp_path):
 
     assert datatypes.load(animation, path) == "Keyed 2 attributes (3 keys)"
     assert cmds.keyframe("box.rotateY", query=True, valueChange=True) == [90]
-
-
-def test_assembler_product_uses_the_datatype():
-    assert animation_product.PRODUCT.datatype is animation

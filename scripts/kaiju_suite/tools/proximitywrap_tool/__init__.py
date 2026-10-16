@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "ProximityWrap Tool",
-    "category": "Utilities",
+    "category": "Utility Tools",
     "launch": show,
     "description": "QC the proximityWraps on the selected meshes.",
 }

@@ -2,8 +2,7 @@
 
 Each :class:`Check` returns a list of problem messages, one per node, each
 starting with the node's name (e.g. ``pCube1: doesn't match ...``); an empty
-list means it found nothing. The Assembler's QC items run them as a build
-step. A message can be a :class:`Problem`, which also says what to select
+list means it found nothing. A message can be a :class:`Problem`, which also says what to select
 to see it (e.g. the vertices whose weights are off). No Qt here.
 
 The settings functions take another list of checks too (``checks=``), e.g.

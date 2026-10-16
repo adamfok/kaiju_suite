@@ -1,5 +1,5 @@
-"""Rig data saved to files and applied back: the save/load half of the
-Assembler's data products, shared with the tools.
+"""Rig data saved to files and applied back, shared by Builder's data items
+and the tools.
 
 One module per kind of data (:mod:`.skin`, ...). Each has ``KIND`` (the
 file header's ``kaiju`` value), ``EXTENSION`` and these functions:
@@ -22,9 +22,8 @@ file header's ``kaiju`` value), ``EXTENSION`` and these functions:
 :func:`save` and :func:`load` write and apply one module's files. The file
 format is :mod:`kaiju_suite.core.datafile`'s.
 
-Imports go ``tools`` → ``datatypes`` → ``core``: nothing here imports the
-Assembler, ``ui``, ``rigging`` or Qt. Warnings go through
-``cmds.warning``; the Assembler's run log picks them up.
+Imports go ``tools`` → ``datatypes`` → ``core``: nothing here imports
+``tools``, ``ui``, ``rigging`` or Qt. Warnings go through ``cmds.warning``.
 """
 
 from maya import cmds
@@ -60,7 +59,7 @@ def load(module, path, info=None):
 
 
 def warning(message):
-    """Show ``message`` as a Maya warning (the Assembler logs it for its step)."""
+    """Show ``message`` as a Maya warning."""
     cmds.warning(message)
 
 
@@ -176,8 +175,8 @@ def require_nodes(names, label="nodes"):
 def skip_missing(names, label="nodes"):
     """The set of ``names`` that aren't in the scene, for the caller to skip.
 
-    Shows one warning naming them, e.g. ``Skipped missing meshes: head``, so
-    an Assembler step ends with the warning status instead of failing.
+    Shows one warning naming them, e.g. ``Skipped missing meshes: head``,
+    instead of failing.
     """
     missing = [n for n in dict.fromkeys(names) if not cmds.objExists(n)]
     if missing:

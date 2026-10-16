@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "Loft Tool",
-    "category": "Utilities",
+    "category": "Utility Tools",
     "launch": show,
     "description": "QC the selected lofted NURBS surfaces.",
 }

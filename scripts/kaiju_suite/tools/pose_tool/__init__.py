@@ -7,7 +7,7 @@ def show():
 
 TOOL = {
     "name": "Pose Tool",
-    "category": "Utilities",
+    "category": "Utility Tools",
     "launch": show,
-    "description": "QC, mirror, flip and reset poses.",
+    "description": "QC the selected poses.",
 }
