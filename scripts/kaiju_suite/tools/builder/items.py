@@ -1,4 +1,4 @@
-"""Kaiju Scripter item kinds, and how each one runs.
+"""Kaiju Builder item kinds, and how each one runs.
 
 - **Script** (``.py``): run in ``__main__``, like the Script Editor.
 - **Folder**, **Separator** (``.sep``) and **Breakpoint** (``.brk``): see
@@ -51,7 +51,7 @@ from kaiju_suite.datatypes import (
     skin,
 )
 from kaiju_suite.datatypes import curves as curve_data
-from kaiju_suite.tools.scripter import versions
+from kaiju_suite.tools.builder import versions
 
 SCRIPT = "Script"
 FOLDER = "Folder"
@@ -141,7 +141,7 @@ IMPORT_PLUGINS = {".fbx": "fbxmaya", ".obj": "objExport", ".abc": "AbcImport"}
 
 
 def kind_of(path):
-    """The item kind of ``path``, or ``None`` if Kaiju Scripter doesn't show it."""
+    """The item kind of ``path``, or ``None`` if Kaiju Builder doesn't show it."""
     if os.path.isdir(path):
         return FOLDER
     return _KIND_OF_EXT.get(os.path.splitext(path)[1].lower())
@@ -163,7 +163,7 @@ def run(path):
     elif kind == SELECTION:
         select_entries(read_entries(path))
     else:
-        raise ValueError(f"Not something Kaiju Scripter runs: {os.path.basename(path)}")
+        raise ValueError(f"Not something Kaiju Builder runs: {os.path.basename(path)}")
 
 
 def run_script(path):

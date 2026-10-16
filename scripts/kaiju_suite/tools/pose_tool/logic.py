@@ -10,7 +10,7 @@ their own keys are skipped and reported.
 
 The QC tab runs the pose checks (:data:`kaiju_suite.datatypes.pose.CHECKS`)
 on the selected nodes with :func:`run_qc`, with options saved per user and
-shared with Scripter's Publish; :func:`select_problem` selects what a
+shared with Builder's Publish; :func:`select_problem` selects what a
 problem points at.
 """
 
@@ -138,7 +138,7 @@ def reset(nodes):
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a Pose item uses the same ones."""
     return datatypes.qc_settings(pose_data)
 

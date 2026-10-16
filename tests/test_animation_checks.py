@@ -1,5 +1,5 @@
 """datatypes.animation.CHECKS: QC checks on given nodes, run by the
-Animation Tool's QC tab and before Scripter publishes an Animation item.
+Animation Tool's QC tab and before Builder publishes an Animation item.
 They report problems and change nothing."""
 
 from maya import cmds

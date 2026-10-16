@@ -19,7 +19,7 @@ together; it records and rebuilds its proximityWraps with :func:`record`,
 
 :data:`CHECKS` are QC checks on the proximityWraps of given meshes (no
 proximityWrap, missing driver, below skin, disabled, duplicate names), run
-by the ProximityWrap Tool's QC tab and before Scripter publishes. They
+by the ProximityWrap Tool's QC tab and before Builder publishes. They
 change nothing.
 """
 

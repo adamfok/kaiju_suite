@@ -1,5 +1,5 @@
 """datatypes.joints.CHECKS: QC checks on given joints and the joints below
-them, run by the Joint Tool's QC tab and before Scripter publishes a Joints
+them, run by the Joint Tool's QC tab and before Builder publishes a Joints
 item. They report problems and change nothing."""
 
 import pytest

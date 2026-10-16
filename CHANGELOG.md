@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Kaiju Scripter is now **Kaiju Builder** (**Kaiju ▸ Builder**). Nothing to do by hand: the first time Builder shows a folder, its hidden `.scripter` folder (item order, disabled items and version history) is renamed to `.builder`, and your Scripter settings (recent folders, hidden columns, column widths) move over when the window opens
+- Developers: the tool package moved from `tools/scripter/` to `tools/builder/` (`BuilderWindow`), its tests to `tests/test_builder*.py` and its icons to `icons/builder_*.svg`
 - Scripter: the **Type** column and its header are aligned to the right
 - Scripter: the **Version** column is now a dropdown. A published item's version cell shows an arrow; click it to list the item's versions, newest first with their descriptions, the one it's at ticked. Pick one to restore it (it asks first if that would lose changes not published yet). Right-click **Versions...** still works
 - Scripter: new icons for ControlShape (a move control), NurbsCurve (a Spline IK curve with joints), NurbsSurface (a patch in perspective), ProximityWrap (one mesh wrapped around another) and Pose (a posed rig with its joints marked)

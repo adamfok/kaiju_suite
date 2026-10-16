@@ -31,7 +31,7 @@ with (see :mod:`kaiju_suite.rigging.rig_module.controls`).
 
 The QC tab runs the animation checks
 (:data:`kaiju_suite.datatypes.animation.CHECKS`) on the selected nodes with
-:func:`run_qc`, with settings shared with Scripter's Publish;
+:func:`run_qc`, with settings shared with Builder's Publish;
 :func:`select_problem` selects what a problem points at.
 """
 
@@ -270,7 +270,7 @@ def reset_controls():
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of an Animation item uses the same ones."""
     return datatypes.qc_settings(animation_data)
 

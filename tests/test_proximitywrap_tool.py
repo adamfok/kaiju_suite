@@ -184,7 +184,7 @@ def test_qc_settings_save_per_user(new_scene, monkeypatch):
 
     logic.save_qc_setting("disabled", "enabled", False)
 
-    # Checks can't be turned off: every one runs, as Scripter's Publish runs them.
+    # Checks can't be turned off: every one runs, as Builder's Publish runs them.
     assert logic.qc_settings()["disabled"]["enabled"] is True
 
 

@@ -1,7 +1,7 @@
 """ProximityWrap Tool: QC for the proximityWraps on meshes. No Qt.
 
 The checks live in :data:`kaiju_suite.datatypes.proximity_wrap.CHECKS`, so
-Scripter's Publish of a ProximityWrap item runs them too. :func:`run_qc`
+Builder's Publish of a ProximityWrap item runs them too. :func:`run_qc`
 runs them on the selected meshes; :func:`select_problem` selects the nodes
 a problem points at. Nothing here changes the scene, so there's nothing to
 undo.
@@ -18,7 +18,7 @@ QC_CHECKS = proximity_wrap.CHECKS
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a ProximityWrap item uses the same ones."""
     return datatypes.qc_settings(proximity_wrap)
 

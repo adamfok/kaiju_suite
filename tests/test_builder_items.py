@@ -1,4 +1,4 @@
-"""Kaiju Scripter items beyond scripts: Joints, Skin and Mesh (data published
+"""Kaiju Builder items beyond scripts: Joints, Skin and Mesh (data published
 from the selection, versioned) and Import File / Export File (a path)."""
 
 import json
@@ -7,7 +7,7 @@ import os
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.scripter import items, logic, versions
+from kaiju_suite.tools.builder import items, logic, versions
 
 
 def _chain():
@@ -98,7 +98,7 @@ def test_unchanged_since_checks_the_selection_without_writing(tmp_path, new_scen
     assert items.unchanged_since(path, _long(hip)) is None
     with open(path, "rb") as f:
         assert f.read() == before  # only compared, not written
-    assert sorted(os.listdir(str(tmp_path))) == [".scripter", "skeleton.jnt"]  # no temporary files left
+    assert sorted(os.listdir(str(tmp_path))) == [".builder", "skeleton.jnt"]  # no temporary files left
 
 
 def test_publish_data_checks_the_selection_before_writing(tmp_path, new_scene):

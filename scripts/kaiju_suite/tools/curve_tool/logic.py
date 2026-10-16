@@ -1,7 +1,7 @@
 """Curve Tool: QC for NURBS curves. No Qt.
 
 The checks live in :data:`kaiju_suite.datatypes.curves.CHECKS`, so
-Scripter's Publish of a NurbsCurve item runs them too. :func:`run_qc` runs
+Builder's Publish of a NurbsCurve item runs them too. :func:`run_qc` runs
 them on the selected curves; :func:`select_problem` selects the curves a
 problem points at. Nothing here changes the scene, so there's nothing to
 undo.
@@ -18,7 +18,7 @@ QC_CHECKS = curve_data.CHECKS
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a NurbsCurve item uses the same ones."""
     return datatypes.qc_settings(curve_data)
 

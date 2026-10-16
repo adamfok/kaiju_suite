@@ -14,7 +14,7 @@ on a mesh with painted weights, or a name taken by another node stop the
 Run before anything changes.
 
 The proximityWrap half (recording, checking and rebuilding) is
-:mod:`kaiju_suite.datatypes.proximity_wrap`, shared with Scripter's
+:mod:`kaiju_suite.datatypes.proximity_wrap`, shared with Builder's
 ProximityWrap items (``.pwrap``); this file format is unchanged.
 """
 

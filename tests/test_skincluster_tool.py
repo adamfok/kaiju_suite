@@ -523,7 +523,7 @@ def test_qc_with_nothing_selected_checks_nothing(new_scene):
         logic.run_qc([])
 
 
-def test_qc_settings_are_the_ones_scripter_publish_uses(new_scene):
+def test_qc_settings_are_the_ones_builder_publish_uses(new_scene):
     from kaiju_suite import datatypes
 
     logic.save_qc_setting("small_weights", "threshold", 0.05)

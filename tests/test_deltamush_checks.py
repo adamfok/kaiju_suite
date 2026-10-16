@@ -1,5 +1,5 @@
 """datatypes.deltamush.CHECKS: QC checks on the deltaMush nodes of given
-meshes, run by the DeltaMush Tool's QC tab and before Scripter publishes a
+meshes, run by the DeltaMush Tool's QC tab and before Builder publishes a
 DeltaMush item. They report problems and change nothing."""
 
 from maya import cmds

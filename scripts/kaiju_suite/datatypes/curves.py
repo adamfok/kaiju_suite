@@ -16,12 +16,12 @@ parent isn't in the file goes under the scene's node of that name, if there
 is one, otherwise under the world. If several nodes have that parent name,
 it stops before creating anything.
 
-Scripter's NurbsCurve items use ``.curve``; the Assembler's Curves items
+Builder's NurbsCurve items use ``.curve``; the Assembler's Curves items
 keep ``.crv``. The file contents are the same.
 
 :data:`CHECKS` are QC checks on given curves (duplicate names, rational
 curves, construction history, degenerate curves), run by the Curve Tool's
-QC tab and before Scripter publishes. Checks change nothing.
+QC tab and before Builder publishes. Checks change nothing.
 """
 
 from maya import cmds

@@ -1,4 +1,4 @@
-"""Kaiju Scripter BlendShapes items (.bshp): blendShapes published from the
+"""Kaiju Builder BlendShapes items (.bshp): blendShapes published from the
 selected meshes through datatypes.blendshape, versioned, applied back when
 run; double-click opens the BlendShape Tool, Publish runs its QC first."""
 
@@ -10,7 +10,7 @@ import sys
 import pytest
 from maya import cmds
 
-from kaiju_suite.tools.scripter import items, logic, versions
+from kaiju_suite.tools.builder import items, logic, versions
 
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 
@@ -122,7 +122,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 path = os.path.join(tempfile.mkdtemp(), "face.bshp")
 open(path, "w").close()
@@ -142,9 +142,9 @@ class Stand(QtWidgets.QWidget):
     attempt = staticmethod(lambda fn: fn())
     selected_paths = staticmethod(lambda: [])
     _delete_selected = staticmethod(lambda: None)
-    _on_double_click = widget.ScripterWindow._on_double_click
-    _on_context_menu = widget.ScripterWindow._on_context_menu
-    _show_info = widget.ScripterWindow._show_info
+    _on_double_click = widget.BuilderWindow._on_double_click
+    _on_context_menu = widget.BuilderWindow._on_context_menu
+    _show_info = widget.BuilderWindow._show_info
 
 
 stand = Stand()
@@ -197,5 +197,5 @@ def test_right_click_info_shows_what_is_in_it(probe):
 
 def test_the_new_menu_offers_blendshapes_with_its_icon(probe):
     assert "BlendShapes" in probe["new"]
-    assert probe["icon"] == "scripter_blendshapes.svg"
+    assert probe["icon"] == "builder_blendshapes.svg"
     assert not probe["icon_null"]

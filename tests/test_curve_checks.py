@@ -1,5 +1,5 @@
 """datatypes.curves.CHECKS: QC checks on given NURBS curves, run by the
-Curve Tool's QC tab and before Scripter publishes a NurbsCurve item. They
+Curve Tool's QC tab and before Builder publishes a NurbsCurve item. They
 report problems and change nothing."""
 
 from maya import cmds

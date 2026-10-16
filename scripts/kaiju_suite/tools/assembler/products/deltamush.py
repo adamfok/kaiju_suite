@@ -1,7 +1,7 @@
 """DeltaMush (.dmsh): deltaMush deformers saved as data and rebuilt on their meshes.
 
 The saving and rebuilding are :mod:`kaiju_suite.datatypes.deltamush`,
-shared with Kaiju Scripter's DeltaMush items; this is the Assembler step.
+shared with Kaiju Builder's DeltaMush items; this is the Assembler step.
 """
 
 from kaiju_suite.datatypes import deltamush

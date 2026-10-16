@@ -24,7 +24,7 @@ them.
 
 :data:`CHECKS` are QC checks on given nodes (not animated, unsaved
 animation, duplicate names), run by the Animation Tool's QC tab and before
-Scripter publishes. They change nothing.
+Builder publishes. They change nothing.
 """
 
 from maya import cmds

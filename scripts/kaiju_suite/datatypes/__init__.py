@@ -16,8 +16,8 @@ file header's ``kaiju`` value), ``EXTENSION`` and these functions:
 - ``compare_view(payload)``: the payload as a side-by-side compare shows it.
 - ``CHECKS`` (optional): QC checks (:class:`kaiju_suite.core.checks.Check`,
   each ``fn(nodes, **options)``), shown in the datatype's tool and run
-  before Scripter publishes. :func:`run_qc` runs them with the settings
-  saved per user (:func:`qc_settings`), shared by the tool and Scripter.
+  before Builder publishes. :func:`run_qc` runs them with the settings
+  saved per user (:func:`qc_settings`), shared by the tool and Builder.
 
 :func:`save` and :func:`load` write and apply one module's files. The file
 format is :mod:`kaiju_suite.core.datafile`'s.

@@ -1,6 +1,6 @@
 """Mesh Tool: QC for meshes, with fixes for some problems. No Qt.
 
-The checks live in :data:`kaiju_suite.datatypes.mesh.CHECKS`, so Scripter's
+The checks live in :data:`kaiju_suite.datatypes.mesh.CHECKS`, so Builder's
 Publish of a Mesh item runs them too. :func:`run_qc` runs them on the
 selected meshes; :func:`fix_and_check` repairs what one check finds, as one
 undo step, and runs them again; :func:`select_problem` selects the faces,
@@ -19,7 +19,7 @@ QC_CHECKS = mesh_data.CHECKS
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a Mesh item uses the same ones."""
     return datatypes.qc_settings(mesh_data)
 

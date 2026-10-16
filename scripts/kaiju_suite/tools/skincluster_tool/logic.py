@@ -403,7 +403,7 @@ def qc_defaults():
 
 
 def qc_settings():
-    """The QC settings this user saved (defaults for the rest); Scripter's
+    """The QC settings this user saved (defaults for the rest); Builder's
     Publish of a Skin item uses the same ones."""
     return datatypes.qc_settings(skin)
 

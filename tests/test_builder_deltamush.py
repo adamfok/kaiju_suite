@@ -1,4 +1,4 @@
-"""Kaiju Scripter's DeltaMush items (.dmsh): deltaMush nodes published from
+"""Kaiju Builder's DeltaMush items (.dmsh): deltaMush nodes published from
 the selected meshes with kaiju_suite.datatypes.deltamush, versioned, applied
 back when run, opening the DeltaMush Tool on double-click."""
 
@@ -8,7 +8,7 @@ import pytest
 from maya import cmds
 
 from kaiju_suite import registry
-from kaiju_suite.tools.scripter import items, logic, versions
+from kaiju_suite.tools.builder import items, logic, versions
 
 
 def _mesh(name="body"):

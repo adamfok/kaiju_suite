@@ -49,7 +49,7 @@ class Check:
     ``options`` holds each option's default; :meth:`run` fills in the ones
     not given. ``fix(nodes)``, if given, repairs what the check finds on
     ``nodes``. ``publish=False`` leaves the check out of the QC that runs
-    before Scripter publishes (it still runs in the tool).
+    before Builder publishes (it still runs in the tool).
     """
 
     key: str

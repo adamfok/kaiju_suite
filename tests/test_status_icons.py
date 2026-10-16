@@ -1,4 +1,4 @@
-"""The ran / failed / paused icons drawn by ``ui.status_icons`` (Scripter's
+"""The ran / failed / paused icons drawn by ``ui.status_icons`` (Builder's
 status column).
 
 maya.standalone runs a Qt application without widgets, so the icons are

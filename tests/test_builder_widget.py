@@ -1,4 +1,4 @@
-"""Scripter's item and status column icons, row colors and folder double-click.
+"""Builder's item and status column icons, row colors and folder double-click.
 
 maya.standalone runs a Qt application without widgets, so the widget module
 is loaded off-screen in a separate mayapy process that doesn't start Maya."""
@@ -18,7 +18,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtGui, QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import logic, widget
+from kaiju_suite.tools.builder import logic, widget
 
 def solid_colors(icon):
     image = icon.pixmap(16, 16).toImage().convertToFormat(QtGui.QImage.Format.Format_ARGB32)
@@ -111,12 +111,12 @@ def test_every_item_kind_has_an_icon(probe):
 
 def test_new_menu_offers_a_selection_item_with_its_icon(probe):
     assert "Selection" in probe["new_kinds"]
-    assert "scripter_selection.svg" in probe["icon_files"]
+    assert "builder_selection.svg" in probe["icon_files"]
 
 
 def test_new_menu_offers_a_pose_item_with_its_icon(probe):
     assert "Pose" in probe["new_kinds"]
-    assert "scripter_pose.svg" in probe["icon_files"]
+    assert "builder_pose.svg" in probe["icon_files"]
 
 
 def test_item_icons_draw_something(probe):
@@ -162,7 +162,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 root = tempfile.mkdtemp()
 folder = os.path.join(root, "rig")
@@ -182,8 +182,8 @@ class Stand(QtWidgets.QWidget):
     attempt = staticmethod(lambda fn: fn())
     selected_paths = staticmethod(lambda: [])
     _delete_selected = staticmethod(lambda: None)
-    _on_double_click = widget.ScripterWindow._on_double_click
-    _on_context_menu = widget.ScripterWindow._on_context_menu
+    _on_double_click = widget.BuilderWindow._on_double_click
+    _on_context_menu = widget.BuilderWindow._on_context_menu
 
 
 stand = Stand()
@@ -259,7 +259,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 saved = {}
 widget.settings.get = lambda tool, key, default=None: saved.get(key, default)
@@ -346,7 +346,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtCore, QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import logic, widget
+from kaiju_suite.tools.builder import logic, widget
 
 widget.settings.get = lambda tool, key, default=None: default
 widget.settings.set = lambda *a: None
@@ -357,8 +357,8 @@ logic.create_item(logic.FOLDER, root, "rig")
 
 
 class Stand(QtWidgets.QWidget):
-    _add_entries = widget.ScripterWindow._add_entries
-    _show_version = widget.ScripterWindow._show_version
+    _add_entries = widget.BuilderWindow._add_entries
+    _show_version = widget.BuilderWindow._show_version
     _show_status = staticmethod(lambda item: None)
 
 
@@ -404,7 +404,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtGui, QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 widget.settings.get = lambda tool, key, default=None: default
 widget.settings.set = lambda *a: None
@@ -494,7 +494,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 long_path = "D:/" + "/".join(["a_very_long_folder_name"] * 12)
 box = widget.folder_box()
@@ -537,7 +537,7 @@ sys.path.insert(0, sys.argv[1])
 from PySide6 import QtCore, QtWidgets
 from PySide6.QtTest import QTest
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import items, widget
+from kaiju_suite.tools.builder import items, widget
 
 # A fake scene: what each entry finds, without Maya.
 SCENE = {"body_geo": ["body_geo"], "hair_geo": ["hair_geo"], "*_eye_geo": ["L_eye_geo", "R_eye_geo"],
@@ -722,7 +722,7 @@ out["set_dialog"] = {
     "current": set_dialog.value(),
     "new_button": [set_dialog.new_button.toolTip(), set_dialog.new_button.icon().isNull()],
     "new_icon_is_add_set": set_dialog.new_button.icon().pixmap(16, 16).toImage()
-    == widget.icons.same_when_selected(widget.icons.icon("scripter_add_set.svg")).pixmap(16, 16).toImage(),
+    == widget.icons.same_when_selected(widget.icons.icon("builder_add_set.svg")).pixmap(16, 16).toImage(),
     "delete_button": [set_dialog.delete_button.toolTip(), set_dialog.delete_button.icon().isNull()],
     "delete_beside_new": set_dialog.layout().itemAt(0).layout().itemAt(1).widget() is set_dialog.delete_button,
     "button_above_list": set_dialog.layout().itemAt(0).layout().itemAt(0).widget() is set_dialog.new_button
@@ -922,7 +922,7 @@ def test_ok_saves_the_entries(selection_dialog_probe):
 
 
 def test_pattern_window_has_a_type_dropdown_defaulting_to_any(selection_dialog_probe):
-    from kaiju_suite.tools.scripter import items
+    from kaiju_suite.tools.builder import items
 
     window = selection_dialog_probe["pattern_dialog"]
     assert window["types"] == list(items.NODE_TYPES)
@@ -1007,7 +1007,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 widget.settings.get = lambda tool, key, default=None: default
 widget.settings.set = lambda *a: None
@@ -1028,11 +1028,11 @@ class Stand(QtWidgets.QWidget):
     populate = staticmethod(lambda: None)
     _delete_selected = staticmethod(lambda: None)
     _run_selected = staticmethod(lambda: None)
-    _on_context_menu = widget.ScripterWindow._on_context_menu
-    _copy_selected = widget.ScripterWindow._copy_selected
-    _paste = widget.ScripterWindow._paste
-    _new_target = widget.ScripterWindow._new_target
-    _find_item = widget.ScripterWindow._find_item
+    _on_context_menu = widget.BuilderWindow._on_context_menu
+    _copy_selected = widget.BuilderWindow._copy_selected
+    _paste = widget.BuilderWindow._paste
+    _new_target = widget.BuilderWindow._new_target
+    _find_item = widget.BuilderWindow._find_item
 
 
 stand = Stand()
@@ -1068,7 +1068,7 @@ out["copied"] = stand.copied
 stand._on_context_menu(stand.tree.rect().center())
 out["menu_after_copy"] = menus[-1]
 
-# Closing Scripter and opening it again (or on another library) keeps what was copied.
+# Closing Builder and opening it again (or on another library) keeps what was copied.
 reopened = Stand()
 out["copied_after_reopen"] = reopened.copied
 
@@ -1105,7 +1105,7 @@ def test_copy_then_paste_on_a_folder_copies_into_it(copy_paste_probe):
     assert copy_paste_probe["original_kept"] is True
 
 
-def test_what_was_copied_survives_reopening_scripter(copy_paste_probe):
+def test_what_was_copied_survives_reopening_builder(copy_paste_probe):
     assert copy_paste_probe["copied_after_reopen"] == copy_paste_probe["copied"]
 
 
@@ -1118,7 +1118,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 root = tempfile.mkdtemp()
 paths = {}
@@ -1142,9 +1142,9 @@ class Stand(QtWidgets.QWidget):
     attempt = staticmethod(lambda fn: fn())
     selected_paths = staticmethod(lambda: [])
     _delete_selected = staticmethod(lambda: None)
-    _on_double_click = widget.ScripterWindow._on_double_click
-    _on_context_menu = widget.ScripterWindow._on_context_menu
-    _show_info = widget.ScripterWindow._show_info
+    _on_double_click = widget.BuilderWindow._on_double_click
+    _on_context_menu = widget.BuilderWindow._on_context_menu
+    _show_info = widget.BuilderWindow._show_info
 
 
 stand = Stand()
@@ -1234,7 +1234,7 @@ sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
 from kaiju_suite.core.checks import Check, Problem
-from kaiju_suite.tools.scripter import widget
+from kaiju_suite.tools.builder import widget
 
 root = tempfile.mkdtemp()
 paths = {}
@@ -1279,9 +1279,9 @@ class Stand(QtWidgets.QWidget):
     root = root
     attempt = staticmethod(lambda fn: fn())
     populate = staticmethod(lambda: None)
-    _publish = widget.ScripterWindow._publish
-    _publish_source = widget.ScripterWindow._publish_source
-    _passes_qc = widget.ScripterWindow._passes_qc
+    _publish = widget.BuilderWindow._publish
+    _publish_source = widget.BuilderWindow._publish_source
+    _passes_qc = widget.BuilderWindow._passes_qc
 
 
 stand = Stand()
@@ -1350,7 +1350,7 @@ def test_nurbs_surface_items_have_right_click_select_objects_and_info(data_probe
 
 def test_new_menu_offers_a_nurbs_surface_item_with_its_icon(probe):
     assert "NurbsSurface" in probe["new_kinds"]
-    assert "scripter_nurbs_surface.svg" in probe["icon_files"]
+    assert "builder_nurbs_surface.svg" in probe["icon_files"]
 
 
 def test_double_click_on_a_loft_item_opens_the_loft_tool(data_probe):
@@ -1360,7 +1360,7 @@ def test_double_click_on_a_loft_item_opens_the_loft_tool(data_probe):
 
 def test_new_menu_offers_a_loft_item_with_its_icon(probe):
     assert "Loft" in probe["new_kinds"]
-    assert "scripter_loft.svg" in probe["icon_files"]
+    assert "builder_loft.svg" in probe["icon_files"]
 
 
 # The Version column is a dropdown: clicking a published item's version
@@ -1372,7 +1372,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen"
 sys.path.insert(0, sys.argv[1])
 from PySide6 import QtWidgets
 app = QtWidgets.QApplication([])
-from kaiju_suite.tools.scripter import versions, widget
+from kaiju_suite.tools.builder import versions, widget
 
 widget.settings.get = lambda tool, key, default=None: default
 widget.settings.set = lambda *a: None
@@ -1410,10 +1410,10 @@ class Stand(QtWidgets.QWidget):
     root = root
     attempt = staticmethod(lambda fn: fn())
     populate = staticmethod(lambda: None)
-    version_menu = widget.ScripterWindow.version_menu
-    restore_version = widget.ScripterWindow.restore_version
-    _on_item_clicked = widget.ScripterWindow._on_item_clicked
-    _show_version = widget.ScripterWindow._show_version
+    version_menu = widget.BuilderWindow.version_menu
+    restore_version = widget.BuilderWindow.restore_version
+    _on_item_clicked = widget.BuilderWindow._on_item_clicked
+    _show_version = widget.BuilderWindow._show_version
 
 
 stand = Stand()

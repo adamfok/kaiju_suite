@@ -1,10 +1,10 @@
-"""Scripter's right-click Edit in VS Code: finding VS Code and opening a script."""
+"""Builder's right-click Edit in VS Code: finding VS Code and opening a script."""
 
 import os
 
 import pytest
 
-from kaiju_suite.tools.scripter import vscode
+from kaiju_suite.tools.builder import vscode
 
 
 @pytest.fixture

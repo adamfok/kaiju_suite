@@ -9,7 +9,7 @@ is one, otherwise under the world.
 :data:`CHECKS` are QC checks on given joints and every joint below them
 (rotate not zero, scale not one, end joint orient, overlapping joints,
 duplicate names, unmatched mirror), run by the Joint Tool's QC tab and
-before Scripter publishes. They change nothing.
+before Builder publishes. They change nothing.
 """
 
 import math

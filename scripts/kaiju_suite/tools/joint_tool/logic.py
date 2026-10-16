@@ -12,7 +12,7 @@ Every function that changes the scene is one undo step and raises
 
 The QC tab runs the joint checks (:data:`kaiju_suite.datatypes.joints.CHECKS`)
 on the selected joints and the joints below them with :func:`run_qc`, with
-options saved per user and shared with Scripter's Publish;
+options saved per user and shared with Builder's Publish;
 :func:`select_problem` selects what a problem points at.
 """
 
@@ -314,7 +314,7 @@ def set_radius(joints, radius, hierarchy=False):
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a Joints item uses the same ones."""
     return datatypes.qc_settings(joint_data)
 

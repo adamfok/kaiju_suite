@@ -1,6 +1,6 @@
-"""Version history for Kaiju Scripter items, kept next to them.
+"""Version history for Kaiju Builder items, kept next to them.
 
-An item's versions live in ``<folder>/.scripter/versions/<item name>/``
+An item's versions live in ``<folder>/.builder/versions/<item name>/``
 as ``v001<ext>``, ``v002<ext>``... The item itself keeps its name and is
 always the working copy; Publish copies it in as the next version and
 Restore copies a version back over it. Beside the versions, ``base`` holds
@@ -18,8 +18,10 @@ import re
 import shutil
 from dataclasses import dataclass
 
-# Everything Kaiju Scripter keeps in a folder goes in here (``logic`` uses it too).
-HIDDEN_DIR = ".scripter"
+# Everything Kaiju Builder keeps in a folder goes in here (``logic`` uses it too).
+HIDDEN_DIR = ".builder"
+# Its name from when the tool was Kaiju Scripter; see logic.migrate_hidden_dir.
+LEGACY_HIDDEN_DIR = ".scripter"
 VERSIONS_DIR = "versions"
 BASE_FILE = "base"
 DESCRIPTIONS_FILE = "descriptions.json"
@@ -150,7 +152,7 @@ def publish(path, description=""):
     """Save ``path`` as its next version, described as ``description``.
     Returns the version number. Raises if nothing changed since its version."""
     if not is_versioned(path):
-        raise ValueError(f"Not something Kaiju Scripter versions: {os.path.basename(path)}")
+        raise ValueError(f"Not something Kaiju Builder versions: {os.path.basename(path)}")
     found = list_versions(path)
     if found:
         base = _base(path, found)

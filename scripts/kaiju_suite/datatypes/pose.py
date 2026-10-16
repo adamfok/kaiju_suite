@@ -12,7 +12,7 @@ scene, and attributes that are now missing, locked or driven by a
 connection, are skipped with a warning.
 
 :data:`CHECKS` are QC checks on given nodes (driven attributes, nothing to
-save, duplicate names), run by the Pose Tool's QC tab and before Scripter
+save, duplicate names), run by the Pose Tool's QC tab and before Builder
 publishes. They change nothing.
 """
 

@@ -9,7 +9,7 @@ folder (by default in Maya's user folder). Every scene edit is one undo step.
 
 The QC tab runs the control shape checks
 (:data:`kaiju_suite.datatypes.controlshape.CHECKS`) on the selected controls
-with :func:`run_qc`, with options saved per user and shared with Scripter's
+with :func:`run_qc`, with options saved per user and shared with Builder's
 Publish; :func:`select_problem` selects what a problem points at.
 """
 
@@ -310,7 +310,7 @@ def set_line_width(nodes, width):
 
 
 def qc_settings():
-    """The QC options this user saved (defaults for the rest); Scripter's
+    """The QC options this user saved (defaults for the rest); Builder's
     Publish of a ControlShape item uses the same ones."""
     return datatypes.qc_settings(controlshape_data)
 
