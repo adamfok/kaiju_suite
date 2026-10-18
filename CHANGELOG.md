@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+- After **Reload Kaiju Suite**, Builder no longer fails to open, or errors on every click, with "Internal C++ object (PySide6.QtWidgets.QProxyStyle) already deleted". Its Browse and Refresh buttons now use Kaiju's own icons, and the Version column draws its own dropdown arrow.
+
 ## 1.0.0
 First release. Requires Maya 2025 or later.
 
