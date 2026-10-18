@@ -1501,3 +1501,104 @@ def test_picking_a_version_over_unpublished_changes_asks_first(version_dropdown_
 def test_clicking_the_version_cell_drops_down_the_versions(version_dropdown_probe):
     assert version_dropdown_probe["other_clicks"] == 0
     assert version_dropdown_probe["version_click"] == [["v003  Third", "v002", "v001  First"]]
+
+
+_STALE_STYLE_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.builder import widget
+
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+
+
+def deleted_style(*_):
+    # In Maya, after a reload, the style Python gets back can already be deleted.
+    raise RuntimeError("Internal C++ object (PySide6.QtWidgets.QProxyStyle) already deleted.")
+
+
+class Stand(QtWidgets.QWidget):
+    style = deleted_style
+
+    def __getattr__(self, name):
+        # Methods build_ui connects to: the real ones, bound to this stand-in.
+        return getattr(widget.BuilderWindow, name).__get__(self)
+
+
+QtWidgets.QApplication.style = staticmethod(deleted_style)
+stand = Stand()
+stand.layout = QtWidgets.QVBoxLayout(stand)
+widget.BuilderWindow.build_ui(stand)
+buttons = {b.toolTip(): b.icon().isNull() for b in stand.findChildren(QtWidgets.QPushButton) if b.toolTip()}
+print(json.dumps({"null_icons": buttons}))
+"""
+
+
+@pytest.fixture(scope="module")
+def stale_style_probe():
+    done = subprocess.run([sys.executable, "-c", _STALE_STYLE_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_window_opens_when_the_style_is_already_deleted(stale_style_probe):
+    null_icons = stale_style_probe["null_icons"]
+    assert null_icons["Browse for a scripts folder"] is False
+    assert null_icons["Read the folder again"] is False
+
+
+_ARROW_PROBE = r"""
+import json, os, sys
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+sys.path.insert(0, sys.argv[1])
+from PySide6 import QtCore, QtGui, QtWidgets
+app = QtWidgets.QApplication([])
+from kaiju_suite.tools.builder import widget
+
+widget.settings.get = lambda tool, key, default=None: default
+widget.settings.set = lambda *a: None
+
+
+def deleted_style(*_):
+    raise RuntimeError("Internal C++ object (PySide6.QtWidgets.QProxyStyle) already deleted.")
+
+
+tree = widget._Tree(QtWidgets.QWidget())
+item = QtWidgets.QTreeWidgetItem(tree, ["skin", "v002"])
+item.setData(widget.VERSION, widget.DROPDOWN_ROLE, True)
+index = tree.indexFromItem(item, widget.VERSION)
+option = QtWidgets.QStyleOptionViewItem()
+option.widget = tree
+option.rect = QtCore.QRect(0, 0, 60, 20)
+option.palette = tree.palette()
+tree.style = deleted_style
+QtWidgets.QApplication.style = staticmethod(deleted_style)
+
+image = QtGui.QImage(60, 20, QtGui.QImage.Format.Format_ARGB32)
+image.fill(QtCore.Qt.GlobalColor.transparent)
+painter = QtGui.QPainter(image)
+error = None
+try:
+    tree.itemDelegateForColumn(widget.VERSION).paint(painter, option, index)
+except RuntimeError as e:
+    error = str(e)
+painter.end()
+# Pixels drawn in the arrow's corner at the right of the cell.
+arrow = sum(1 for y in range(20) for x in range(60 - widget.DROPDOWN_ARROW - 4, 60) if QtGui.QColor.fromRgba(image.pixel(x, y)).alpha() > 0)
+print(json.dumps({"error": error, "arrow_pixels": arrow}))
+"""
+
+
+@pytest.fixture(scope="module")
+def arrow_probe():
+    done = subprocess.run([sys.executable, "-c", _ARROW_PROBE, SCRIPTS], capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr
+    return json.loads([line for line in done.stdout.splitlines() if line.startswith("{")][-1])
+
+
+def test_version_arrow_draws_when_the_style_is_already_deleted(arrow_probe):
+    assert arrow_probe["error"] is None
+    assert arrow_probe["arrow_pixels"] > 0

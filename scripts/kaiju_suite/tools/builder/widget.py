@@ -169,15 +169,23 @@ class _VersionDelegate(QtWidgets.QStyledItemDelegate):
         super().paint(painter, option, index)
         if not index.data(DROPDOWN_ROLE):
             return
-        arrow = QtWidgets.QStyleOption()
-        arrow.initFrom(option.widget)
-        arrow.state = option.state
+        # Drawn by hand, not by the style: in Maya, after a reload, the style
+        # Python gets back can already be deleted, and this runs on every repaint.
         rect = option.rect
-        arrow.rect = QtCore.QRect(
-            rect.right() - DROPDOWN_ARROW - 3, rect.center().y() - DROPDOWN_ARROW // 2, DROPDOWN_ARROW, DROPDOWN_ARROW
+        right = rect.right() - 3
+        left = right - DROPDOWN_ARROW
+        top = rect.center().y() - DROPDOWN_ARROW // 4
+        arrow = QtGui.QPolygonF(
+            [QtCore.QPointF(left, top), QtCore.QPointF(right, top), QtCore.QPointF((left + right) / 2, top + DROPDOWN_ARROW / 2)]
         )
-        style = option.widget.style() if option.widget else QtWidgets.QApplication.style()
-        style.drawPrimitive(QtWidgets.QStyle.PrimitiveElement.PE_IndicatorArrowDown, arrow, painter, option.widget)
+        selected = option.state & QtWidgets.QStyle.StateFlag.State_Selected
+        role = QtGui.QPalette.ColorRole.HighlightedText if selected else QtGui.QPalette.ColorRole.Text
+        painter.save()
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(option.palette.color(role))
+        painter.drawPolygon(arrow)
+        painter.restore()
 
 
 class _Tree(QtWidgets.QTreeWidget):
@@ -295,7 +303,6 @@ class BuilderWindow(ToolWindow):
     copied = []
 
     def build_ui(self):
-        style = self.style()
         self.root = ""
         self.runner = logic.Runner()
 
@@ -305,12 +312,14 @@ class BuilderWindow(ToolWindow):
         self.folder_box.activated.connect(lambda i: self.open_folder(self.folder_box.itemText(i)))
         browse = QtWidgets.QPushButton()
         browse.setFixedSize(28, 28)
-        browse.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_DirIcon))
+        # Our own icons, not the style's: in Maya, after a reload, self.style() can
+        # hand back a style Qt has already deleted.
+        browse.setIcon(icons.icon("builder_folder.svg"))
         browse.setToolTip("Browse for a scripts folder")
         browse.clicked.connect(self._browse)
         refresh = QtWidgets.QPushButton()
         refresh.setFixedSize(28, 28)
-        refresh.setIcon(style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_BrowserReload))
+        refresh.setIcon(icons.icon("builder_refresh.svg"))
         refresh.setToolTip("Read the folder again")
         refresh.clicked.connect(self.populate)
         top.addWidget(self.folder_box, 1)
