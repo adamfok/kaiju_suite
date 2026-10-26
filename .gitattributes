@@ -1,0 +1,10 @@
+# Left out of release downloads (GitHub's source zip, git archive); see tests/test_release_archive.py.
+/tests export-ignore
+/dev export-ignore
+/docs export-ignore
+/CLAUDE.md export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+/AGENTS.md export-ignore
+# Hooks run under sh, which chokes on CRLF.
+/dev/hooks/* text eol=lf
