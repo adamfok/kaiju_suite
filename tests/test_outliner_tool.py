@@ -278,7 +278,7 @@ def test_offset_is_one_undo_step(new_scene):
 # -- button icons ------------------------------------------------------------
 
 
-@pytest.mark.parametrize("button", ["group", "chain", "offset"])
+@pytest.mark.parametrize("button", ["group", "chain", "offset", "lock", "unlock"])
 def test_button_icons_ship_as_svg(button):
     import os
     import xml.etree.ElementTree as ET
@@ -288,3 +288,126 @@ def test_button_icons_ship_as_svg(button):
     path = icons.path(f"outliner_tool_{button}.svg")
     assert os.path.isfile(path), path
     assert ET.parse(path).getroot().tag == "{http://www.w3.org/2000/svg}svg"
+
+
+# -- lock and hide -----------------------------------------------------------
+
+_STANDARD = ["visibility", "translateX", "translateY", "translateZ",
+             "rotateX", "rotateY", "rotateZ", "scaleX", "scaleY", "scaleZ"]
+
+
+def _node(kind="transform", **extra):
+    """A node of ``kind`` with one keyable attribute per ``name=attributeType``."""
+    node = cmds.ls(cmds.createNode(kind, name="ctrl"), long=True)[0]
+    for name, kind in extra.items():
+        cmds.addAttr(node, longName=name, attributeType=kind, keyable=True, **({"enumName": "a:b"} if kind == "enum" else {}))
+    return node
+
+
+def _keyable(node):
+    return cmds.listAttr(node, keyable=True) or []
+
+
+def _shown(node):
+    """Shown in the channel box but not keyable."""
+    return cmds.listAttr(node, channelBox=True) or []
+
+
+def _locked(node, attr):
+    return cmds.getAttr(f"{node}.{attr}", lock=True)
+
+
+def test_lock_and_hide_locks_and_hides_every_channel_box_attribute(new_scene):
+    node = _node(space="enum")
+
+    assert logic.lock_and_hide([node]) == [node]
+
+    assert _keyable(node) == [] and _shown(node) == []
+    assert all(_locked(node, a) for a in _STANDARD + ["space"])
+
+
+def test_lock_and_hide_hides_shown_attributes_too(new_scene):
+    joint = _node("joint")
+    assert "radius" in _shown(joint)
+
+    logic.lock_and_hide([joint])
+
+    assert _keyable(joint) == [] and _shown(joint) == []
+
+
+def test_lock_and_hide_handles_several_nodes(new_scene):
+    a, b = _node(), _node()
+
+    logic.lock_and_hide([a, b])
+
+    assert _keyable(a) == _keyable(b) == []
+
+
+def test_unlock_and_show_makes_the_standard_channels_keyable(new_scene):
+    node = _node()
+    logic.lock_and_hide([node])
+
+    assert logic.unlock_and_show([node]) == [node]
+
+    assert _keyable(node) == _STANDARD
+    assert _shown(node) == []
+    assert not any(_locked(node, a) for a in _STANDARD)
+
+
+@pytest.mark.parametrize("kind", [
+    "bool", "enum", "long", "short", "byte", "float", "double", "doubleLinear", "doubleAngle",
+])
+def test_unlock_and_show_makes_own_numeric_attributes_keyable(new_scene, kind):
+    node = _node(extra=kind)
+    logic.lock_and_hide([node])
+
+    logic.unlock_and_show([node])
+
+    assert "extra" in _keyable(node)
+    assert not _locked(node, "extra")
+
+
+def test_unlock_and_show_leaves_text_attributes_hidden(new_scene):
+    node = _node()
+    cmds.addAttr(node, longName="note", dataType="string")
+
+    logic.unlock_and_show([node])
+
+    assert "note" not in _keyable(node) + _shown(node)
+
+
+def test_unlock_and_show_shows_joint_radius_without_making_it_keyable(new_scene):
+    joint = _node("joint")
+    logic.lock_and_hide([joint])
+
+    logic.unlock_and_show([joint])
+
+    assert _shown(joint) == ["radius"]
+    assert "radius" not in _keyable(joint)
+    assert not _locked(joint, "radius")
+
+
+def test_lock_and_hide_is_one_undo_step(new_scene):
+    cmds.undoInfo(state=True)
+    node = _node(space="enum")
+    before = _keyable(node)
+    logic.lock_and_hide([node])
+    cmds.undo()
+    assert _keyable(node) == before
+    assert not _locked(node, "translateX")
+
+
+def test_unlock_and_show_is_one_undo_step(new_scene):
+    cmds.undoInfo(state=True)
+    node = _node()
+    logic.lock_and_hide([node])
+    logic.unlock_and_show([node])
+    cmds.undo()
+    assert _keyable(node) == []
+    assert _locked(node, "translateX")
+
+
+@pytest.mark.parametrize("func", ["lock_and_hide", "unlock_and_show"])
+def test_lock_and_unlock_need_a_selection(func):
+    with pytest.raises(ValueError):
+        getattr(logic, func)([])

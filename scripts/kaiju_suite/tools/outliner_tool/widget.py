@@ -21,7 +21,8 @@ def _remove_callback(callback_id):
 
 
 class OutlinerToolWindow(ToolWindow):
-    """Preview line, one rename field (see ``logic.SHORTCUTS``), and Group / Chain / Offset."""
+    """Preview line, one rename field (see ``logic.SHORTCUTS``), Group / Chain / Offset,
+    and Lock / Unlock at the right."""
 
     TITLE = "Kaiju Outliner Tool"
 
@@ -47,19 +48,26 @@ class OutlinerToolWindow(ToolWindow):
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(2)
-        for name, tip, action in (
+        for entry in (
             ("group", "Group: put the selection under a group named after their shared name (L_arm_grp),\n"
                       "or after the first selected node", self._group),
             ("chain", "Chain: parent each selected node under the one selected before it", self._chain),
             ("offset", "Offset: put a lined-up <node>_offset group above each selected node", self._offset),
+            None,  # the rest sit at the right edge
+            ("lock", "Lock: lock and hide every channel box attribute of the selected nodes", self._lock),
+            ("unlock", "Unlock: unlock and make keyable the transform channels and the nodes' own\n"
+                       "number attributes (a joint's radius comes back shown, not keyable)", self._unlock),
         ):
+            if entry is None:
+                buttons.addStretch()
+                continue
+            name, tip, action = entry
             button = QtWidgets.QToolButton()
             button.setIcon(icons.icon(f"outliner_tool_{name}.svg"))
             button.setIconSize(QtCore.QSize(20, 20))
             button.setToolTip(tip)
             button.clicked.connect(action)
             buttons.addWidget(button)
-        buttons.addStretch()
 
         self.layout.addWidget(self.preview)
         self.layout.addLayout(row)
@@ -117,6 +125,12 @@ class OutlinerToolWindow(ToolWindow):
 
     def _offset(self):
         self._run(logic.offset)
+
+    def _lock(self):
+        self._run(logic.lock_and_hide)
+
+    def _unlock(self):
+        self._run(logic.unlock_and_show)
 
     def _help_menu(self):
         rows = "".join(

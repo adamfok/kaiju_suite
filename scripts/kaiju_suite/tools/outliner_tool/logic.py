@@ -133,6 +133,52 @@ def preview(nodes, text):
     return line, bool(clashes)
 
 
+# -- lock and hide -----------------------------------------------------------
+
+_STANDARD = ("translateX", "translateY", "translateZ", "rotateX", "rotateY", "rotateZ",
+             "scaleX", "scaleY", "scaleZ", "visibility")
+# Attribute types Unlock brings back; text and compound attributes stay hidden.
+_NUMERIC = {"bool", "enum", "long", "short", "byte", "float", "double", "doubleLinear", "doubleAngle"}
+
+
+def _channel_box(node):
+    """The attributes in ``node``'s channel box: keyable ones and shown non-keyable ones."""
+    return list(dict.fromkeys((cmds.listAttr(node, keyable=True) or []) + (cmds.listAttr(node, channelBox=True) or [])))
+
+
+@undoable
+def lock_and_hide(nodes):
+    """Lock and hide every attribute in the channel box of each of ``nodes``. Returns ``nodes``."""
+    if not nodes:
+        raise ValueError("Nothing selected")
+    for node in nodes:
+        for attr in _channel_box(node):
+            cmds.setAttr(f"{node}.{attr}", lock=True, keyable=False, channelBox=False)
+    return list(nodes)
+
+
+@undoable
+def unlock_and_show(nodes):
+    """Unlock and make keyable the standard transform channels and each node's own numeric
+    attributes, and show a joint's radius again (not keyable, as Maya has it). Returns ``nodes``.
+
+    A hidden attribute leaves no trace of having been shown, so this restores a fixed set
+    rather than exactly what ``lock_and_hide`` hid.
+    """
+    if not nodes:
+        raise ValueError("Nothing selected")
+    for node in nodes:
+        attrs = [a for a in _STANDARD if cmds.attributeQuery(a, node=node, exists=True)]
+        attrs += [a for a in cmds.listAttr(node, userDefined=True) or []
+                  if cmds.getAttr(f"{node}.{a}", type=True) in _NUMERIC]
+        for attr in attrs:
+            # keyable only: channelBox=True means "shown but not keyable" and would win.
+            cmds.setAttr(f"{node}.{attr}", lock=False, keyable=True)
+        if cmds.nodeType(node) == "joint":
+            cmds.setAttr(f"{node}.radius", lock=False, channelBox=True)
+    return list(nodes)
+
+
 # -- group, chain, offset ----------------------------------------------------
 
 
