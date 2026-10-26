@@ -41,6 +41,8 @@ out = {
     "title": widget.CurveToolWindow.TITLE,
     "tabs": [tabs.tabText(i) for i in range(tabs.count())],
     "qc_checks": [qc.results.topLevelItem(i).text(0) for i in range(qc.results.topLevelItemCount())],
+    "qc_hint": qc.status.text(),
+    "qc_run_tip": [b for b in qc.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"][0].toolTip(),
     "fix_rows": sorted(qc.fix_buttons),
 }
 [run] = [b for b in qc.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"]
@@ -75,3 +77,8 @@ def test_no_check_has_a_fix_button(probe):
 
 def test_checking_with_no_curves_selected_warns(probe):
     assert probe["warnings"] == ["No NURBS curves selected. Select the curves to check."]
+
+
+def test_the_qc_tab_names_what_it_checks(probe):
+    assert probe["qc_hint"].startswith("Select curves and click Run Checks.")
+    assert "selected curves." in probe["qc_run_tip"]

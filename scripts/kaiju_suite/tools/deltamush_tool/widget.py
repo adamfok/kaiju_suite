@@ -19,7 +19,14 @@ class DeltaMushToolWindow(ToolWindow):
 
     def build_ui(self):
         tabs = QtWidgets.QTabWidget()
-        qc = QCTab(logic.QC_CHECKS, logic.qc_settings(), logic.save_qc_setting, self._run_qc, logic.select_problem)
+        qc = QCTab(
+            logic.QC_CHECKS,
+            logic.qc_settings(),
+            logic.save_qc_setting,
+            self._run_qc,
+            logic.select_problem,
+            subject="meshes",
+        )
         tabs.addTab(qc, "QC")
         # A placeholder, so every datatype tool has the same two tabs.
         utilities = QtWidgets.QWidget()
