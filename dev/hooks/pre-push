@@ -1,0 +1,37 @@
+#!/bin/sh
+# Refuses pushes to main (changes reach main through a pull request) and runs
+# the mayapy test suite before any other push. Turn it on once per clone:
+#   git config core.hooksPath dev/hooks
+#   git config kaiju.mayapy "D:/Program Files/Autodesk/Maya2026/bin/mayapy.exe"
+# Without kaiju.mayapy it uses mayapy on PATH.
+
+zero=0000000000000000000000000000000000000000
+run_tests=no
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [ "$remote_ref" = "refs/heads/main" ]; then
+        echo "pre-push: pushing to main is blocked. Push a branch and open a pull request." >&2
+        exit 1
+    fi
+    if [ "$local_sha" != "$zero" ]; then  # deleting a remote branch needs no tests
+        run_tests=yes
+    fi
+done
+[ "$run_tests" = yes ] || exit 0
+
+mayapy=$(git config kaiju.mayapy)
+if [ -z "$mayapy" ]; then
+    mayapy=$(command -v mayapy)
+fi
+if [ -z "$mayapy" ]; then
+    echo "pre-push: can't find mayapy to run the tests. Set it with: git config kaiju.mayapy \"<path to mayapy>\"" >&2
+    exit 1
+fi
+
+# Git sets GIT_DIR and friends for hooks; tests that run git in their own repos must not see them.
+unset $(git rev-parse --local-env-vars)
+
+echo "pre-push: running the test suite..." >&2
+if ! "$mayapy" -m pytest tests -q -p no:cacheprovider >&2; then
+    echo "pre-push: tests failed, push refused. Fix them and push again." >&2
+    exit 1
+fi
