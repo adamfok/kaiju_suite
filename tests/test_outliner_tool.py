@@ -563,3 +563,55 @@ def test_reparent_mixed_nodes_reparents_the_remembered_ones(new_scene):
 def test_unparent_and_reparent_need_a_selection(func):
     with pytest.raises(ValueError, match="Nothing selected"):
         getattr(logic, func)([])
+
+
+def test_reparent_changes_nothing_when_one_previous_parent_is_gone(new_scene):
+    keep = _placed("keep")
+    gone = _placed("gone")
+    _placed("a", parent=keep)
+    _placed("b", parent=gone)
+    logic.unparent(["|keep|a", "|gone|b"])
+    cmds.delete(gone)
+
+    with pytest.raises(ValueError, match="no longer exists"):
+        logic.reparent(["|a", "|b"])
+
+    assert cmds.ls("a", long=True) == ["|a"]
+
+
+def test_reparent_skips_node_moved_since_unparent_was_undone(new_scene):
+    cmds.undoInfo(state=True)
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    cmds.undo()
+    other = _placed("other")
+    cmds.parent(child, other)
+
+    with pytest.raises(ValueError, match="No previous parent"):
+        logic.reparent(["|other|child"])
+
+    assert cmds.ls("child", long=True) == ["|other|child"]
+
+
+def test_reparent_works_again_after_undo(new_scene):
+    cmds.undoInfo(state=True)
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    logic.reparent(["|child"])
+    cmds.undo()
+
+    assert logic.reparent(["|child"]) == ["|rig|child"]
+
+
+def test_reparent_under_own_descendant_raises_value_error(new_scene):
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    cmds.parent(parent, "|child")
+
+    with pytest.raises(ValueError, match="is now under"):
+        logic.reparent(["|child"])
+
+    assert cmds.ls("child", long=True) == ["|child"]

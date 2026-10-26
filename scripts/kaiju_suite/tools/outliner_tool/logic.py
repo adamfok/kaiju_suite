@@ -273,22 +273,36 @@ def unparent(nodes):
 
 @undoable
 def reparent(nodes):
-    """Parent ``nodes`` back under their previous parent. Returns their new long names."""
+    """Parent ``nodes`` back under their previous parent. Returns their new long names.
+
+    Only nodes still at the world (where Unparent left them) move; nodes moved elsewhere
+    since are skipped. Raises ``ValueError`` without changing anything if a previous
+    parent is gone or now sits under the node.
+    """
     if not nodes:
         raise ValueError("Nothing selected")
     uuids = cmds.ls(nodes, uuid=True)
-    nodes_with_parents = [uuid for uuid in uuids if uuid in _PREVIOUS_PARENTS]
-    if not nodes_with_parents:
+    moves = []
+    already_back = False
+    for uuid in uuids:
+        if uuid not in _PREVIOUS_PARENTS:
+            continue
+        node = _long(uuid)
+        parent_matches = cmds.ls(_PREVIOUS_PARENTS[uuid], long=True)
+        current = cmds.listRelatives(node, parent=True, fullPath=True) or []
+        if parent_matches and current == parent_matches:
+            already_back = True
+            continue
+        if current:
+            continue  # moved somewhere else since Unparent
+        if not parent_matches:
+            raise ValueError(f"Previous parent for '{short_name(node)}' no longer exists")
+        if parent_matches[0].startswith(node + "|"):
+            raise ValueError(f"{short_name(parent_matches[0])} is now under {short_name(node)}")
+        moves.append((uuid, _PREVIOUS_PARENTS[uuid]))
+    if not moves and not already_back:
         raise ValueError("No previous parent remembered")
 
-    for uuid in nodes_with_parents:
-        parent_uuid = _PREVIOUS_PARENTS[uuid]
-        parent_matches = cmds.ls(parent_uuid, long=True)
-        if not parent_matches:
-            raise ValueError(f"Previous parent for '{short_name(_long(uuid))}' no longer exists")
-        target_parent = parent_matches[0]
-        node = _long(uuid)
-        current = cmds.listRelatives(node, parent=True, fullPath=True) or []
-        if current != [target_parent]:
-            cmds.parent(node, target_parent)
+    for uuid, parent_uuid in moves:
+        cmds.parent(_long(uuid), _long(parent_uuid))
     return [_long(uuid) for uuid in uuids]
