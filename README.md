@@ -68,6 +68,13 @@ mayapy -m pip install --user pytest   # once
 mayapy -m pytest tests
 ```
 
+## Pushing
+`main` only changes through pull requests. Turn on the pre-push hook once per clone; it refuses pushes to `main` and runs the tests before any other push:
+```
+git config core.hooksPath dev/hooks
+git config kaiju.mayapy "D:/Program Files/Autodesk/Maya2026/bin/mayapy.exe"   # your mayapy; without it the hook uses mayapy on PATH
+```
+
 ## Trying a branch in Maya
 Point a Maya version's line in your `kaiju_suite.mod` (in `Documents\maya\modules`) at a `kaiju_suite-dev` folder next to the main checkout. Then link that folder to whichever worktree you want to try, with no copying:
 ```

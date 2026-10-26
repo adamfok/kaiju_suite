@@ -39,6 +39,11 @@ branch and do all work inside it, so parallel agents never overwrite each other'
 After the work is merged, clean up by removing the worktree. For the next task, create a fresh
 worktree from the latest base branch — don't reuse old trees.
 
+Never push to `main`; changes reach it only through a pull request. GitHub branch protection
+refuses direct pushes, and `dev/hooks/pre-push` refuses them locally and runs the test suite
+before any other push. `AGENTS.md` repeats the key rules for other coding agents; keep it short
+and pointing here.
+
 ## TDD is mandatory
 
 Every change follows **failing test first → implement → verify**:

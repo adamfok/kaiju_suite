@@ -5,3 +5,6 @@
 /CLAUDE.md export-ignore
 /.gitignore export-ignore
 /.gitattributes export-ignore
+/AGENTS.md export-ignore
+# Hooks run under sh, which chokes on CRLF.
+/dev/hooks/* text eol=lf

@@ -21,8 +21,10 @@ SHIPPED = [
 LEFT_OUT = [
     "tests/test_release_archive.py",
     "dev/use-worktree.ps1",
+    "dev/hooks/pre-push",
     "docs/tool-ideas.md",
     "CLAUDE.md",
+    "AGENTS.md",
     ".gitignore",
     ".gitattributes",
 ]
