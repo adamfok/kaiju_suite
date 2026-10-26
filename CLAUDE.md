@@ -30,7 +30,7 @@ Run the suite after every change. It takes about 90s.
 ## Housekeeping
 - The version lives in `scripts/kaiju_suite/__init__.py` (`__version__`). The installer reads it from there; `kaiju_suite.mod` has its own copy, so keep both in sync when bumping.
 - Add user-visible changes to CHANGELOG.md.
-- You can't check the real Maya UI from here (menus, docking, widgets). If a change needs that, say so; don't claim it works.
+- Check the real Maya UI (menus, tool windows, buttons) with the `maya-ui-check` skill (`dev/maya_ui/`). Docking and windows coming back after a restart still can't be checked from here; if a change needs that, say so; don't claim it works.
 
 ## Worktrees
 
@@ -69,6 +69,9 @@ failing test first.
 ## Verify before claiming "done"
 
 Never report something as working without running it. "Done" means the mayapy test suite is
-green. The Maya UI (menus, docking, widgets, dialogs) can't be exercised from here, so for any
-change that touches it, list the exact steps I need to check by hand in Maya instead of claiming
-it works. If tests fail or a step was skipped, say so plainly with the output.
+green. For any change that touches the UI (`ui/`, or a tool's `widget.py` or `__init__.py`), also
+run the `maya-ui-check` skill: the smoke check plus a one-off scenario for the changed feature,
+and show me the screenshots of the windows it touched. It can't do docking or windows coming back
+after a Maya restart, so for those, list the exact steps I need to check by hand in Maya instead
+of claiming they work. If tests or the UI check fail, or a step was skipped, say so plainly with
+the output.
