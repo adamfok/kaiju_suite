@@ -40,6 +40,8 @@ qc, utilities = tabs.widget(0), tabs.widget(1)
 out = {
     "tabs": [tabs.tabText(i) for i in range(tabs.count())],
     "qc_checks": [qc.results.topLevelItem(i).text(0) for i in range(qc.results.topLevelItemCount())],
+    "qc_hint": qc.status.text(),
+    "qc_run_tip": [b for b in qc.findChildren(QtWidgets.QPushButton) if b.text() == "Run Checks"][0].toolTip(),
     "utility_boxes": [b.title() for b in utilities.findChildren(QtWidgets.QGroupBox)],
     "utility_labels": [label.text() for label in utilities.findChildren(QtWidgets.QLabel)],
 }
@@ -85,3 +87,8 @@ def test_checking_with_no_joints_selected_warns(probe):
 
 def test_the_open_tab_is_remembered(probe):
     assert probe["saved_tab"] == 1
+
+
+def test_the_qc_tab_names_what_it_checks(probe):
+    assert probe["qc_hint"].startswith("Select joints and click Run Checks.")
+    assert "selected joints." in probe["qc_run_tip"]
