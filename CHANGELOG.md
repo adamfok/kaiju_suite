@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### New
+- **Outliner Tool**: **Unparent** sets selected nodes to world parent and remembers their previous parent. **Reparent** restores selected nodes back to where they were before. The two buttons sit to the left of Lock and Unlock. Each is one undo step.
 - **Outliner Tool**: **Lock** locks and hides every channel box attribute of the selected nodes. **Unlock** unlocks them and makes Translate, Rotate, Scale, Visibility and the nodes' own number attributes keyable again (a joint's Radius comes back shown, not keyable). Each is one undo step.
 
 ### Fixes

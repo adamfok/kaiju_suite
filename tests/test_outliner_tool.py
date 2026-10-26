@@ -278,7 +278,7 @@ def test_offset_is_one_undo_step(new_scene):
 # -- button icons ------------------------------------------------------------
 
 
-@pytest.mark.parametrize("button", ["group", "chain", "offset", "lock", "unlock"])
+@pytest.mark.parametrize("button", ["group", "chain", "offset", "unparent", "reparent", "lock", "unlock"])
 def test_button_icons_ship_as_svg(button):
     import os
     import xml.etree.ElementTree as ET
@@ -411,3 +411,207 @@ def test_unlock_and_show_is_one_undo_step(new_scene):
 def test_lock_and_unlock_need_a_selection(func):
     with pytest.raises(ValueError):
         getattr(logic, func)([])
+
+
+# -- unparent and reparent ---------------------------------------------------
+
+
+def test_unparent_moves_node_to_world(new_scene):
+    parent = _placed("rig", translate=(1, 2, 3))
+    child = _placed("child", translate=(4, 5, 6), parent=parent)
+    before_world = _world(child)
+
+    result = logic.unparent([child])
+
+    assert result == ["|child"]
+    assert cmds.listRelatives("|child", parent=True, fullPath=True) is None
+    assert _world("|child") == before_world
+
+
+def test_unparent_node_already_at_world(new_scene):
+    node = _placed("root", translate=(1, 2, 3))
+    result = logic.unparent([node])
+    assert result == ["|root"]
+    assert cmds.listRelatives("|root", parent=True, fullPath=True) is None
+
+
+def test_unparent_is_one_undo_step(new_scene):
+    cmds.undoInfo(state=True)
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    cmds.undo()
+    assert cmds.ls(child, long=True) == [child]
+
+
+def test_reparent_restores_previous_parent(new_scene):
+    parent = _placed("rig", translate=(1, 2, 3))
+    child = _placed("child", translate=(4, 5, 6), parent=parent)
+    before_world = _world(child)
+
+    logic.unparent([child])
+    result = logic.reparent(["|child"])
+
+    assert result == ["|rig|child"]
+    assert cmds.listRelatives(result[0], parent=True, fullPath=True) == ["|rig"]
+    assert _world(result[0]) == before_world
+
+
+def test_unparent_and_reparent_multiple_nodes(new_scene):
+    p1 = _placed("rig1")
+    p2 = _placed("rig2")
+    c1 = _placed("c1", parent=p1)
+    c2 = _placed("c2", parent=p2)
+
+    unparented = logic.unparent([c1, c2])
+    assert unparented == ["|c1", "|c2"]
+
+    reparented = logic.reparent(unparented)
+    assert reparented == ["|rig1|c1", "|rig2|c2"]
+
+
+def test_unparent_and_reparent_nested_hierarchy(new_scene):
+    grandparent = _placed("grandparent")
+    parent = _placed("parent", parent=grandparent)
+    child = _placed("child", parent=parent)
+
+    unparented = logic.unparent([parent, child])
+    assert unparented == ["|parent", "|child"]
+
+    reparented = logic.reparent(unparented)
+    assert reparented == ["|grandparent|parent", "|grandparent|parent|child"]
+
+
+def test_reparent_works_after_parent_renamed(new_scene):
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+
+    logic.unparent([child])
+    cmds.rename(parent, "rig_renamed")
+
+    reparented = logic.reparent(["|child"])
+    assert reparented == ["|rig_renamed|child"]
+
+
+def test_reparent_works_after_child_renamed(new_scene):
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+
+    logic.unparent([child])
+    cmds.rename("|child", "child_renamed")
+
+    reparented = logic.reparent(["|child_renamed"])
+    assert reparented == ["|rig|child_renamed"]
+
+
+def test_reparent_without_unparent_raises(new_scene):
+    node = _placed("standalone")
+    with pytest.raises(ValueError, match="No previous parent"):
+        logic.reparent([node])
+
+
+def test_reparent_when_parent_deleted_raises(new_scene):
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+
+    logic.unparent([child])
+    cmds.delete(parent)
+
+    with pytest.raises(ValueError, match="no longer exists"):
+        logic.reparent(["|child"])
+
+
+def test_reparent_is_one_undo_step(new_scene):
+    cmds.undoInfo(state=True)
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    logic.reparent(["|child"])
+    cmds.undo()
+    assert cmds.ls("|child", long=True) == ["|child"]
+
+
+def test_reparent_skips_node_already_at_target_parent(new_scene):
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    logic.reparent(["|child"])
+    # Calling reparent again when child is already under parent is a no-op
+    assert logic.reparent([f"|rig|child"]) == ["|rig|child"]
+
+
+def test_unparent_mixed_world_and_child_nodes(new_scene):
+    root = _placed("root")
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+
+    result = logic.unparent([root, child])
+    assert result == ["|root", "|child"]
+
+
+def test_reparent_mixed_nodes_reparents_the_remembered_ones(new_scene):
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    other = _placed("other")
+
+    logic.unparent([child])
+    result = logic.reparent(["|child", other])
+    assert result == ["|rig|child", "|other"]
+
+
+@pytest.mark.parametrize("func", ["unparent", "reparent"])
+def test_unparent_and_reparent_need_a_selection(func):
+    with pytest.raises(ValueError, match="Nothing selected"):
+        getattr(logic, func)([])
+
+
+def test_reparent_changes_nothing_when_one_previous_parent_is_gone(new_scene):
+    keep = _placed("keep")
+    gone = _placed("gone")
+    _placed("a", parent=keep)
+    _placed("b", parent=gone)
+    logic.unparent(["|keep|a", "|gone|b"])
+    cmds.delete(gone)
+
+    with pytest.raises(ValueError, match="no longer exists"):
+        logic.reparent(["|a", "|b"])
+
+    assert cmds.ls("a", long=True) == ["|a"]
+
+
+def test_reparent_skips_node_moved_since_unparent_was_undone(new_scene):
+    cmds.undoInfo(state=True)
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    cmds.undo()
+    other = _placed("other")
+    cmds.parent(child, other)
+
+    with pytest.raises(ValueError, match="No previous parent"):
+        logic.reparent(["|other|child"])
+
+    assert cmds.ls("child", long=True) == ["|other|child"]
+
+
+def test_reparent_works_again_after_undo(new_scene):
+    cmds.undoInfo(state=True)
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    logic.reparent(["|child"])
+    cmds.undo()
+
+    assert logic.reparent(["|child"]) == ["|rig|child"]
+
+
+def test_reparent_under_own_descendant_raises_value_error(new_scene):
+    parent = _placed("rig")
+    child = _placed("child", parent=parent)
+    logic.unparent([child])
+    cmds.parent(parent, "|child")
+
+    with pytest.raises(ValueError, match="is now under"):
+        logic.reparent(["|child"])
+
+    assert cmds.ls("child", long=True) == ["|child"]
