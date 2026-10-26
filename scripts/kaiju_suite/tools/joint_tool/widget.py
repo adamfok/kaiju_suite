@@ -21,11 +21,13 @@ class JointToolWindow(ToolWindow):
         tabs = QtWidgets.QTabWidget()
         qc = QCTab(logic.QC_CHECKS, logic.qc_settings(), logic.save_qc_setting, self._run_qc, logic.select_problem)
         tabs.addTab(qc, "QC")
-        
-        # Utilities tab (empty for now)
+        # A placeholder, so every datatype tool has the same two tabs.
         utilities = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(utilities)
-        # Add other utilities here if needed
+        empty = QtWidgets.QLabel("No joint utilities yet.")
+        empty.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        empty.setEnabled(False)
+        layout.addWidget(empty)
         tabs.addTab(utilities, "Utilities")
         tabs.setCurrentIndex(settings.get(SETTINGS_KEY, "tab", 0))
         tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
