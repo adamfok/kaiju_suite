@@ -5,7 +5,7 @@ description: Check Kaiju Suite's UI in a real Maya 2026 - the Kaiju menu, every 
 
 # Maya UI check
 
-`dev/maya_ui/maya_ui.py` starts a **separate** Maya 2026 that loads the module from the worktree it sits in, with throwaway preferences and no autoloaded plug-ins, and drives it through a localhost command port. It never touches the user's own Maya, scenes or preferences, and only ever closes the Maya it started. Several runs can go at once.
+`dev/maya_ui/maya_ui.py` starts a **separate** Maya 2026 that loads the module from the worktree it sits in, with throwaway preferences and no autoloaded plug-ins, and drives it through a localhost command port. It never touches the user's own Maya, scenes or preferences, and only ever closes the Maya it started. Several runs can go at once. Its windows are kept off the screens and don't take focus, so it doesn't get in the user's way; screenshots come out the same. Add `--show` to `check` or `start` only when you need the user to watch it.
 
 ## Run it
 

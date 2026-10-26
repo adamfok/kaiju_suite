@@ -1,6 +1,7 @@
 """Runs inside the test Maya started by ``maya_ui.py``.
 
-At start-up it loads the Kaiju plug-in from the worktree under test, starts
+At start-up it moves every Maya window off the screens (unless the run asked
+to see them), loads the Kaiju plug-in from the worktree under test, starts
 collecting Maya warnings and errors, starts a watcher that records and closes
 any modal dialog, opens the command port, and writes ``ready.json``.
 
@@ -19,7 +20,7 @@ import traceback
 
 from maya import cmds, utils
 from maya.api import OpenMaya as om
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _session_dir = None
 _messages = []  # (kind, text, step name or None)
@@ -38,7 +39,43 @@ def _write_json(path, data):
 
 def boot_later(session_dir):
     """Called from userSetup.py; boots once Maya's UI is up."""
+    with open(os.path.join(session_dir, "boot.json"), encoding="utf-8") as f:
+        if json.load(f).get("hide"):
+            _keep_off_screen()
     utils.executeDeferred(lambda: _boot(session_dir))
+
+
+OFF_SCREEN = -20000
+_off_screen = None
+
+
+def _on_a_screen(widget):
+    rect = widget.frameGeometry()
+    return any(screen.geometry().intersects(rect) for screen in QtGui.QGuiApplication.screens())
+
+
+class _OffScreen(QtCore.QObject):
+    """Moves every top-level window off the screens before it's drawn, and
+    shows it without taking focus, so the test Maya never gets in the way."""
+
+    def eventFilter(self, obj, event):
+        kind = event.type()
+        if kind in (QtCore.QEvent.Type.Polish, QtCore.QEvent.Type.Show, QtCore.QEvent.Type.Move) and isinstance(obj, QtWidgets.QWidget) and obj.isWindow():
+            if kind == QtCore.QEvent.Type.Polish:
+                obj.setAttribute(QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating)
+            elif _on_a_screen(obj):
+                obj.move(OFF_SCREEN, OFF_SCREEN)
+        return False
+
+
+def _keep_off_screen():
+    global _off_screen
+    app = QtWidgets.QApplication.instance()
+    _off_screen = _OffScreen()
+    app.installEventFilter(_off_screen)
+    for widget in app.topLevelWidgets():  # anything already up, e.g. the main window
+        if widget.isVisible() and _on_a_screen(widget):
+            widget.move(OFF_SCREEN, OFF_SCREEN)
 
 
 def _boot(session_dir):

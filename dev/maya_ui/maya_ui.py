@@ -13,7 +13,9 @@ Run it with mayapy (only the standard library is used here):
     mayapy dev/maya_ui/maya_ui.py smoke <session>
     mayapy dev/maya_ui/maya_ui.py stop <session>
 
-Exits 0 when every check passed with no errors, warnings or dialogs, else 1.
+Maya's windows are kept off the screens and don't take focus; add ``--show``
+to ``check`` or ``start`` to watch it. Exits 0 when every check passed with no
+errors, warnings or dialogs, else 1.
 """
 
 import argparse
@@ -173,18 +175,24 @@ def load_session(session_dir):
         return json.load(f)
 
 
-def start(maya_exe, worktree=REPO, session_dir=None, boot_timeout=BOOT_TIMEOUT):
+def boot_settings(port, worktree, show=False):
+    """What the agent reads at start-up (boot.json). Unless ``show``, it keeps
+    every Maya window off the screens so the test Maya doesn't get in the way."""
+    return {"port": port, "worktree": worktree, "hide": not show}
+
+
+def start(maya_exe, worktree=REPO, session_dir=None, boot_timeout=BOOT_TIMEOUT, show=False):
     """Start a test Maya and wait until its agent is ready. Returns the session dict.
 
     Maya now and then crashes while starting up; that gets one retry.
     """
     try:
-        return _start_once(maya_exe, worktree, session_dir, boot_timeout)
+        return _start_once(maya_exe, worktree, session_dir, boot_timeout, show)
     except MayaDied:
-        return _start_once(maya_exe, worktree, None, boot_timeout)
+        return _start_once(maya_exe, worktree, None, boot_timeout, show)
 
 
-def _start_once(maya_exe, worktree, session_dir, boot_timeout):
+def _start_once(maya_exe, worktree, session_dir, boot_timeout, show):
     session_dir = session_dir or tempfile.mkdtemp(prefix="kaiju_maya_ui_")
     app_dir = os.path.join(session_dir, "maya_app_dir")
     boot_dir = os.path.join(session_dir, "boot")
@@ -194,7 +202,7 @@ def _start_once(maya_exe, worktree, session_dir, boot_timeout):
 
     port = free_port()
     with open(os.path.join(session_dir, "boot.json"), "w", encoding="utf-8") as f:
-        json.dump({"port": port, "worktree": worktree}, f)
+        json.dump(boot_settings(port, worktree, show), f)
 
     log = os.path.join(session_dir, "maya.log")
     flags = 0
@@ -247,11 +255,11 @@ def _tail(path, lines=40):
         return "(no log)"
 
 
-def check(maya_exe, scenarios, worktree=REPO, keep=False):
+def check(maya_exe, scenarios, worktree=REPO, keep=False, show=False):
     """Start Maya, run the smoke check and each scenario, stop Maya. Returns ``(ok, text)``."""
     deadline = time.monotonic() + RUN_TIMEOUT
     try:
-        session = start(maya_exe, worktree)
+        session = start(maya_exe, worktree, show=show)
     except (MayaTimeout, MayaDied, RuntimeError) as exc:
         return False, f"Maya didn't start: {exc}"
     out = [f"Session folder: {session['dir']}"]
@@ -282,7 +290,7 @@ def _default_maya():
     return None
 
 
-def main(argv=None):
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--maya", default=_default_maya(), help="maya.exe (default: next to this mayapy)")
     parser.add_argument("--worktree", default=REPO, help="module root to load (default: this checkout)")
@@ -290,7 +298,9 @@ def main(argv=None):
     p = sub.add_parser("check")
     p.add_argument("scenarios", nargs="*")
     p.add_argument("--keep", action="store_true", help="leave Maya open afterwards")
-    sub.add_parser("start")
+    p.add_argument("--show", action="store_true", help="let Maya's windows on screen (they're kept off it by default)")
+    p = sub.add_parser("start")
+    p.add_argument("--show", action="store_true", help="let Maya's windows on screen")
     p = sub.add_parser("run")
     p.add_argument("session")
     p.add_argument("script")
@@ -300,16 +310,20 @@ def main(argv=None):
     p = sub.add_parser("stop")
     p.add_argument("session")
     args = parser.parse_args(argv)
-
     if args.command in ("check", "start") and not args.maya:
         parser.error("can't find maya.exe; run this with mayapy or pass --maya")
+    return args
+
+
+def main(argv=None):
+    args = parse_args(argv)
 
     if args.command == "check":
-        ok, text = check(args.maya, args.scenarios, args.worktree, args.keep)
+        ok, text = check(args.maya, args.scenarios, args.worktree, args.keep, args.show)
         print(text)
         return 0 if ok else 1
     if args.command == "start":
-        session = start(args.maya, args.worktree)
+        session = start(args.maya, args.worktree, show=args.show)
         print(session["dir"])
         return 0
     session = load_session(args.session)

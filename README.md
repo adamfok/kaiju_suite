@@ -73,7 +73,7 @@ mayapy -m pytest tests
 ```
 mayapy dev/maya_ui/maya_ui.py check [scenario.py ...]
 ```
-It exits 1 on any failure. Coding agents use it through the `maya-ui-check` skill (`.claude/skills/maya-ui-check/`). Docking and window layout after a restart still need checking by hand.
+It exits 1 on any failure. Maya's windows are kept off the screens while it runs; add `--show` to watch. Coding agents use it through the `maya-ui-check` skill (`.claude/skills/maya-ui-check/`). Docking and window layout after a restart still need checking by hand.
 
 ## Pushing
 `main` only changes through pull requests. Turn on the pre-push hook once per clone; it refuses pushes to `main` and runs the tests before any other push:

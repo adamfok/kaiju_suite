@@ -173,6 +173,17 @@ def test_stop_waits_until_maya_has_exited(monkeypatch):
     assert next(answers, "drained") == "drained"
 
 
+def test_boot_settings_hide_maya_unless_asked_to_show():
+    assert maya_ui.boot_settings(7001, "W") == {"port": 7001, "worktree": "W", "hide": True}
+    assert maya_ui.boot_settings(7001, "W", show=True)["hide"] is False
+
+
+def test_check_and_start_take_a_show_flag():
+    parser_args = maya_ui.parse_args(["check", "--show", "a.py"])
+    assert parser_args.show and parser_args.scenarios == ["a.py"]
+    assert not maya_ui.parse_args(["start"]).show
+
+
 def test_compare_menu_lists_missing_and_extra():
     missing, extra = maya_ui.compare_menu(["A", "B", "C"], ["A", "C", "Z"])
     assert missing == ["B"]
