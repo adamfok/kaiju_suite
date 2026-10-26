@@ -42,31 +42,3 @@ def run_qc(selection, settings=None):
 def select_problem(problem):
     """Select the joints ``problem`` points at that are still in the scene."""
     return checks.select_problem(problem)
-
-
-# -- Utilities ----------------------------------------------------------------
-
-
-def set_end_joints_to_zero(selection):
-    """Set the jointOrient of end joints (joints without children) to [0, 0, 0].
-    
-    Args:
-        selection: List of joint names (long names)
-        
-    Raises:
-        ValueError: If no joints are selected or if selection contains non-joints
-    """
-    if not selection:
-        raise ValueError("No joints selected. Select joints to process.")
-    
-    # Verify that we have joints in the selection
-    joints = cmds.ls(selection, type="joint")
-    if not joints:
-        raise ValueError("No joints selected. Select joints to process.")
-    
-    # Find end joints (joints without children) and set their jointOrient to zero
-    for joint in joints:
-        # Check if joint has no children
-        children = cmds.listRelatives(joint, children=True, type="joint") or []
-        if not children:  # End joint (no children)
-            cmds.setAttr(f"{joint}.jointOrient", 0, 0, 0)
