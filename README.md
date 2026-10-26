@@ -68,6 +68,13 @@ mayapy -m pip install --user pytest   # once
 mayapy -m pytest tests
 ```
 
+## Checking the UI in a real Maya
+`dev/maya_ui/maya_ui.py` starts a separate Maya 2026 with throwaway preferences, loads this checkout's module, and drives it through a localhost command port. It checks that the Kaiju menu lists every tool and that every tool window opens without errors, warnings or dialogs, and saves a screenshot of each. Extra scenario scripts can click buttons and check the scene (see `dev/maya_ui/example_scenario.py`):
+```
+mayapy dev/maya_ui/maya_ui.py check [scenario.py ...]
+```
+It exits 1 on any failure. Coding agents use it through the `maya-ui-check` skill (`.claude/skills/maya-ui-check/`). Docking and window layout after a restart still need checking by hand.
+
 ## Pushing
 `main` only changes through pull requests. Turn on the pre-push hook once per clone; it refuses pushes to `main` and runs the tests before any other push:
 ```
