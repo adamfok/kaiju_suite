@@ -249,3 +249,46 @@ def offset(nodes):
         cmds.parent(node, group)
         offsets.append(cmds.ls(group, uuid=True)[0])
     return [_long(uuid) for uuid in offsets]
+
+
+# -- unparent and reparent ---------------------------------------------------
+
+_PREVIOUS_PARENTS: dict[str, str] = {}
+
+
+@undoable
+def unparent(nodes):
+    """Parent ``nodes`` to the world, remembering where they were. Returns their new long names."""
+    if not nodes:
+        raise ValueError("Nothing selected")
+    uuids = cmds.ls(nodes, uuid=True)
+    for uuid in uuids:
+        node = _long(uuid)
+        parents = cmds.listRelatives(node, parent=True, fullPath=True)
+        if parents:
+            _PREVIOUS_PARENTS[uuid] = cmds.ls(parents[0], uuid=True)[0]
+            cmds.parent(node, world=True)
+    return [_long(uuid) for uuid in uuids]
+
+
+@undoable
+def reparent(nodes):
+    """Parent ``nodes`` back under their previous parent. Returns their new long names."""
+    if not nodes:
+        raise ValueError("Nothing selected")
+    uuids = cmds.ls(nodes, uuid=True)
+    nodes_with_parents = [uuid for uuid in uuids if uuid in _PREVIOUS_PARENTS]
+    if not nodes_with_parents:
+        raise ValueError("No previous parent remembered")
+
+    for uuid in nodes_with_parents:
+        parent_uuid = _PREVIOUS_PARENTS[uuid]
+        parent_matches = cmds.ls(parent_uuid, long=True)
+        if not parent_matches:
+            raise ValueError(f"Previous parent for '{short_name(_long(uuid))}' no longer exists")
+        target_parent = parent_matches[0]
+        node = _long(uuid)
+        current = cmds.listRelatives(node, parent=True, fullPath=True) or []
+        if current != [target_parent]:
+            cmds.parent(node, target_parent)
+    return [_long(uuid) for uuid in uuids]

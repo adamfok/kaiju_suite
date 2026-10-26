@@ -22,7 +22,7 @@ def _remove_callback(callback_id):
 
 class OutlinerToolWindow(ToolWindow):
     """Preview line, one rename field (see ``logic.SHORTCUTS``), Group / Chain / Offset,
-    and Lock / Unlock at the right."""
+    and Unparent / Reparent / Lock / Unlock at the right."""
 
     TITLE = "Kaiju Outliner Tool"
 
@@ -54,6 +54,8 @@ class OutlinerToolWindow(ToolWindow):
             ("chain", "Chain: parent each selected node under the one selected before it", self._chain),
             ("offset", "Offset: put a lined-up <node>_offset group above each selected node", self._offset),
             None,  # the rest sit at the right edge
+            ("unparent", "Unparent: parent selected nodes to the world and remember their previous parent", self._unparent),
+            ("reparent", "Reparent: put selected nodes back under their previous parent", self._reparent),
             ("lock", "Lock: lock and hide every channel box attribute of the selected nodes", self._lock),
             ("unlock", "Unlock: unlock and make keyable the transform channels and the nodes' own\n"
                        "number attributes (a joint's radius comes back shown, not keyable)", self._unlock),
@@ -125,6 +127,12 @@ class OutlinerToolWindow(ToolWindow):
 
     def _offset(self):
         self._run(logic.offset)
+
+    def _unparent(self):
+        self._run(logic.unparent)
+
+    def _reparent(self):
+        self._run(logic.reparent)
 
     def _lock(self):
         self._run(logic.lock_and_hide)
