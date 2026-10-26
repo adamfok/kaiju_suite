@@ -52,6 +52,8 @@ class OutlinerToolWindow(ToolWindow):
                       "or after the first selected node", self._group),
             ("chain", "Chain: parent each selected node under the one selected before it", self._chain),
             ("offset", "Offset: put a lined-up <node>_offset group above each selected node", self._offset),
+            ("lock", "Lock channel box attributes (translate, rotate, scale, visibility)", self._lock_attrs),
+            ("unlock", "Unlock channel box attributes (translate, rotate, scale, visibility)", self._unlock_attrs),
         ):
             button = QtWidgets.QToolButton()
             button.setIcon(icons.icon(f"outliner_tool_{name}.svg"))
@@ -117,6 +119,66 @@ class OutlinerToolWindow(ToolWindow):
 
     def _offset(self):
         self._run(logic.offset)
+        
+    def _lock_attrs(self):
+        """Lock translate, rotate, scale, and visibility attributes for selected nodes."""
+        nodes = selected()
+        if not nodes:
+            cmds.warning("Kaiju Outliner Tool: nothing selected.")
+            return
+
+        # Channel box attributes to lock
+        attrs_to_lock = ["translate", "rotate", "scale", "visibility"]
+        
+        try:
+            for node in nodes:
+                for attr in attrs_to_lock:
+                    # Check if attribute exists on node before locking it
+                    if cmds.objExists(f"{node}.{attr}") or cmds.objExists(f"{node}.{attr}X") or cmds.objExists(f"{node}.{attr}Y") or cmds.objExists(f"{node}.{attr}Z"):
+                        full_attr_name = f"{node}.{attr}"
+                        # Lock all components (X, Y, Z) of the attribute if it's a vector attribute
+                        if attr in ["translate", "rotate", "scale"]:
+                            for component in ["X", "Y", "Z"]:
+                                comp_attr_name = f"{node}.{attr}{component}"
+                                if cmds.objExists(comp_attr_name):
+                                    cmds.setAttr(comp_attr_name, lock=True)
+                        # Lock the main attribute
+                        else:  # visibility or other single attributes
+                            if cmds.objExists(full_attr_name):
+                                cmds.setAttr(full_attr_name, lock=True)
+            cmds.select(nodes)  # Keep selection after operation
+        except ValueError as e:
+            cmds.warning(f"Kaiju Outliner Tool: Error locking attributes - {e}")
+
+    def _unlock_attrs(self):
+        """Unlock translate, rotate, scale, and visibility attributes for selected nodes."""
+        nodes = selected()
+        if not nodes:
+            cmds.warning("Kaiju Outliner Tool: nothing selected.")
+            return
+
+        # Channel box attributes to unlock
+        attrs_to_unlock = ["translate", "rotate", "scale", "visibility"]
+        
+        try:
+            for node in nodes:
+                for attr in attrs_to_unlock:
+                    # Check if attribute exists on node before unlocking it
+                    if cmds.objExists(f"{node}.{attr}") or cmds.objExists(f"{node}.{attr}X") or cmds.objExists(f"{node}.{attr}Y") or cmds.objExists(f"{node}.{attr}Z"):
+                        full_attr_name = f"{node}.{attr}"
+                        # Unlock all components (X, Y, Z) of the attribute if it's a vector attribute
+                        if attr in ["translate", "rotate", "scale"]:
+                            for component in ["X", "Y", "Z"]:
+                                comp_attr_name = f"{node}.{attr}{component}"
+                                if cmds.objExists(comp_attr_name):
+                                    cmds.setAttr(comp_attr_name, lock=False)
+                        # Unlock the main attribute
+                        else:  # visibility or other single attributes
+                            if cmds.objExists(full_attr_name):
+                                cmds.setAttr(full_attr_name, lock=False)
+            cmds.select(nodes)  # Keep selection after operation
+        except ValueError as e:
+            cmds.warning(f"Kaiju Outliner Tool: Error unlocking attributes - {e}")
 
     def _help_menu(self):
         rows = "".join(
