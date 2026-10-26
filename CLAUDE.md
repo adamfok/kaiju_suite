@@ -39,6 +39,18 @@ branch and do all work inside it, so parallel agents never overwrite each other'
 After the work is merged, clean up by removing the worktree. For the next task, create a fresh
 worktree from the latest base branch — don't reuse old trees.
 
+The main checkout (the folder this file sits in, not a worktree) always stays on `main`. Never
+run `git switch` or `git checkout <branch>` there, even for a one-commit change: other sessions
+and agents start in that folder and would land on your branch. Create the worktree and its
+branch in one step, then work only inside it:
+
+```
+git worktree add .claude/worktrees/<name> -b <type>/<name> main
+```
+
+`CLAUDE.local.md` is gitignored, so a new worktree doesn't have it. Read it from the main
+checkout to find this machine's mayapy path.
+
 Never push to `main`; changes reach it only through a pull request. GitHub branch protection
 refuses direct pushes, and `dev/hooks/pre-push` refuses them locally and runs the test suite
 before any other push. `AGENTS.md` repeats the key rules for other coding agents; keep it short
