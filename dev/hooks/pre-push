@@ -27,6 +27,9 @@ if [ -z "$mayapy" ]; then
     exit 1
 fi
 
+# Git sets GIT_DIR and friends for hooks; tests that run git in their own repos must not see them.
+unset $(git rev-parse --local-env-vars)
+
 echo "pre-push: running the test suite..." >&2
 if ! "$mayapy" -m pytest tests -q -p no:cacheprovider >&2; then
     echo "pre-push: tests failed, push refused. Fix them and push again." >&2

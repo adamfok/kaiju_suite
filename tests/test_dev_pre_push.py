@@ -31,10 +31,15 @@ def without_mayapy_on_path():
 
 
 def fake_mayapy(tmp_path, exit_code):
-    """A stand-in for mayapy that writes its arguments to calls.txt and exits with ``exit_code``."""
+    """A stand-in for mayapy that writes its arguments to calls.txt, the GIT_DIR it
+    sees to git_dir.txt, and exits with ``exit_code``."""
     path = tmp_path / "fake-mayapy"
     calls = (tmp_path / "calls.txt").as_posix()
-    path.write_text(f'#!/bin/sh\necho "$@" >> "{calls}"\nexit {exit_code}\n', newline="\n")
+    git_dir = (tmp_path / "git_dir.txt").as_posix()
+    path.write_text(
+        f'#!/bin/sh\necho "$@" >> "{calls}"\necho "${{GIT_DIR-unset}}" > "{git_dir}"\nexit {exit_code}\n',
+        newline="\n",
+    )
     return path
 
 
@@ -96,6 +101,18 @@ def test_a_branch_push_runs_the_suite_and_goes_through_when_it_passes(clone, tmp
     assert result.returncode == 0, result.stderr
     assert "refs/heads/feature/x" in remote_heads(clone)
     assert calls(tmp_path) == ["-m pytest tests -q -p no:cacheprovider"]
+
+
+def test_the_suite_runs_without_the_hooks_git_dir(clone, tmp_path):
+    # Git sets GIT_DIR for hooks run in a linked worktree; tests that run git in
+    # their own repos must not inherit it.
+    git("config", "kaiju.mayapy", fake_mayapy(tmp_path, 0).as_posix(), cwd=clone)
+    worktree = tmp_path / "wt-x"
+    git("worktree", "add", "-q", "-b", "feature/x", str(worktree), cwd=clone)
+
+    git("push", "origin", "feature/x", cwd=worktree)
+
+    assert (tmp_path / "git_dir.txt").read_text().strip() == "unset"
 
 
 def test_a_branch_push_is_refused_when_the_suite_fails(clone, tmp_path):
