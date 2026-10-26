@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### New
+- **Outliner Tool**: **Lock** locks and hides every channel box attribute of the selected nodes. **Unlock** unlocks them and makes Translate, Rotate, Scale, Visibility and the nodes' own number attributes keyable again (a joint's Radius comes back shown, not keyable). Each is one undo step.
+
 ### Fixes
 - After **Reload Kaiju Suite**, Builder no longer fails to open, or errors on every click, with "Internal C++ object (PySide6.QtWidgets.QProxyStyle) already deleted". Its Browse and Refresh buttons now use Kaiju's own icons, and the Version column draws its own dropdown arrow.
 
