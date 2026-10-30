@@ -71,6 +71,10 @@ def _disc(preview):
     return cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
 
 
+def _cylinder(preview):
+    return cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[1]
+
+
 def _frames(nodes):
     return [(_pos(n), _rows(n)) for n in nodes]
 
@@ -885,7 +889,7 @@ def test_guides_from_joints_draws_them_as_reference(new_scene):
 
 
 def _scalables(group):
-    return [logic.plane(group)] + [_disc(p) for p in logic.previews(group)]
+    return [logic.plane(group)] + [part(p) for p in logic.previews(group) for part in (_disc, _cylinder)]
 
 
 def _extent(node, axis):
@@ -947,12 +951,14 @@ def test_building_again_keeps_the_plane_and_disc_scales(new_scene):
     cmds.setAttr(f"{logic.plane(group)}.scale", 2, 3, 1)
     for i, preview in enumerate(logic.previews(group)):
         cmds.setAttr(f"{_disc(preview)}.scale", i + 1, i + 1, i + 1)
+        cmds.setAttr(f"{_cylinder(preview)}.scale", 1, i + 2, i + 2)
 
     group = logic.build_guides("arm", 3)
 
     assert cmds.getAttr(f"{logic.plane(group)}.scale")[0] == pytest.approx((2, 3, 1))
     for i, preview in enumerate(logic.previews(group)):
         assert cmds.getAttr(f"{_disc(preview)}.scale")[0] == pytest.approx((i + 1,) * 3)
+        assert cmds.getAttr(f"{_cylinder(preview)}.scale")[0] == pytest.approx((1, i + 2, i + 2))
 
 
 def test_building_again_with_another_count_keeps_the_plane_scale(new_scene):
@@ -962,3 +968,46 @@ def test_building_again_with_another_count_keeps_the_plane_scale(new_scene):
     group = logic.build_guides("arm", 1)
 
     assert cmds.getAttr(f"{logic.plane(group)}.scale")[0] == pytest.approx((2, 3, 1))
+
+
+
+# -- the rotate-axis cylinders ---------------------------------------------------
+
+
+@pytest.mark.parametrize("aim, up", [("x", "y"), ("y", "x"), ("-z", "y"), ("x", "-z")])
+def test_each_joint_has_a_cylinder_along_its_rotate_axis(new_scene, aim, up):
+    group = _bent_arm(aim=aim, up=up)
+    normal = _normal(group)
+
+    for preview in logic.previews(group):
+        cylinder = _cylinder(preview)
+        assert cmds.listRelatives(cylinder, shapes=True, type="nurbsSurface")
+        assert abs(_axis(cylinder, "x") * normal) == pytest.approx(1.0, abs=1e-4)
+        assert (_center(cylinder) - _pos(preview)).length() < 1e-3
+        # Along its own X: longer than it is wide.
+        shape = cmds.listRelatives(cylinder, shapes=True, fullPath=True)[0]
+        length, width, depth = cmds.getAttr(f"{shape}.boundingBoxSize")[0]
+        assert length > 2 * width and width == pytest.approx(depth)
+
+
+def test_cylinders_follow_new_axes(new_scene):
+    group = _bent_arm()
+
+    logic.set_axes(group, aim="z", up="-x")
+
+    for preview in logic.previews(group):
+        assert abs(_axis(_cylinder(preview), "x") * _normal(group)) == pytest.approx(1.0, abs=1e-4)
+
+
+def test_cylinders_are_solid_selectable_and_share_the_preview_shader(new_scene):
+    group = logic.build_guides("arm", 1)
+    disc_shape = cmds.listRelatives(_disc(logic.previews(group)[0]), shapes=True, fullPath=True)[0]
+    engine = cmds.listConnections(disc_shape, type="shadingEngine")
+
+    for preview in logic.previews(group):
+        cylinder = _cylinder(preview)
+        assert cmds.getAttr(f"{cylinder}.overrideEnabled")
+        assert cmds.getAttr(f"{cylinder}.overrideDisplayType") == 0
+        assert cmds.getAttr(f"{cylinder}.overrideShading")
+        shape = cmds.listRelatives(cylinder, shapes=True, fullPath=True)[0]
+        assert cmds.listConnections(shape, type="shadingEngine") == engine

@@ -57,7 +57,7 @@ _DISC_COLOR = 18  # light blue
 # The solid color the discs and the plane share: shaded, so they show where
 # they cut a mesh.
 _SHADE = (0.35, 0.75, 1.0)  # light blue
-# Turns a disc made around X to ring the aim axis, by the aim axis' index.
+# Turns a disc or cylinder made around X to lie around the axis with this index.
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
 
@@ -239,6 +239,20 @@ def _disc(name, parent, radius, engine):
     return disc
 
 
+def _cylinder(name, parent, radius, length, engine):
+    """A cylinder through ``parent`` along X, turned onto the rotate axis by
+    ``_apply_axes``: the axis the joint bends around."""
+    cylinder = cmds.cylinder(
+        axis=(1, 0, 0), radius=radius, heightRatio=length / radius, sections=12, constructionHistory=False
+    )[0]
+    cylinder = cmds.rename(cmds.parent(cylinder, parent, relative=True)[0], name)
+    cylinder = _long(f"{parent}|{cylinder}")
+    _visual(cylinder, _DISC_COLOR, shaded=True, selectable=True)
+    _lock_to_scale_only(cylinder)
+    cmds.sets(cmds.listRelatives(cylinder, shapes=True, fullPath=True), edit=True, forceElement=engine)
+    return cylinder
+
+
 def _preview_network(group, name, chain, up, size):
     start, end = _world_position(chain[0]), _world_position(chain[-1])
     span = _difference(group, f"{name}_span", end, start)
@@ -275,7 +289,8 @@ def _preview_network(group, name, chain, up, size):
         )
         preview = _placed(group, cmds.createNode("transform", name=f"{label}_preview"), matrix)
         cmds.setAttr(f"{preview}.displayLocalAxis", True)
-        _disc(f"{label}_disc", preview, size * 2, engine)
+        _disc(f"{label}_disc", preview, size * 2, engine)  # first child
+        _cylinder(f"{label}_axis", preview, size * 0.3, size * 6, engine)  # second child
         _link(preview, group, f"{_PREVIEWS}[{i}]")
 
     center = _util(group, "plusMinusAverage", f"{name}_center")
@@ -322,12 +337,13 @@ def _apply_axes(group, aim, up):
     text = " ".join(("-" if sign < 0 else "") + "xyz"[index] for index, sign in (aim, up))
     cmds.setAttr(f"{group}.{_AXES_TEXT}", text, type="string")
     for preview in _connected(group, _PREVIEWS):
-        for disc in cmds.listRelatives(preview, children=True, type="transform", fullPath=True) or []:
+        # The disc rings the aim axis; the cylinder lies along the third axis.
+        for node, index in zip(_parts(preview), (aim[0], third)):
             for attr in ("rx", "ry", "rz"):
-                cmds.setAttr(f"{disc}.{attr}", lock=False)
-            cmds.setAttr(f"{disc}.rotate", *_DISC_ROTATE[aim[0]])
+                cmds.setAttr(f"{node}.{attr}", lock=False)
+            cmds.setAttr(f"{node}.rotate", *_DISC_ROTATE[index])
             for attr in ("rx", "ry", "rz"):
-                cmds.setAttr(f"{disc}.{attr}", lock=True)
+                cmds.setAttr(f"{node}.{attr}", lock=True)
 
 
 def _axes(aim, up):
@@ -634,22 +650,24 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
 
 
 def _scales(group):
-    """The user's scale of ``group``'s plane, and of each of its discs."""
-    discs = [_disc_of(p) for p in previews(group)]
-    return cmds.getAttr(f"{plane(group)}.scale")[0], [cmds.getAttr(f"{d}.scale")[0] for d in discs]
+    """The user's scale of ``group``'s plane, and of each joint's disc and cylinder."""
+    parts = [n for p in previews(group) for n in _parts(p)]
+    return cmds.getAttr(f"{plane(group)}.scale")[0], [cmds.getAttr(f"{n}.scale")[0] for n in parts]
 
 
-def _set_scales(group, plane_scale, disc_scales):
-    """Give ``group`` the plane scale, and the disc scales if it has as many discs."""
+def _set_scales(group, plane_scale, part_scales):
+    """Give ``group`` the plane scale, and the disc and cylinder scales if it
+    has as many joints."""
     cmds.setAttr(f"{plane(group)}.scale", *plane_scale)
-    discs = [_disc_of(p) for p in previews(group)]
-    if len(discs) == len(disc_scales):
-        for disc, scale in zip(discs, disc_scales):
-            cmds.setAttr(f"{disc}.scale", *scale)
+    parts = [n for p in previews(group) for n in _parts(p)]
+    if len(parts) == len(part_scales):
+        for node, scale in zip(parts, part_scales):
+            cmds.setAttr(f"{node}.scale", *scale)
 
 
-def _disc_of(preview):
-    return cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
+def _parts(preview):
+    """A preview's disc and cylinder, in the order ``_preview_network`` made them."""
+    return cmds.listRelatives(preview, children=True, type="transform", fullPath=True) or []
 
 
 def free_joint(nodes):
