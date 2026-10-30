@@ -130,9 +130,6 @@ class GuideToolWindow(ToolWindow):
         for name in templates.TEMPLATES:
             self.template.addItem(name.capitalize(), name)
         self.template.setCurrentIndex(max(self.template.findData(settings.get(SETTINGS_KEY, "template", "")), 0))
-        self.template.currentIndexChanged.connect(
-            lambda *_: settings.set(SETTINGS_KEY, "template", self.template.currentData())
-        )
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("Template"))
         row.addWidget(self.template, 1)
@@ -149,13 +146,11 @@ class GuideToolWindow(ToolWindow):
 
         self.skeleton = QtWidgets.QComboBox()
         self.skeleton.setToolTip("The skeleton to align to; Auto picks the one the selected hierarchy matches best.")
-        self.skeleton.addItem("Auto", "")
-        for key, skeleton in templates.SKELETONS.items():
-            self.skeleton.addItem(skeleton["label"], key)
-        self.skeleton.setCurrentIndex(max(self.skeleton.findData(settings.get(SETTINGS_KEY, "skeleton", "")), 0))
+        self._fill_skeletons()
         self.skeleton.currentIndexChanged.connect(
             lambda *_: settings.set(SETTINGS_KEY, "skeleton", self.skeleton.currentData())
         )
+        self.template.currentIndexChanged.connect(self._template_changed)
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("Align to"))
         row.addWidget(self.skeleton, 1)
@@ -172,6 +167,22 @@ class GuideToolWindow(ToolWindow):
         layout.addWidget(align)
         layout.addStretch()
         return page
+
+    def _fill_skeletons(self):
+        """List Auto and the skeletons that fit the current template, keeping
+        the saved one if it fits."""
+        self.skeleton.blockSignals(True)
+        self.skeleton.clear()
+        self.skeleton.addItem("Auto", "")
+        for key, skeleton in templates.SKELETONS.items():
+            if skeleton["template"] == self.template.currentData():
+                self.skeleton.addItem(skeleton["label"], key)
+        self.skeleton.setCurrentIndex(max(self.skeleton.findData(settings.get(SETTINGS_KEY, "skeleton", "")), 0))
+        self.skeleton.blockSignals(False)
+
+    def _template_changed(self, *_):
+        settings.set(SETTINGS_KEY, "template", self.template.currentData())
+        self._fill_skeletons()
 
     # -- layout ----------------------------------------------------------------
 

@@ -100,6 +100,10 @@ PRESETS = {
         _preset("l_foot", 1, (0, -10, 20), "x", "y", (0, 1, 0)),
         # A hind leg: hip, stifle, hock, fetlock and the toe tip.
         _preset("l_quad_leg", 3, (0, -95, 0), "x", "y", (0, 0, 1)),
+        # A front leg's shoulder blade, from the withers down and forward to the shoulder.
+        _preset("l_scapula", 0, (3, -20, 8), "x", "y", (0, 0, -1)),
+        # A front leg: shoulder, elbow, wrist, paw and the toe tip; the elbow bends back.
+        _preset("l_front_leg", 3, (0, -90, 0), "x", "y", (0, 0, -1)),
         _preset("forward_spine", 3, (0, 0, 60), "x", "y", (0, 1, 0)),
         _preset("tail", 4, (0, 0, -60), "x", "y", (0, 1, 0)),
     )
