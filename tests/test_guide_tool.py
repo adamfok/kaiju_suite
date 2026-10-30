@@ -507,7 +507,8 @@ def test_plane_lies_on_the_guides_plane_and_follows_them(new_scene):
 
     plane = logic.plane(group)
 
-    assert (_pos(plane) - (start + end) * 0.5).length() < 1e-4
+    assert (_pos(plane) - start).length() < 1e-4  # pivots at the first joint
+    assert (_center(plane) - (start + end) * 0.5).length() < 1e-3
     assert (_axis(plane, "x") - (end - start).normalize()).length() < 1e-4
     assert (_axis(plane, "z") - _normal(group)).length() < 1e-4
     assert cmds.getAttr(f"{plane}.overrideDisplayType") == 0  # normal: selectable
@@ -919,7 +920,21 @@ def test_scaled_plane_keeps_following_the_guides(new_scene):
 
     _move(logic.guides(group)["chain"][-1], 20, 0, 0)
     assert _extent(plane, 0) == pytest.approx(before * 4, rel=1e-3)
-    assert (_center(plane) - om.MVector(10, 0, 0)).length() < 1e-3
+    # Scaled from the first joint: twice as far from it as the guides' midpoint.
+    assert (_center(plane) - om.MVector(20, 0, 0)).length() < 1e-3
+
+
+def test_plane_scales_from_the_first_joint(new_scene):
+    group = _bent_arm()
+    start = _pos(logic.guides(group)["chain"][0])
+    plane = logic.plane(group)
+    before = _center(plane)
+    pivot = om.MVector(cmds.xform(plane, query=True, worldSpace=True, rotatePivot=True))
+
+    cmds.setAttr(f"{plane}.scale", 2, 3, 1)
+
+    assert (pivot - start).length() < 1e-4
+    assert (_center(plane) - (start + (before - start) * 2)).length() < 1e-3
 
 
 def test_scaling_the_plane_and_discs_leaves_the_joints_alone(new_scene):
