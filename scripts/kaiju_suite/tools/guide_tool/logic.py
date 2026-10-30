@@ -875,11 +875,38 @@ def _chain_from(joint):
         chain.append(children[0])
 
 
+def _up_from_joints(top, positions, axes):
+    """Where the up guide goes for joints at ``positions``, from how they are now:
+    on the side their bend points (the side the top joint's up axis points, for a
+    straight chain), as far along and as far off the chain as the note Delete
+    Guides left says it was (else halfway along, half the chain's length off)."""
+    start, end = positions[0], positions[-1]
+    line = end - start
+    along = line.normal()
+
+    def off_line(point):
+        offset = point - start
+        return offset - along * (offset * along)
+
+    side = orient.row(om.MMatrix(cmds.xform(top, query=True, worldSpace=True, matrix=True)), axes[1][0])
+    side = off_line(start + side.normal() * axes[1][1])
+    bend = max((off_line(p) for p in positions[1:-1]), key=lambda v: v.length(), default=om.MVector())
+    if bend.length() > line.length() * 1e-3:
+        side = bend if bend * side >= 0 else -bend  # the joints' plane, on the up axis's side
+    if cmds.attributeQuery(_NOTE_UP, node=top, exists=True):
+        noted = om.MVector(cmds.getAttr(f"{top}.{_NOTE_UP}")[0]) - start
+        fraction, distance = (noted * along) / line.length(), off_line(start + noted).length()
+    else:
+        fraction, distance = 0.5, line.length() * 0.5
+    return start + line * fraction + side.normal() * distance
+
+
 @undoable
 def guides_from_joints(joint, name=None, aim=None, up=None, mirror=False):
     """Build guides for the joint chain ``joint`` is in, e.g. one extracted
     by :func:`delete_guides`, and make those same joints follow them live
-    again: one guide on each joint, and the up guide where it was. A chain
+    again: one guide on each joint, and the up guide on the side the joints
+    bend now (see :func:`_up_from_joints`), as far off as it was. A chain
     the Guide Tool didn't make takes ``name`` and the ``aim`` and ``up``
     axes (default +X, +Y), and gets its up guide to the side its top joint's
     up axis points to. With ``mirror``, the joints are mirrored as by
@@ -912,11 +939,7 @@ def guides_from_joints(joint, name=None, aim=None, up=None, mirror=False):
     if noted_end:
         positions.append(om.MVector(cmds.getAttr(f"{top}.{_NOTE_END}")[0]))
     start, end = positions[0], positions[-1]
-    if cmds.attributeQuery(_NOTE_UP, node=top, exists=True):
-        up_position = om.MVector(cmds.getAttr(f"{top}.{_NOTE_UP}")[0])
-    else:
-        side = orient.row(om.MMatrix(cmds.xform(top, query=True, worldSpace=True, matrix=True)), axes[1][0])
-        up_position = (start + end) * 0.5 + side.normalize() * (axes[1][1] * (end - start).length() * 0.5)
+    up_position = _up_from_joints(top, positions, axes)
     _plane(positions, up_position)  # raises if it can't be built
     count = len(positions) - 2
     owned = set(cmds.ls(chain, long=True))
