@@ -312,7 +312,7 @@ def test_build_guides_makes_a_named_joint_chain(new_scene):
     group = logic.build_guides("arm", 2)
 
     joints = logic.joints(group)
-    assert [cmds.ls(j)[0] for j in joints] == ["arm_01_jnt", "arm_02_jnt", "arm_03_jnt", "arm_04_jnt"]
+    assert [cmds.ls(j)[0] for j in joints] == ["arm_01_jnt", "arm_02_jnt", "arm_03_jnt", "arm_04_jnt_end"]
     assert cmds.listRelatives(joints[0], parent=True) is None
     for parent, child in zip(joints, joints[1:]):
         assert cmds.listRelatives(child, parent=True, fullPath=True)[0] == parent
@@ -582,7 +582,7 @@ def test_building_again_with_another_count_replaces_the_joints(new_scene):
     group = logic.build_guides("arm", 4)
 
     joints = logic.joints(group)
-    assert [cmds.ls(j)[0] for j in joints] == [f"arm_{i:02d}_jnt" for i in range(1, 7)]
+    assert [cmds.ls(j)[0] for j in joints] == [f"arm_{i:02d}_jnt" for i in range(1, 6)] + ["arm_06_jnt_end"]
     assert not any(cmds.ls(u) for u in old)
     assert len(cmds.ls(type="joint")) == 6
     for joint, preview in zip(joints, logic.previews(group)):
@@ -671,7 +671,7 @@ def test_build_again_then_delete_leaves_nothing_behind_but_the_joints(new_scene)
 
     logic.delete_guides(group)
 
-    assert set(cmds.ls()) - before == {f"arm_{i:02d}_jnt" for i in range(1, 7)}
+    assert set(cmds.ls()) - before == {f"arm_{i:02d}_jnt" for i in range(1, 6)} | {"arm_06_jnt_end"}
 
 
 def test_delete_guides_with_up_in_line_changes_nothing(new_scene):
@@ -1065,7 +1065,7 @@ def test_mirror_builds_a_chain_named_for_the_other_side(new_scene):
     group = _side_arm(mirror=True)
 
     mirrored = logic.mirrored_joints(group)
-    assert [short_name(j) for j in mirrored] == [f"arm_r_{i:02d}_jnt" for i in range(1, 5)]
+    assert [short_name(j) for j in mirrored] == [f"arm_r_{i:02d}_jnt" for i in range(1, 4)] + ["arm_r_04_jnt_end"]
     assert cmds.listRelatives(mirrored[0], parent=True) is None
     for parent, child in zip(mirrored, mirrored[1:]):
         assert cmds.listRelatives(child, parent=True, fullPath=True) == [parent]
@@ -1075,7 +1075,7 @@ def test_mirror_of_a_name_with_no_side_gets_mirrored_added(new_scene):
     group = logic.build_guides("spine", 1, mirror=True)
 
     assert [short_name(j) for j in logic.mirrored_joints(group)] == [
-        f"spine_{i:02d}_jnt_mirrored" for i in range(1, 4)
+        "spine_01_jnt_mirrored", "spine_02_jnt_mirrored", "spine_03_jnt_end_mirrored"
     ]
 
 
@@ -1132,8 +1132,8 @@ def test_building_again_with_another_count_replaces_the_mirrored_joints(new_scen
 
     group = logic.build_guides("arm_l", 0, mirror=True)
 
-    assert [short_name(j) for j in logic.mirrored_joints(group)] == ["arm_r_01_jnt", "arm_r_02_jnt"]
-    assert not cmds.objExists("arm_r_03_jnt")
+    assert [short_name(j) for j in logic.mirrored_joints(group)] == ["arm_r_01_jnt", "arm_r_02_jnt_end"]
+    assert not cmds.ls("arm_r_03_jnt*")
     _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
 
 
@@ -1210,10 +1210,95 @@ def test_guides_from_joints_makes_a_mirror_when_there_is_none(new_scene):
 
     group = logic.guides_from_joints(joints[0], mirror=True)
 
-    assert [short_name(j) for j in logic.mirrored_joints(group)] == [f"arm_r_{i:02d}_jnt" for i in range(1, 5)]
+    assert [short_name(j) for j in logic.mirrored_joints(group)] == [
+        "arm_r_01_jnt", "arm_r_02_jnt", "arm_r_03_jnt", "arm_r_04_jnt_end"
+    ]
     _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
 
 
 def test_mirror_prints_no_errors(new_scene):
     assert _maya_errors(_side_arm, mirror=True) == []
     assert _maya_errors(logic.delete_guides, "arm_l_guides_grp") == []
+
+
+
+# -- the end joint ----------------------------------------------------------------
+
+
+def test_without_end_there_is_no_joint_on_the_end_guide(new_scene):
+    group = logic.build_guides("arm", 2, end_joint=False)
+
+    joints = logic.joints(group)
+    assert [short_name(j) for j in joints] == ["arm_01_jnt", "arm_02_jnt", "arm_03_jnt"]
+    assert not cmds.ls("arm_04_jnt*")
+    for joint, preview in zip(joints, logic.previews(group)):
+        _same_frame(joint, preview)
+
+
+def test_without_end_the_last_joint_still_aims_at_the_end_guide(new_scene):
+    group = _bent_arm(end_joint=False)
+    found = logic.guides(group)
+    last = logic.joints(group)[-1]
+
+    to_end = (_pos(found["chain"][-1]) - _pos(last)).normalize()
+    assert (_axis(last, "x") - to_end).length() < 1e-3
+
+
+def test_without_end_the_end_preview_is_hidden(new_scene):
+    group = logic.build_guides("arm", 1, end_joint=False)
+
+    shown = logic.previews(group)
+    assert not cmds.getAttr(f"{shown[-1]}.visibility")
+    assert all(cmds.getAttr(f"{p}.visibility") for p in shown[:-1])
+
+
+def test_building_again_with_end_turned_off_drops_the_end_joint(new_scene):
+    _bent_arm()
+
+    group = logic.build_guides("arm", 3, end_joint=False)
+
+    assert [short_name(j) for j in logic.joints(group)] == [f"arm_{i:02d}_jnt" for i in range(1, 5)]
+    assert not cmds.ls("arm_05_jnt*")
+
+
+def test_building_again_with_end_turned_on_adds_it_back(new_scene):
+    _bent_arm(end_joint=False)
+
+    group = logic.build_guides("arm", 3)
+
+    assert short_name(logic.joints(group)[-1]) == "arm_05_jnt_end"
+    assert cmds.getAttr(f"{logic.previews(group)[-1]}.visibility")
+
+
+def test_building_again_keeps_the_joints_without_end(new_scene):
+    group = _bent_arm(end_joint=False)
+    before = [_uuid(j) for j in logic.joints(group)]
+
+    group = logic.build_guides("arm", 3, end_joint=False)
+
+    assert [_uuid(j) for j in logic.joints(group)] == before
+
+
+def test_mirror_without_end(new_scene):
+    group = _side_arm(mirror=True, end_joint=False)
+
+    assert [short_name(j) for j in logic.mirrored_joints(group)] == ["arm_r_01_jnt", "arm_r_02_jnt", "arm_r_03_jnt"]
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_guides_from_joints_without_end_puts_the_end_guide_back(new_scene):
+    group = _bent_arm(end_joint=False)
+    end = _pos(logic.guides(group)["chain"][-1])
+    frames = _frames(logic.joints(group))
+    joints = logic.delete_guides(group)
+
+    group = logic.guides_from_joints(joints[0])
+
+    assert len(logic.guides(group)["chain"]) == 5
+    assert (_pos(logic.guides(group)["chain"][-1]) - end).length() < 1e-4
+    assert [_uuid(j) for j in logic.joints(group)] == [_uuid(j) for j in joints]
+    for joint, (position, rows) in zip(logic.joints(group), frames):
+        assert (_pos(joint) - position).length() < 1e-4
+        for row_now, row in zip(_rows(joint), rows):
+            assert (row_now - row).length() < 1e-4
+    assert not cmds.getAttr(f"{logic.previews(group)[-1]}.visibility")

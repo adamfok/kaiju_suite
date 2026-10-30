@@ -52,6 +52,7 @@ _MOVES = ("tx", "ty", "tz", "rx", "ry", "rz")
 _NOTE_NAME = "kaijuGuideName"
 _NOTE_AXES = "kaijuGuideAxes"
 _NOTE_UP = "kaijuGuideUp"
+_NOTE_END = "kaijuGuideEnd"  # the end guide's position, left when it had no joint
 # Mirroring a world matrix across X with behavior is _FLIP_AXES * matrix *
 # _FLIP_X: X of the position flips, and each axis is mirrored then reversed.
 _FLIP_AXES = [-1, 0, 0, 0, 0, -1, 0, 0, 0, 0, -1, 0, 0, 0, 0, 1]
@@ -453,14 +454,19 @@ def _chain_names(name, count):
     return [f"{name}_start_guide"] + middles + [f"{name}_end_guide"]
 
 
-def _joint_names(name, count):
-    return [f"{name}_{i:02d}_jnt" for i in range(1, count + 3)]
+def _joint_names(name, count, end_joint=True):
+    """The joints' names for ``count`` middle guides: one per guide, the
+    last one ``<name>_<N>_jnt_end``; or, without ``end_joint``, none on the
+    end guide."""
+    if not end_joint:
+        return [f"{name}_{i:02d}_jnt" for i in range(1, count + 2)]
+    return [f"{name}_{i:02d}_jnt" for i in range(1, count + 2)] + [f"{name}_{count + 2:02d}_jnt_end"]
 
 
-def _names(name, count):
+def _names(name, count, end_joint=True):
     """Every name building ``count`` middle guides for ``name`` uses."""
     names = [f"{name}_guides_grp", f"{name}_up_guide", f"{name}_guide_crv", f"{name}_up_crv", f"{name}_plane"]
-    names += _chain_names(name, count) + _joint_names(name, count)
+    names += _chain_names(name, count) + _joint_names(name, count, end_joint)
     return names + [f"{name}_{i:02d}_{kind}" for i in range(1, count + 3) for kind in ("preview", "disc")]
 
 
@@ -506,23 +512,25 @@ def _create_guides(name, count, start, end, axes):
     return group
 
 
-def _live_joints(group, name, uuids=None):
+def _live_joints(group, name, uuids=None, end_joint=True):
     """Make the chain's joints follow the previews (``uuids`` are joints to
     reuse, top first; new ones are made if not given). Each joint's offset
     parent matrix is its preview's world matrix in the space of the preview
     above it, which is where its parent joint is (the top joint takes its
     preview's world matrix, so it must stay at the world root). Reading the
     joints' own parentInverseMatrix instead goes stale. Translate and rotate
-    stay zero, locked."""
+    stay zero, locked. Without ``end_joint`` no joint follows the end
+    guide's preview, which is hidden."""
     if uuids is None:
         uuids, parent = [], None
-        for joint_name in _joint_names(name, len(previews(group)) - 2):
+        for joint_name in _joint_names(name, len(previews(group)) - 2, end_joint):
             joint = _long(cmds.createNode("joint", name=joint_name, **({"parent": parent} if parent else {})))
             if parent:
                 cmds.connectAttr(f"{parent}.scale", f"{joint}.inverseScale", force=True)
             uuids.append(cmds.ls(joint, uuid=True)[0])
             parent = joint
     shown = previews(group)
+    cmds.setAttr(f"{shown[-1]}.visibility", end_joint)
     for i, (uuid, preview) in enumerate(zip(uuids, shown)):
         joint = _by_uuid(uuid)
         for attr in _MOVES:
@@ -593,7 +601,14 @@ def _extract(group):
     uuids = cmds.ls(joints(group), uuid=True)
     every = uuids + cmds.ls(mirrored_joints(group), uuid=True)
     worlds = [om.MMatrix(cmds.xform(_by_uuid(u), query=True, worldSpace=True, matrix=True)) for u in every]
-    note = (cmds.getAttr(f"{group}.{_TAG}"), cmds.getAttr(f"{group}.{_AXES_TEXT}") or "x y", _position(found["up"]))
+    # With no joint on the end guide, the note keeps where it was.
+    end = _position(found["chain"][-1]) if len(uuids) < len(found["chain"]) else None
+    note = (
+        cmds.getAttr(f"{group}.{_TAG}"),
+        cmds.getAttr(f"{group}.{_AXES_TEXT}") or "x y",
+        _position(found["up"]),
+        end,
+    )
     # One delete takes the drivers too, so the joints keep their last value.
     _remove(group)
     for uuid in every:
@@ -618,7 +633,7 @@ def _unreference(joint):
         cmds.setAttr(f"{joint}.overrideEnabled", False)
 
 
-def _leave_note(joint, name, axes, up):
+def _leave_note(joint, name, axes, up, end=None):
     for attr, kind in ((_NOTE_NAME, "string"), (_NOTE_AXES, "string")):
         if not cmds.attributeQuery(attr, node=joint, exists=True):
             cmds.addAttr(joint, longName=attr, dataType=kind)
@@ -629,6 +644,13 @@ def _leave_note(joint, name, axes, up):
     cmds.setAttr(f"{joint}.{_NOTE_NAME}", name, type="string")
     cmds.setAttr(f"{joint}.{_NOTE_AXES}", axes, type="string")
     cmds.setAttr(f"{joint}.{_NOTE_UP}", up.x, up.y, up.z)
+    if cmds.attributeQuery(_NOTE_END, node=joint, exists=True):
+        cmds.deleteAttr(f"{joint}.{_NOTE_END}")
+    if end is not None:
+        cmds.addAttr(joint, longName=_NOTE_END, attributeType="double3")
+        for letter in "XYZ":
+            cmds.addAttr(joint, longName=f"{_NOTE_END}{letter}", attributeType="double", parent=_NOTE_END)
+        cmds.setAttr(f"{joint}.{_NOTE_END}", end.x, end.y, end.z)
 
 
 def _note(joint, attr):
@@ -652,7 +674,7 @@ def _remove(group):
 
 
 @undoable
-def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None, mirror=False):
+def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None, mirror=False, end_joint=True):
     """Build guides for a chain named ``name`` with ``count`` middle guides,
     and a joint chain that follows them live (``aim`` points at the next
     joint and ``up`` towards the up guide's side, ``"x"``, ``"-y"``...).
@@ -663,7 +685,9 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     replaced by ``count`` new ones, evenly between start and end; the axes
     stay unless given. Their joints stay too, unless the number of joints
     changes: then the old joints are replaced by new ones.
-    With ``mirror``, a second chain named for the other side (see
+    The last joint, on the end guide, is ``<name>_<N>_jnt_end``; without
+    ``end_joint`` there's no joint on the end guide (it still aims the last
+    joint). With ``mirror``, a second chain named for the other side (see
     :func:`~kaiju_suite.core.naming.mirrored_name`) mirrors the joints across
     X with behavior and follows them live; building again without it removes
     that chain. Returns the guide group."""
@@ -683,12 +707,12 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
         aim, up = aim or kept[0], up or kept[1]
         linked = joints(old)
         scales = _scales(old)
-        if len(linked) == count + 2:
+        if len(linked) == count + (2 if end_joint else 1):
             keep = cmds.ls(linked, uuid=True)
         else:
             doomed = cmds.ls(linked, uuid=True)
         mirrors = mirrored_joints(old)
-        if mirror and keep and len(mirrors) == count + 2:
+        if mirror and keep and len(mirrors) == len(keep):
             keep_mirror = cmds.ls(mirrors, uuid=True)
         else:
             doomed += cmds.ls(mirrors, uuid=True)
@@ -699,9 +723,9 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     axes = _axes(aim or "x", up or "y")
     if (om.MVector(end) - om.MVector(start)).length() < _TOLERANCE:
         raise ValueError("The start and end guides can't be on the same spot.")
-    names = _names(name, count)
+    names = _names(name, count, end_joint)
     if mirror and keep_mirror is None:
-        joint_names = [short_name(j) for j in cmds.ls(keep, long=True)] if keep else _joint_names(name, count)
+        joint_names = [short_name(j) for j in cmds.ls(keep, long=True)] if keep else _joint_names(name, count, end_joint)
         names += [mirrored_name(n) for n in joint_names]
     taken = [n for n in names if set(cmds.ls(n, long=True)) - owned]
     if taken:
@@ -715,7 +739,7 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     group = _create_guides(name, count, start, end, axes)
     if old:
         cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
-    _live_joints(group, name, keep)
+    _live_joints(group, name, keep, end_joint)
     if mirror:
         _mirror_joints(group, keep_mirror)
     if scales:
@@ -782,12 +806,14 @@ def guides_from_joints(joint, name=None, aim=None, up=None, mirror=False):
     axes (default +X, +Y), and gets its up guide to the side its top joint's
     up axis points to. With ``mirror``, the joints are mirrored as by
     :func:`build_guides`, reusing a free chain already named for the other
-    side (e.g. one Delete Guides cut loose). Returns the guide group."""
+    side (e.g. one Delete Guides cut loose). A chain cut loose with no joint
+    on its end guide gets that guide back where it was. Returns the guide group."""
     found = cmds.ls(joint, long=True, type="joint") if joint else []
     if not found:
         raise ValueError(f"{joint!r} isn't a joint.")
     chain = _chain_from(found[0])
-    if len(chain) < 2:
+    noted_end = cmds.attributeQuery(_NOTE_END, node=chain[0], exists=True)
+    if len(chain) < (1 if noted_end else 2):
         raise ValueError(f"{short_name(chain[0])} has no child joint: select a joint chain of 2 joints or more.")
     for node in chain:
         linked = cmds.listConnections(f"{node}.message", source=False, destination=True) or []
@@ -805,6 +831,8 @@ def guides_from_joints(joint, name=None, aim=None, up=None, mirror=False):
     axes = _axes(aim, up)
 
     positions = [_position(node) for node in chain]
+    if noted_end:
+        positions.append(om.MVector(cmds.getAttr(f"{top}.{_NOTE_END}")[0]))
     start, end = positions[0], positions[-1]
     if cmds.attributeQuery(_NOTE_UP, node=top, exists=True):
         up_position = om.MVector(cmds.getAttr(f"{top}.{_NOTE_UP}")[0])
@@ -812,9 +840,9 @@ def guides_from_joints(joint, name=None, aim=None, up=None, mirror=False):
         side = orient.row(om.MMatrix(cmds.xform(top, query=True, worldSpace=True, matrix=True)), axes[1][0])
         up_position = (start + end) * 0.5 + side.normalize() * (axes[1][1] * (end - start).length() * 0.5)
     _plane(positions, up_position)  # raises if it can't be built
-    count = len(chain) - 2
+    count = len(positions) - 2
     owned = set(cmds.ls(chain, long=True))
-    names, reuse = _names(name, count), None
+    names, reuse = _names(name, count, not noted_end), None
     if mirror:
         reuse = _free_mirror(chain)
         if reuse is None:
@@ -828,7 +856,7 @@ def guides_from_joints(joint, name=None, aim=None, up=None, mirror=False):
     for guide, position in zip(guides(group)["chain"], positions):
         cmds.xform(guide, worldSpace=True, translation=(position.x, position.y, position.z))
     cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
-    _live_joints(group, name, uuids)
+    _live_joints(group, name, uuids, not noted_end)
     if mirror:
         _mirror_joints(group, reuse)
     return group
