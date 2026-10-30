@@ -17,6 +17,8 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite.core import hierarchy
+from kaiju_suite.core.naming import mirrored_name
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.guide_tool import logic
 
@@ -121,16 +123,43 @@ PARENTS = {
 def build_template(name):
     """Build every chain of the template ``name`` (see :data:`TEMPLATES`) and
     return their guide groups, in order. Chains already built are built
-    again in place, as :func:`logic.build_guides` does. Each chain's first
-    joint (and its mirror's) gets its default parent (see :data:`PARENTS`);
-    nothing is parented yet. Raises ``ValueError``, building nothing, if any
-    chain can't be built."""
+    again in place, as :func:`logic.build_guides` does. Chains Delete cut
+    loose (even parented into a skeleton) get their guides back on those same
+    joints, where they are: they and their mirrors go back to the world first,
+    since guides need that. Each chain's first joint (and its mirror's) gets
+    its default parent (see :data:`PARENTS`); nothing is parented yet.
+    Raises ``ValueError``, building nothing, if any new chain can't be built."""
     if name not in TEMPLATES:
         raise ValueError(f"There's no {name!r} template; pick one of {', '.join(TEMPLATES)}.")
     chains = TEMPLATES[name]
+    built = set(_built(name))
+    loose = {}
     for chain in chains:
-        logic.check_build(**chain)
-    groups = [logic.build_guides(**chain) for chain in chains]
+        top = None if f"{chain['name']}_guides_grp" in built else logic.loose_chain(chain["name"])
+        if top:
+            loose[chain["name"]] = top
+        else:
+            logic.check_build(**chain)
+
+    # Unparent every loose chain before picking any up, so each one is on its own again.
+    tops = []
+    for chain in chains:
+        top = loose.get(chain["name"])
+        if top:
+            mirror = cmds.ls(mirrored_name(short_name(top)), long=True, type="joint") if chain["mirror"] else []
+            tops += cmds.ls([top, *mirror[:1]], uuid=True)
+    for uuid in tops:
+        top = cmds.ls(uuid, long=True)[0]
+        if cmds.listRelatives(top, parent=True):
+            cmds.parent(top, world=True)
+
+    groups = []
+    for chain in chains:
+        if chain["name"] in loose:
+            top = logic.loose_chain(chain["name"])
+            groups.append(logic.guides_from_joints(top, mirror=chain["mirror"]))
+        else:
+            groups.append(logic.build_guides(**chain))
 
     built = {chain["name"]: (chain, group) for chain, group in zip(chains, groups)}
     for child, parent in PARENTS[name].items():

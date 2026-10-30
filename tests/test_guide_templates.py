@@ -1002,3 +1002,70 @@ def test_delete_template_leaves_a_chain_whose_parent_is_gone_at_the_world(new_sc
 def test_delete_template_with_only_root_built(new_scene):
     logic.build_guides(**templates.TEMPLATES["biped"][0])
     assert templates.delete_template("biped") == ["|root_01_jnt"]
+
+
+# -- building again after Delete -----------------------------------------------------
+
+
+def _uuids(template):
+    groups = templates._built(template)
+    return [cmds.ls(logic.joints(g) + logic.mirrored_joints(g), uuid=True) for g in groups]
+
+
+@pytest.mark.parametrize("template", ["biped", "quadruped"])
+def test_build_template_after_delete_unparents_and_picks_up_the_same_joints(new_scene, template):
+    templates.build_template(template)
+    before = _uuids(template)
+    templates.delete_template(template)
+
+    groups = templates.build_template(template)
+
+    assert [cmds.getAttr(f"{g}.kaijuGuides") for g in groups] == [c["name"] for c in templates.TEMPLATES[template]]
+    assert _uuids(template) == before
+    for group in groups:
+        for top in (logic.joints(group)[0], *logic.mirrored_joints(group)[:1]):
+            assert not cmds.listRelatives(top, parent=True), top
+
+
+def test_build_template_after_delete_keeps_where_joints_were_moved(new_scene):
+    templates.build_template("biped")
+    templates.delete_template("biped")
+    cmds.xform("l_arm_02_jnt", worldSpace=True, translation=(40, 140, -6))
+
+    templates.build_template("biped")
+
+    assert _close(_guide_pos("l_arm", 1), (40, 140, -6))  # the joint then stays on the chain's plane
+
+
+def test_build_and_delete_again_makes_the_same_skeleton(new_scene):
+    templates.build_template("biped")
+    templates.delete_template("biped")
+    templates.build_template("biped")
+    templates.delete_template("biped")
+
+    assert _parent("l_index_01_jnt") == "l_index_metacarpal_01_jnt"
+    assert _parent("r_foot_01_jnt") == "r_leg_02_jnt"
+    roots = [j for j in cmds.ls(type="joint", long=True) if j.count("|") == 1]
+    assert roots == ["|root_01_jnt"]
+
+
+def test_build_template_after_delete_is_one_undo_step(new_scene):
+    templates.build_template("biped")
+    templates.delete_template("biped")
+    cmds.select(clear=True)
+
+    templates.build_template("biped")
+    cmds.undo()
+
+    assert not cmds.ls("*_guides_grp")
+    assert _parent("l_arm_01_jnt") == "l_shoulder_01_jnt"
+
+
+def test_build_template_picks_up_a_chain_the_chain_tab_deleted(new_scene):
+    templates.build_template("biped")
+    arm = cmds.ls(logic.joints("l_arm_guides_grp"), uuid=True)
+    logic.delete_guides("l_arm_guides_grp")
+
+    templates.build_template("biped")
+
+    assert cmds.ls(logic.joints("l_arm_guides_grp"), uuid=True) == arm

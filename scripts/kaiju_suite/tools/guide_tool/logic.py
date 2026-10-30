@@ -940,6 +940,13 @@ def guides_from_joints(joint, name=None, aim=None, up=None, mirror=False):
     return group
 
 
+def loose_chain(name):
+    """The top joint of the chain named ``name`` that Delete Guides cut loose
+    (it holds Delete Guides' note), wherever it is now, or ``None``."""
+    found = [j for j in cmds.ls(f"{name}_01_jnt", long=True, type="joint") if _note(j, _NOTE_NAME) == name]
+    return found[0] if len(found) == 1 else None
+
+
 def _free_mirror(chain):
     """The uuids of a free joint chain at the world root named for the other
     side of ``chain``, joint for joint, or ``None`` if there isn't one."""

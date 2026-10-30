@@ -154,7 +154,8 @@ class GuideToolWindow(ToolWindow):
                 "build",
                 "Build",
                 "Build every chain of the template on a body (Y up, facing +Z, left at +X), each one\n"
-                "starting where the one it hangs off ends. Chains already built are built again in place.\n"
+                "starting where the one it hangs off ends. Chains already built are built again in place;\n"
+                "joints Delete left get their guides back where they are, unparented first.\n"
                 "Use the Chain tab's Build and Delete on any one of them.",
                 self._build_template,
             ),
