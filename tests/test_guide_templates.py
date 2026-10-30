@@ -948,14 +948,14 @@ def test_every_chain_but_root_has_an_earlier_parent_chain(template):
         assert names.index(parent) < names.index(child), child
 
 
-def test_build_template_saves_default_parents_on_each_chains_first_joint(new_scene):
+def test_build_template_saves_the_parent_chains_end_joint_as_default_parent(new_scene):
     templates.build_template("biped")
     for joint, parent in (
-        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("neck_01_jnt", "spine_04_jnt"),
-        ("l_shoulder_01_jnt", "spine_04_jnt"), ("r_shoulder_01_jnt", "spine_04_jnt"),
-        ("l_arm_01_jnt", "l_shoulder_01_jnt"), ("r_arm_01_jnt", "r_shoulder_01_jnt"),
-        ("l_index_01_jnt", "l_index_metacarpal_01_jnt"), ("l_thumb_01_jnt", "l_hand_01_jnt"),
-        ("l_leg_01_jnt", "pelvis_01_jnt"), ("r_foot_01_jnt", "r_leg_02_jnt"),
+        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("neck_01_jnt", "spine_05_jnt_end"),
+        ("l_shoulder_01_jnt", "spine_05_jnt_end"), ("r_shoulder_01_jnt", "spine_05_jnt_end"),
+        ("l_arm_01_jnt", "l_shoulder_02_jnt_end"), ("r_arm_01_jnt", "r_shoulder_02_jnt_end"),
+        ("l_index_01_jnt", "l_index_metacarpal_02_jnt_end"), ("l_thumb_01_jnt", "l_hand_01_jnt"),
+        ("l_leg_01_jnt", "pelvis_01_jnt"), ("r_foot_01_jnt", "r_leg_03_jnt_end"),
     ):
         assert cmds.getAttr(f"{joint}.kaijuDefaultParentName") == parent, joint
     assert not cmds.attributeQuery("kaijuDefaultParentName", node="root_01_jnt", exists=True)
@@ -967,10 +967,10 @@ def test_delete_template_parents_the_biped_into_one_skeleton(new_scene):
     templates.delete_template("biped")
 
     for joint, parent in (
-        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("head_01_jnt", "neck_02_jnt"),
-        ("r_shoulder_01_jnt", "spine_04_jnt"), ("r_hand_01_jnt", "r_arm_02_jnt"),
-        ("l_middle_metacarpal_01_jnt", "l_hand_01_jnt"), ("r_pinky_01_jnt", "r_pinky_metacarpal_01_jnt"),
-        ("l_leg_01_jnt", "pelvis_01_jnt"), ("l_foot_01_jnt", "l_leg_02_jnt"),
+        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("head_01_jnt", "neck_03_jnt_end"),
+        ("r_shoulder_01_jnt", "spine_05_jnt_end"), ("r_hand_01_jnt", "r_arm_03_jnt_end"),
+        ("l_middle_metacarpal_01_jnt", "l_hand_01_jnt"), ("r_pinky_01_jnt", "r_pinky_metacarpal_02_jnt_end"),
+        ("l_leg_01_jnt", "pelvis_01_jnt"), ("l_foot_01_jnt", "l_leg_03_jnt_end"),
     ):
         assert _parent(joint) == parent, joint
     roots = [j for j in cmds.ls(type="joint", long=True) if j.count("|") == 1]
@@ -982,7 +982,7 @@ def test_delete_template_parents_the_quadruped(new_scene):
     templates.delete_template("quadruped")
     for joint, parent in (
         ("tail_01_jnt", "pelvis_01_jnt"), ("l_quad_leg_01_jnt", "pelvis_01_jnt"),
-        ("r_scapula_01_jnt", "spine_04_jnt"), ("r_front_leg_01_jnt", "r_scapula_01_jnt"),
+        ("r_scapula_01_jnt", "spine_05_jnt_end"), ("r_front_leg_01_jnt", "r_scapula_02_jnt_end"),
     ):
         assert _parent(joint) == parent, joint
 
@@ -996,7 +996,7 @@ def test_delete_template_leaves_a_chain_whose_parent_is_gone_at_the_world(new_sc
     templates.delete_template("biped")
 
     assert _parent("l_index_metacarpal_01_jnt") == ""
-    assert _parent("l_arm_01_jnt") == "l_shoulder_01_jnt"
+    assert _parent("l_arm_01_jnt") == "l_shoulder_02_jnt_end"
 
 
 def test_delete_template_with_only_root_built(new_scene):
@@ -1043,8 +1043,8 @@ def test_build_and_delete_again_makes_the_same_skeleton(new_scene):
     templates.build_template("biped")
     templates.delete_template("biped")
 
-    assert _parent("l_index_01_jnt") == "l_index_metacarpal_01_jnt"
-    assert _parent("r_foot_01_jnt") == "r_leg_02_jnt"
+    assert _parent("l_index_01_jnt") == "l_index_metacarpal_02_jnt_end"
+    assert _parent("r_foot_01_jnt") == "r_leg_03_jnt_end"
     roots = [j for j in cmds.ls(type="joint", long=True) if j.count("|") == 1]
     assert roots == ["|root_01_jnt"]
 
@@ -1058,7 +1058,7 @@ def test_build_template_after_delete_is_one_undo_step(new_scene):
     cmds.undo()
 
     assert not cmds.ls("*_guides_grp")
-    assert _parent("l_arm_01_jnt") == "l_shoulder_01_jnt"
+    assert _parent("l_arm_01_jnt") == "l_shoulder_02_jnt_end"
 
 
 def test_build_template_picks_up_a_chain_the_chain_tab_deleted(new_scene):
