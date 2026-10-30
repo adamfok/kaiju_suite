@@ -1307,8 +1307,8 @@ def test_guides_from_joints_without_end_puts_the_end_guide_back(new_scene):
 # -- presets --------------------------------------------------------------------
 
 _PRESET_NAMES = [
-    "root", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "forward_spine",
-    "tail",
+    "root", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "l_scapula",
+    "l_front_leg", "forward_spine", "tail",
 ]
 
 
@@ -1351,6 +1351,8 @@ def test_every_preset_starts_at_the_origin_and_keeps_its_direction_and_length():
         "l_leg": (0, -85, 0),
         "l_foot": (0, -10, 20),
         "l_quad_leg": (0, -95, 0),
+        "l_scapula": (3, -20, 8),
+        "l_front_leg": (0, -90, 0),
         "forward_spine": (0, 0, 60),
         "tail": (0, 0, -60),
     }
@@ -1436,6 +1438,27 @@ def test_quad_leg_is_a_four_joint_hind_leg_aiming_down_with_y_forward(new_scene)
     for joint in joints:
         _assert_axes(joint, x=(0, -1, 0), y=(0, 0, 1))
     assert short_name(logic.mirrored_joints(group)[0]) == "r_quad_leg_01_jnt"
+
+
+def test_front_leg_is_a_four_joint_front_leg_aiming_down_with_y_back(new_scene):
+    group = logic.build_guides(**logic.PRESETS["l_front_leg"])
+
+    joints = logic.joints(group)
+    assert [short_name(j) for j in joints] == [f"l_front_leg_{i:02d}_jnt" for i in range(1, 5)] + ["l_front_leg_05_jnt_end"]
+    for joint in joints:
+        _assert_axes(joint, x=(0, -1, 0), y=(0, 0, -1))  # the elbow bends back
+    assert short_name(logic.mirrored_joints(group)[0]) == "r_front_leg_01_jnt"
+
+
+def test_scapula_slopes_down_and_forward_with_y_back(new_scene):
+    group = logic.build_guides(**logic.PRESETS["l_scapula"])
+
+    joints = logic.joints(group)
+    assert [short_name(j) for j in joints] == ["l_scapula_01_jnt", "l_scapula_02_jnt_end"]
+    for joint in joints:
+        assert _axis(joint, "x").y < -0.9 and _axis(joint, "x").z > 0.3
+        assert _axis(joint, "y").z < -0.9
+    assert short_name(logic.mirrored_joints(group)[0]) == "r_scapula_01_jnt"
 
 
 def test_tail_goes_back_with_x_aim_and_y_up(new_scene):

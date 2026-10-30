@@ -11,6 +11,7 @@ _BIPED = [
     *(f"l_{f}_metacarpal" for f in _FINGERS), "l_thumb", *(f"l_{f}" for f in _FINGERS),
     "l_leg", "l_foot",
 ]
+_QUADRUPED = ["root", "spine", "neck", "head", "tail", "l_scapula", "l_front_leg", "l_quad_leg"]
 
 
 def _pos(node):
@@ -35,7 +36,7 @@ def _chains(name="biped"):
 
 
 def test_biped_has_every_chain_in_order():
-    assert list(templates.TEMPLATES) == ["biped"]
+    assert list(templates.TEMPLATES) == ["biped", "quadruped"]
     assert [chain["name"] for chain in templates.TEMPLATES["biped"]] == _BIPED
 
 
@@ -71,6 +72,44 @@ def test_biped_chains_go_the_way_their_presets_do():
         assert (way.normal() - preset_way.normal()).length() < 1e-6, name
         for key in ("count", "aim", "up", "up_side", "end_joint", "mirror"):
             assert chain[key] == preset[key], (name, key)
+
+
+def test_quadruped_has_every_chain_in_order():
+    assert [chain["name"] for chain in templates.TEMPLATES["quadruped"]] == _QUADRUPED
+
+
+def test_quadruped_chains_connect():
+    c = _chains("quadruped")
+    for a, b in (("spine", "neck"), ("neck", "head"), ("l_scapula", "l_front_leg")):
+        assert _close(c[a]["end"], c[b]["start"]), (a, b)
+    assert _close(c["tail"]["start"], c["spine"]["start"])
+    for leg in ("l_front_leg", "l_quad_leg"):
+        assert c[leg]["end"][1] == 0, leg  # standing on the ground
+    assert c["l_front_leg"]["start"][2] > 0 > c["l_quad_leg"]["start"][2]
+    for name, chain in c.items():
+        assert chain["mirror"] == name.startswith("l_"), name
+
+
+def test_quadruped_chains_go_the_way_their_presets_do():
+    c = _chains("quadruped")
+    for name, preset in (("spine", "forward_spine"), ("tail", "tail"), ("l_scapula", "l_scapula"),
+                         ("l_front_leg", "l_front_leg"), ("l_quad_leg", "l_quad_leg"), ("root", "root")):
+        chain, preset = c[name], logic.PRESETS[preset]
+        way = om.MVector(chain["end"]) - om.MVector(chain["start"])
+        preset_way = om.MVector(preset["end"]) - om.MVector(preset["start"])
+        assert (way.normal() - preset_way.normal()).length() < 1e-6, name
+        for key in ("count", "aim", "up", "up_side", "end_joint", "mirror"):
+            assert chain[key] == preset[key], (name, key)
+
+
+def test_build_quadruped(new_scene):
+    groups = templates.build_template("quadruped")
+
+    assert [cmds.getAttr(f"{g}.kaijuGuides") for g in groups] == _QUADRUPED
+    assert short_name(logic.joints("spine_guides_grp")[0]) == "spine_01_jnt"
+    assert short_name(logic.mirrored_joints("l_front_leg_guides_grp")[0]) == "r_front_leg_01_jnt"
+    cmds.undo()
+    assert not cmds.ls(type="joint")
 
 
 # -- check_build ------------------------------------------------------------------
@@ -659,3 +698,163 @@ def test_align_to_mgear_bends_the_arm_up_guide_toward_the_elbow(new_scene):
     elbow = _mgear_pos("arm_L0_4_jnt") - start
     bend = elbow - span * ((elbow * span) / (span * span))
     assert (_guide_pos("l_arm", "up") - start) * bend > 0
+
+
+# -- align: quadrupeds ---------------------------------------------------------------
+
+# The middle and left joints of the skeleton mGear 5.4.4 builds from its own
+# quadruped template (quadruped.sgt), scaled up 40 times: twist joints along
+# both legs (elbow and stifle on the 3rd, wrist and hock on the 6th), no root
+# or tail joints.
+_MGEAR_QUADRUPED = {
+    "spine_C0_0_jnt": (None, (0.0, 96.8, -49.2)),
+    "legBack_L0_0_jnt": ("spine_C0_0_jnt", (50.8, 92.8, -51.2)),
+    "legBack_L0_1_jnt": ("legBack_L0_0_jnt", (50.8, 82.0, -48.0)),
+    "legBack_L0_2_jnt": ("legBack_L0_1_jnt", (50.8, 71.2, -44.8)),
+    "legBack_L0_3_jnt": ("legBack_L0_2_jnt", (50.8, 60.0, -41.6)),
+    "legBack_L0_4_jnt": ("legBack_L0_3_jnt", (50.8, 46.0, -47.2)),
+    "legBack_L0_5_jnt": ("legBack_L0_4_jnt", (50.8, 32.0, -52.4)),
+    "legBack_L0_6_jnt": ("legBack_L0_5_jnt", (50.8, 17.6, -58.0)),
+    "legBack_L0_7_jnt": ("legBack_L0_6_jnt", (50.8, 12.8, -56.4)),
+    "legBack_L0_8_jnt": ("legBack_L0_7_jnt", (50.8, 7.6, -55.2)),
+    "legBack_L0_9_jnt": ("legBack_L0_8_jnt", (50.8, 2.4, -53.6)),
+    "legBack_L0_end_jnt": ("legBack_L0_9_jnt", (50.8, 2.4, -53.6)),
+    "footBack_L0_0_jnt": ("legBack_L0_end_jnt", (50.8, 2.4, -51.2)),
+    "spine_C0_1_jnt": ("spine_C0_0_jnt", (0.0, 96.8, -18.0)),
+    "spine_C0_2_jnt": ("spine_C0_1_jnt", (0.0, 96.8, 13.2)),
+    "spine_C0_3_jnt": ("spine_C0_2_jnt", (0.0, 96.8, 44.8)),
+    "spine_C0_4_jnt": ("spine_C0_3_jnt", (0.0, 96.8, 76.0)),
+    "shoulder_L0_0_jnt": ("spine_C0_4_jnt", (4.0, 101.2, 79.6)),
+    "legFront_L0_0_jnt": ("shoulder_L0_0_jnt", (37.2, 92.8, 88.0)),
+    "legFront_L0_1_jnt": ("legFront_L0_0_jnt", (37.2, 81.6, 85.6)),
+    "legFront_L0_2_jnt": ("legFront_L0_1_jnt", (37.2, 70.4, 82.8)),
+    "legFront_L0_3_jnt": ("legFront_L0_2_jnt", (37.2, 58.8, 80.4)),
+    "legFront_L0_4_jnt": ("legFront_L0_3_jnt", (37.2, 46.4, 80.8)),
+    "legFront_L0_5_jnt": ("legFront_L0_4_jnt", (37.2, 33.6, 81.2)),
+    "legFront_L0_6_jnt": ("legFront_L0_5_jnt", (37.2, 21.2, 81.6)),
+    "legFront_L0_7_jnt": ("legFront_L0_6_jnt", (37.2, 15.2, 81.6)),
+    "legFront_L0_8_jnt": ("legFront_L0_7_jnt", (37.2, 9.2, 81.6)),
+    "legFront_L0_9_jnt": ("legFront_L0_8_jnt", (37.2, 3.2, 81.6)),
+    "legFront_L0_end_jnt": ("legFront_L0_9_jnt", (37.2, 3.2, 81.6)),
+    "footFront_L0_0_jnt": ("legFront_L0_end_jnt", (37.2, 3.2, 85.6)),
+    "neck_C0_0_jnt": ("spine_C0_4_jnt", (0.0, 98.8, 82.8)),
+    "neck_C0_1_jnt": ("neck_C0_0_jnt", (0.0, 104.4, 97.2)),
+    "neck_C0_2_jnt": ("neck_C0_1_jnt", (0.0, 110.4, 111.2)),
+    "neck_C0_3_jnt": ("neck_C0_2_jnt", (0.0, 116.4, 125.6)),
+    "neck_C0_4_jnt": ("neck_C0_3_jnt", (0.0, 122.8, 139.6)),
+    "neck_C0_head_jnt": ("neck_C0_4_jnt", (0.0, 122.8, 139.6)),
+}
+
+
+def _quad_pos(name):
+    return om.MVector(_MGEAR_QUADRUPED[name][1])
+
+
+def _side_of(chain, start, end, joint):
+    """How far ``chain``'s up guide is to the side ``joint`` bends to, off the
+    line ``start`` -> ``end`` (positive: the same side)."""
+    a, b, j = _quad_pos(start), _quad_pos(end), _quad_pos(joint) - _quad_pos(start)
+    span = b - a
+    bend = j - span * ((j * span) / (span * span))
+    return (_guide_pos(chain, "up") - a) * bend
+
+
+def test_skeletons_say_which_template_they_fit():
+    fits = {key: skeleton["template"] for key, skeleton in templates.SKELETONS.items()}
+    assert fits == {
+        "ue5": "biped", "humanik": "biped", "mixamo": "biped", "mgear": "biped",
+        "mgear_quadruped": "quadruped", "humanik_quadruped": "quadruped",
+    }
+    assert templates.SKELETONS["mgear_quadruped"]["label"] == "mGear quadruped"
+    assert templates.SKELETONS["humanik_quadruped"]["label"] == "HumanIK quadruped"
+
+
+def test_detect_only_picks_skeletons_for_the_template(new_scene):
+    joints = _skeleton(_MGEAR_QUADRUPED, namespace=None)
+    assert templates.detect([joints["spine_C0_2_jnt"]], "quadruped") == "mgear_quadruped"
+
+    cmds.file(new=True, force=True)
+    joints = _skeleton(_MGEAR, namespace=None)
+    assert templates.detect([joints["spine_C0_2_jnt"]], "biped") == "mgear"
+
+    cmds.file(new=True, force=True)
+    joints = _skeleton()
+    assert templates.detect([joints["root"]]) == "ue5"
+    with pytest.raises(ValueError):
+        templates.detect([joints["root"]], "quadruped")  # no quadruped skeleton has its names
+
+
+def test_align_refuses_a_skeleton_for_another_template(new_scene):
+    templates.build_template("quadruped")
+    joints = _skeleton()
+    with pytest.raises(ValueError, match="biped"):
+        templates.align("quadruped", [joints["root"]], "ue5")
+
+
+def test_align_quadruped_to_mgear(new_scene):
+    templates.build_template("quadruped")
+    joints = _skeleton(_MGEAR_QUADRUPED, namespace="rig")
+
+    report = templates.align("quadruped", [joints["spine_C0_0_jnt"]])
+
+    assert report["skeleton"] == "mgear_quadruped"
+    assert sorted(name for name, _ in report["skipped"]) == ["root", "tail"]  # mGear's quadruped has neither
+    for chain, start, end in (
+        ("spine", "spine_C0_0_jnt", "neck_C0_0_jnt"),
+        ("neck", "neck_C0_0_jnt", "neck_C0_head_jnt"),
+        ("l_scapula", "shoulder_L0_0_jnt", "legFront_L0_0_jnt"),
+        ("l_front_leg", "legFront_L0_0_jnt", "footFront_L0_0_jnt"),
+        ("l_quad_leg", "legBack_L0_0_jnt", "footBack_L0_0_jnt"),
+    ):
+        assert _close(_guide_pos(chain, 0), _quad_pos(start)), chain
+        assert _close(_guide_pos(chain, -1), _quad_pos(end)), chain
+    assert _close(_guide_pos("head", 0), _quad_pos("neck_C0_head_jnt"))
+    assert _close(_guide_pos("neck", 1), _quad_pos("neck_C0_2_jnt"))
+    for chain, leg in (("l_front_leg", "legFront_L0"), ("l_quad_leg", "legBack_L0")):
+        for i, joint in ((1, "3"), (2, "6"), (3, "end")):
+            assert _close(_guide_pos(chain, i), _quad_pos(f"{leg}_{joint}_jnt")), (chain, i)
+
+
+def test_align_quadruped_legs_put_the_up_guide_where_the_elbow_and_stifle_bend(new_scene):
+    templates.build_template("quadruped")
+    joints = _skeleton(_MGEAR_QUADRUPED, namespace=None)
+
+    templates.align("quadruped", [joints["spine_C0_0_jnt"]], "mgear_quadruped")
+
+    assert _side_of("l_front_leg", "legFront_L0_0_jnt", "footFront_L0_0_jnt", "legFront_L0_3_jnt") > 0
+    assert _guide_pos("l_front_leg", "up").z < _quad_pos("legFront_L0_0_jnt").z  # elbow bends back
+    # The hock bends back, but the stifle - the first joint - sets the side: forward.
+    assert _side_of("l_quad_leg", "legBack_L0_0_jnt", "footBack_L0_0_jnt", "legBack_L0_3_jnt") > 0
+    assert _guide_pos("l_quad_leg", "up").z > _quad_pos("legBack_L0_0_jnt").z
+
+
+_HIK_QUADRUPED = {
+    "Hips": "spine_C0_0_jnt", "Spine": "spine_C0_1_jnt", "Spine1": "spine_C0_2_jnt", "Spine2": "spine_C0_3_jnt",
+    "Spine3": "spine_C0_4_jnt", "Neck": "neck_C0_0_jnt", "Neck1": "neck_C0_1_jnt", "Neck2": "neck_C0_2_jnt",
+    "Neck3": "neck_C0_3_jnt", "Head": "neck_C0_head_jnt",
+    "LeftShoulder": "shoulder_L0_0_jnt", "LeftArm": "legFront_L0_0_jnt", "LeftForeArm": "legFront_L0_3_jnt",
+    "LeftHand": "legFront_L0_6_jnt", "LeftFingerBase": "legFront_L0_end_jnt",
+    "LeftUpLeg": "legBack_L0_0_jnt", "LeftLeg": "legBack_L0_3_jnt", "LeftFoot": "legBack_L0_6_jnt",
+    "LeftToeBase": "legBack_L0_end_jnt",
+}
+
+
+def test_align_quadruped_to_humanik_front_legs_in_the_arm_slots(new_scene):
+    templates.build_template("quadruped")
+    odd = {name: f"bone_{i:02d}" for i, name in enumerate(_MGEAR_QUADRUPED)}
+    renamed = {odd[n]: ((odd[p] if p else None), at) for n, (p, at) in _MGEAR_QUADRUPED.items()}
+    joints = _skeleton(renamed, namespace=None)
+    _humanik(renamed, {slot: joints[odd[name]] for slot, name in _HIK_QUADRUPED.items()})
+
+    report = templates.align("quadruped", [joints[odd["spine_C0_2_jnt"]]])
+
+    assert report["skeleton"] == "humanik_quadruped"
+    assert sorted(name for name, _ in report["skipped"]) == ["root", "tail"]
+    assert _close(_guide_pos("spine", -1), _quad_pos("neck_C0_0_jnt"))
+    assert _close(_guide_pos("l_scapula", 0), _quad_pos("shoulder_L0_0_jnt"))
+    for chain, leg in (("l_front_leg", "legFront_L0"), ("l_quad_leg", "legBack_L0")):
+        assert _close(_guide_pos(chain, 0), _quad_pos(f"{leg}_0_jnt")), chain
+        assert _close(_guide_pos(chain, 3), _quad_pos(f"{leg}_end_jnt")), chain
+        # No toe tip slot: the end goes a little ahead of the paw, along the ground.
+        tip, paw = _guide_pos(chain, -1), _quad_pos(f"{leg}_end_jnt")
+        assert abs(tip.y - paw.y) < 1e-3 and tip.z > paw.z + 1, chain
