@@ -3,6 +3,7 @@ from maya import cmds
 from maya.api import OpenMaya as om
 
 from kaiju_suite import registry
+from kaiju_suite.core.selection import short_name
 from kaiju_suite.tools.guide_tool import logic
 
 _AXES = {"x": 0, "y": 1, "z": 2}
@@ -1026,3 +1027,193 @@ def test_cylinders_are_solid_selectable_and_share_the_preview_shader(new_scene):
         assert cmds.getAttr(f"{cylinder}.overrideShading")
         shape = cmds.listRelatives(cylinder, shapes=True, fullPath=True)[0]
         assert cmds.listConnections(shape, type="shadingEngine") == engine
+
+
+# -- mirror ---------------------------------------------------------------------
+
+
+def _mirrored_frame(node):
+    """``node``'s world position and axes mirrored across X with behavior:
+    the position's X flips, and each axis is mirrored then reversed."""
+    p = _pos(node)
+    return om.MVector(-p.x, p.y, p.z), [om.MVector(r.x, -r.y, -r.z) for r in _rows(node)]
+
+
+def _assert_mirrors(mirrored, guided):
+    for m, g in zip(mirrored, guided):
+        position, rows = _mirrored_frame(g)
+        assert (_pos(m) - position).length() < 1e-4, (m, g)
+        for row_m, row in zip(_rows(m), rows):
+            assert (row_m - row).length() < 1e-4, (m, g)
+
+
+def _side_arm(**kwargs):
+    """A bent arm named arm_l, off to +X."""
+    group = logic.build_guides("arm_l", 2, start=(2, 10, 0), end=(12, 9, 1), **kwargs)
+    found = logic.guides(group)
+    _move(found["up"], 7, 10, -5)
+    _move(found["chain"][1], 5, 11, 1)
+    _move(found["chain"][2], 9, 8, -1)
+    return group
+
+
+def test_no_mirror_unless_asked(new_scene):
+    assert logic.mirrored_joints(_side_arm()) == []
+
+
+def test_mirror_builds_a_chain_named_for_the_other_side(new_scene):
+    group = _side_arm(mirror=True)
+
+    mirrored = logic.mirrored_joints(group)
+    assert [short_name(j) for j in mirrored] == [f"arm_r_{i:02d}_jnt" for i in range(1, 5)]
+    assert cmds.listRelatives(mirrored[0], parent=True) is None
+    for parent, child in zip(mirrored, mirrored[1:]):
+        assert cmds.listRelatives(child, parent=True, fullPath=True) == [parent]
+
+
+def test_mirror_of_a_name_with_no_side_gets_mirrored_added(new_scene):
+    group = logic.build_guides("spine", 1, mirror=True)
+
+    assert [short_name(j) for j in logic.mirrored_joints(group)] == [
+        f"spine_{i:02d}_jnt_mirrored" for i in range(1, 4)
+    ]
+
+
+def test_mirrored_joints_mirror_with_behavior_and_follow_live(new_scene):
+    group = _side_arm(mirror=True)
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+    found = logic.guides(group)
+    _move(found["chain"][1], 4, 13, 3)
+    _move(found["up"], 6, 4, 6)
+    _move(found["chain"][-1], 14, 6, 2)
+
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_mirrored_joints_follow_new_axes(new_scene):
+    group = _side_arm(mirror=True)
+
+    logic.set_axes(group, aim="-y", up="z")
+
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_mirrored_joints_are_locked_reference_and_have_no_guides(new_scene):
+    group = _side_arm(mirror=True)
+
+    for joint in logic.mirrored_joints(group):
+        for attr in ("tx", "ty", "tz", "rx", "ry", "rz"):
+            assert cmds.getAttr(f"{joint}.{attr}", lock=True)
+        assert cmds.getAttr(f"{joint}.overrideDisplayType") == 2
+    assert not cmds.ls("arm_r_*_guide*", "arm_r_*preview*")
+
+
+def test_mirror_refuses_taken_names_and_changes_nothing(new_scene):
+    cmds.createNode("transform", name="arm_r_02_jnt")
+
+    with pytest.raises(ValueError, match="arm_r_02_jnt"):
+        _side_arm(mirror=True)
+    assert not cmds.objExists("arm_l_guides_grp")
+
+
+def test_building_again_keeps_the_mirrored_joints(new_scene):
+    group = _side_arm(mirror=True)
+    before = [_uuid(j) for j in logic.mirrored_joints(group)]
+
+    group = logic.build_guides("arm_l", 2, mirror=True)
+
+    assert [_uuid(j) for j in logic.mirrored_joints(group)] == before
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_building_again_with_another_count_replaces_the_mirrored_joints(new_scene):
+    _side_arm(mirror=True)
+
+    group = logic.build_guides("arm_l", 0, mirror=True)
+
+    assert [short_name(j) for j in logic.mirrored_joints(group)] == ["arm_r_01_jnt", "arm_r_02_jnt"]
+    assert not cmds.objExists("arm_r_03_jnt")
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_building_again_without_mirror_removes_the_mirrored_joints(new_scene):
+    _side_arm(mirror=True)
+
+    group = logic.build_guides("arm_l", 2)
+
+    assert logic.mirrored_joints(group) == []
+    assert not cmds.ls("arm_r_*")
+
+
+def test_building_again_with_mirror_adds_it(new_scene):
+    _side_arm()
+
+    group = logic.build_guides("arm_l", 2, mirror=True)
+
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_delete_guides_cuts_the_mirrored_joints_loose_where_they_are(new_scene):
+    group = _side_arm(mirror=True)
+    mirrored = logic.mirrored_joints(group)
+    uuids = [_uuid(j) for j in mirrored]
+    frames = _frames(mirrored)
+
+    logic.delete_guides(group)
+
+    mirrored = [cmds.ls(u, long=True)[0] for u in uuids]
+    for joint, (position, rows) in zip(mirrored, frames):
+        assert (_pos(joint) - position).length() < 1e-4
+        for row_now, row in zip(_rows(joint), rows):
+            assert (row_now - row).length() < 1e-4
+        assert not cmds.listConnections(f"{joint}.offsetParentMatrix", source=True, destination=False)
+        assert cmds.getAttr(f"{joint}.rotate")[0] == pytest.approx((0, 0, 0))
+        assert not cmds.getAttr(f"{joint}.tx", lock=True)
+        assert cmds.getAttr(f"{joint}.overrideDisplayType") == 0
+
+
+def test_delete_guides_with_mirror_is_one_undo_step(new_scene):
+    group = _side_arm(mirror=True)
+    frames = _frames(logic.mirrored_joints(group))
+
+    logic.delete_guides(group)
+    cmds.undo()
+
+    group = "arm_l_guides_grp"
+    assert len(logic.mirrored_joints(group)) == 4
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+    assert all((_pos(j) - f[0]).length() < 1e-4 for j, f in zip(logic.mirrored_joints(group), frames))
+
+
+def test_build_with_mirror_is_one_undo_step(new_scene):
+    logic.build_guides("arm_l", 2, mirror=True)
+    cmds.undo()
+
+    assert not cmds.ls("arm_r_*")
+
+
+def test_guides_from_joints_reuses_the_freed_mirrored_joints(new_scene):
+    group = _side_arm(mirror=True)
+    uuids = [_uuid(j) for j in logic.mirrored_joints(group)]
+    joints = logic.delete_guides(group)
+
+    group = logic.guides_from_joints(joints[0], mirror=True)
+
+    assert [_uuid(j) for j in logic.mirrored_joints(group)] == uuids
+    _move(logic.guides(group)["chain"][1], 4, 13, 3)
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_guides_from_joints_makes_a_mirror_when_there_is_none(new_scene):
+    joints = logic.delete_guides(_side_arm())
+
+    group = logic.guides_from_joints(joints[0], mirror=True)
+
+    assert [short_name(j) for j in logic.mirrored_joints(group)] == [f"arm_r_{i:02d}_jnt" for i in range(1, 5)]
+    _assert_mirrors(logic.mirrored_joints(group), logic.joints(group))
+
+
+def test_mirror_prints_no_errors(new_scene):
+    assert _maya_errors(_side_arm, mirror=True) == []
+    assert _maya_errors(logic.delete_guides, "arm_l_guides_grp") == []

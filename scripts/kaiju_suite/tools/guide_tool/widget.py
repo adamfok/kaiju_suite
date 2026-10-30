@@ -24,7 +24,7 @@ class GuideToolWindow(ToolWindow):
     TITLE = "Kaiju Guide Tool"
 
     def build_ui(self):
-        # Three rows: name and middle guides; axes; Build and Delete.
+        # Three rows: name and middle guides; axes and mirror; Build and Delete.
         self.name = QtWidgets.QLineEdit(settings.get(SETTINGS_KEY, "name", "chain"))
         self.name.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
         self.name.textChanged.connect(lambda text: settings.set(SETTINGS_KEY, "name", text))
@@ -35,6 +35,14 @@ class GuideToolWindow(ToolWindow):
         self.count.valueChanged.connect(lambda value: settings.set(SETTINGS_KEY, "count", int(value)))
         self.aim = self._combo("aim", "x", "The axis that points at the next joint.")
         self.up = self._combo("up", "y", "The axis that points towards the up guide's side, in the chain's plane.")
+        self.mirror = QtWidgets.QCheckBox("Mirror")
+        self.mirror.setChecked(bool(int(settings.get(SETTINGS_KEY, "mirror", 0))))
+        self.mirror.setToolTip(
+            "Build also makes a joint chain mirrored across X with behavior, following the guided\n"
+            "joints live (no guides of its own). Its names swap the side (l/r, L/R, left/right...),\n"
+            "or get _mirrored with no side. Building again with Mirror off removes it."
+        )
+        self.mirror.toggled.connect(lambda on: settings.set(SETTINGS_KEY, "mirror", int(on)))
 
         name_row = QtWidgets.QHBoxLayout()
         name_row.addWidget(QtWidgets.QLabel("Name"))
@@ -47,6 +55,7 @@ class GuideToolWindow(ToolWindow):
         for label, field in (("Aim", self.aim), ("Up", self.up)):
             settings_row.addWidget(QtWidgets.QLabel(label))
             settings_row.addWidget(field, 1)
+        settings_row.addWidget(self.mirror)
         self.layout.addLayout(settings_row)
 
         buttons = QtWidgets.QHBoxLayout()
@@ -62,7 +71,8 @@ class GuideToolWindow(ToolWindow):
             (
                 "Delete",
                 "Delete Guides: delete the selected chain's guides (or the only guides in the scene).\n"
-                "Their joints stay where they are, cut loose, with plain translate and joint orient values.",
+                "Their joints (and mirrored joints) stay where they are, cut loose, with plain translate\n"
+                "and joint orient values.",
                 self._delete,
             ),
         ):
@@ -104,7 +114,7 @@ class GuideToolWindow(ToolWindow):
     @undoable
     def _build(self, *_):
         name = self.name.text().strip()
-        axes = {"aim": self.aim.currentData(), "up": self.up.currentData()}
+        axes = {"aim": self.aim.currentData(), "up": self.up.currentData(), "mirror": self.mirror.isChecked()}
         joint = logic.free_joint(selected())
         if joint is not None:
             group = self._run(logic.guides_from_joints, joint, name=name, **axes)
