@@ -586,3 +586,19 @@ def test_reparent_is_one_undo_step(new_scene):
 def test_reparent_needs_a_selection():
     with pytest.raises(ValueError):
         logic.reparent([])
+
+
+def test_default_parent_attributes_are_visible(new_scene):
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    for attr in ("kaijuDefaultParentUuid", "kaijuDefaultParentName"):
+        assert not cmds.attributeQuery(attr, node=child, hidden=True)
+
+
+def test_set_default_parent_shows_attributes_hidden_by_an_older_version(new_scene):
+    child = _placed("child", parent=_placed("rig"))
+    for attr in ("kaijuDefaultParentUuid", "kaijuDefaultParentName"):
+        cmds.addAttr(child, longName=attr, dataType="string", hidden=True)
+    logic.set_default_parent([child])
+    for attr in ("kaijuDefaultParentUuid", "kaijuDefaultParentName"):
+        assert not cmds.attributeQuery(attr, node=child, hidden=True)
