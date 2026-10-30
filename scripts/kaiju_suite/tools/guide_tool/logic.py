@@ -93,7 +93,9 @@ PRESETS = {
         # root; the spine and legs hang off it.
         _preset("pelvis", 0, (0, 10, 0), "y", "z", (0, 0, 1), end_joint=False),
         # -Z to the back, so they line up with the world while straight.
-        _preset("spine", 3, (0, 45, 0), "y", "-z", (0, 0, -1)),
+        _preset("spine", 2, (0, 30, 0), "y", "-z", (0, 0, -1)),
+        # The chest, on top of the spine; the neck and shoulders hang off it.
+        _preset("torso", 0, (0, 15, 0), "y", "-z", (0, 0, -1)),
         _preset("neck", 1, (0, 15, 0), "y", "-z", (0, 0, -1)),
         _preset("head", 0, (0, 20, 0), "y", "z", (0, 0, 1)),
         _preset("l_shoulder", 0, (14, 2, 0), "x", "y", (0, 1, 0)),
