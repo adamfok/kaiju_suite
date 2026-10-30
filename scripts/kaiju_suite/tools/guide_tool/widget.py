@@ -152,14 +152,14 @@ class GuideToolWindow(ToolWindow):
         for icon, label, tip, action in (
             (
                 "build",
-                "Build Template",
+                "Build",
                 "Build every chain of the template on a body (Y up, facing +Z, left at +X), each one\n"
                 "starting where the one it hangs off ends. Chains already built are built again in place.\n"
                 "Use the Chain tab's Build and Delete on any one of them.",
                 self._build_template,
             ),
             (
-                None,
+                "align",
                 "Align",
                 "Select a joint of the skeleton to align to, then Align: each built chain's start and end\n"
                 "guides go on two of its joints (not joint for joint), middle guides on its elbow, knee,\n"
@@ -170,16 +170,14 @@ class GuideToolWindow(ToolWindow):
             ),
             (
                 "delete",
-                "Delete Template",
+                "Delete",
                 "Delete the guides of every chain of the template that's built. Their joints (and\n"
                 "mirrored joints) stay where they are, cut loose, as the Chain tab's Delete leaves them.",
                 self._delete_template,
             ),
         ):
-            button = QtWidgets.QPushButton(label)
-            if icon:
-                button.setIcon(icons.icon(f"guide_tool_{icon}.svg"))
-                button.setIconSize(QtCore.QSize(20, 20))
+            button = QtWidgets.QPushButton(icons.icon(f"guide_tool_{icon}.svg"), label)
+            button.setIconSize(QtCore.QSize(20, 20))
             button.setToolTip(tip)
             button.clicked.connect(action)
             buttons.addWidget(button, 1)
