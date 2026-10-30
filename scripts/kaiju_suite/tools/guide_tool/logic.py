@@ -293,23 +293,28 @@ def _preview_network(group, name, chain, up, size):
         _cylinder(f"{label}_axis", preview, size * 0.3, size * 6, engine)  # second child
         _link(preview, group, f"{_PREVIEWS}[{i}]")
 
-    center = _util(group, "plusMinusAverage", f"{name}_center")
-    cmds.setAttr(f"{center}.operation", 3)  # average
-    cmds.connectAttr(start, f"{center}.input3D[0]")
-    cmds.connectAttr(end, f"{center}.input3D[1]")
-    matrix = _aligned(group, f"{name}_plane", f"{center}.output3D", (1, 0, 0), span, (0, 0, 1), normal)
-    # The space follows the guides and sizes the plane to them; the plane
-    # under it keeps its own scale free for the user.
+    matrix = _aligned(group, f"{name}_plane", start, (1, 0, 0), span, (0, 0, 1), normal)
+    # The space sits on the first joint, follows the guides and sizes the
+    # plane to them (one unit of X is start to end); the plane under it keeps
+    # its own scale free for the user, and scales from the first joint.
     space = _placed(group, cmds.createNode("transform", name=f"{name}_plane_space"), matrix)
+    # Centered between start and end, reaching a tenth of the span past each.
     surface = cmds.nurbsPlane(
-        name=f"{name}_plane", axis=(0, 0, 1), width=1, lengthRatio=1, patchesU=4, patchesV=2, constructionHistory=False
+        name=f"{name}_plane",
+        axis=(0, 0, 1),
+        pivot=(0.5, 0, 0),
+        width=1.2,
+        lengthRatio=1 / 1.2,
+        patchesU=4,
+        patchesV=2,
+        constructionHistory=False,
     )[0]
     surface = _long(cmds.parent(surface, space, relative=True)[0])
     length = _util(group, "distanceBetween", f"{name}_length")
     cmds.connectAttr(start, f"{length}.point1")
     cmds.connectAttr(end, f"{length}.point2")
     scale = _util(group, "multiplyDivide", f"{name}_plane_size")
-    cmds.setAttr(f"{scale}.input2", 1.2, 0.6, 1)
+    cmds.setAttr(f"{scale}.input2", 1, 0.6, 1)
     for letter in "XY":
         cmds.connectAttr(f"{length}.distance", f"{scale}.input1{letter}")
         cmds.connectAttr(f"{scale}.output{letter}", f"{space}.scale{letter}")
