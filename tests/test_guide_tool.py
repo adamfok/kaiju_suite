@@ -1307,7 +1307,8 @@ def test_guides_from_joints_without_end_puts_the_end_guide_back(new_scene):
 # -- presets --------------------------------------------------------------------
 
 _PRESET_NAMES = [
-    "root", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "tail"
+    "root", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "forward_spine",
+    "tail",
 ]
 
 
@@ -1342,6 +1343,8 @@ def test_presets_line_up_end_to_start():
     for a, b in (("spine", "neck"), ("neck", "head"), ("l_shoulder", "l_arm"), ("l_arm", "l_hand"),
                  ("l_hand", "l_finger"), ("l_leg", "l_foot")):
         assert _close(p[a]["end"], p[b]["start"]), (a, b)
+    # The tail hangs off the back of the forward spine.
+    assert _close(p["forward_spine"]["start"], p["tail"]["start"])
 
 
 def test_only_root_has_no_end_joint_and_only_left_presets_mirror():
@@ -1427,4 +1430,14 @@ def test_tail_goes_back_with_x_aim_and_y_up(new_scene):
     assert short_name(logic.joints(group)[-1]).endswith("_jnt_end")
     for joint in logic.joints(group):
         _assert_axes(joint, x=(0, 0, -1), y=(0, 1, 0))
+    assert logic.mirrored_joints(group) == []
+
+
+def test_forward_spine_goes_forward_with_x_aim_and_y_up(new_scene):
+    group = logic.build_guides(**logic.PRESETS["forward_spine"])
+
+    joints = logic.joints(group)
+    assert short_name(joints[-1]) == "forward_spine_05_jnt_end"
+    for joint in joints:
+        _assert_axes(joint, x=(0, 0, 1), y=(0, 1, 0))
     assert logic.mirrored_joints(group) == []

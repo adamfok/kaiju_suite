@@ -100,6 +100,7 @@ PRESETS = {
         _preset("l_foot", 1, (10, 10, 0), (10, 0, 20), "x", "y", (0, 1, 0)),
         # A hind leg: hip, stifle, hock, fetlock and the toe tip, behind the leg.
         _preset("l_quad_leg", 3, (10, 95, -15), (10, 0, -15), "x", "y", (0, 0, 1)),
+        _preset("forward_spine", 3, (0, 100, -10), (0, 100, 50), "x", "y", (0, 1, 0)),
         _preset("tail", 4, (0, 100, -10), (0, 100, -70), "x", "y", (0, 1, 0)),
     )
 }
