@@ -117,6 +117,11 @@ def _hik_finger(finger):
     return _anchors(joints[0], [joints[3], _extend(joints[1], joints[2])], joints[1:3], bend=True)
 
 
+def _mgear_finger(component):
+    joints = [f"{component}_{i}_jnt" for i in (0, 1, 2)]
+    return _anchors(joints[0], _extend(joints[1], joints[2]), joints[1:], bend=True)
+
+
 def _hik_chains(root=None):
     """The chains for HumanIK slot names, which Mixamo uses for its joints too."""
     fingers = ("Index", "Middle", "Ring", "Pinky")
@@ -169,6 +174,29 @@ SKELETONS = {
     # Mixamo names its joints after the HumanIK slots, in a mixamorig
     # namespace or with a mixamorig_ prefix; it has no root joint.
     "mixamo": {"label": "Mixamo", "find": "names", "chains": _hik_chains()},
+    # The joints mGear's Shifter builds from its own biped template: twist
+    # joints along the arm and leg (the elbow and knee are the 4th of 9),
+    # fingers L0-L3 from index to pinky, no root joint.
+    "mgear": {
+        "label": "mGear biped",
+        "find": "names",
+        "chains": {
+            "spine": _anchors("spine_C0_0_jnt", "neck_C0_0_jnt"),
+            "neck": _anchors("neck_C0_0_jnt", "neck_C0_head_jnt", ["neck_C0_1_jnt"]),
+            "head": _anchors("neck_C0_head_jnt"),
+            "l_shoulder": _anchors("shoulder_L0_shoulder_jnt", "arm_L0_0_jnt"),
+            "l_arm": _anchors("arm_L0_0_jnt", "arm_L0_end_jnt", ["arm_L0_4_jnt"], bend=True),
+            "l_hand": _anchors("arm_L0_end_jnt", "finger_L1_0_jnt"),
+            **{
+                f"l_{finger}_metacarpal": _anchors("arm_L0_end_jnt", f"finger_L{i}_0_jnt")
+                for i, finger in enumerate(("index", "middle", "ring", "pinky"))
+            },
+            "l_thumb": _mgear_finger("thumb_L0"),
+            **{f"l_{finger}": _mgear_finger(f"finger_L{i}") for i, finger in enumerate(("index", "middle", "ring", "pinky"))},
+            "l_leg": _anchors("leg_L0_0_jnt", "leg_L0_end_jnt", ["leg_L0_4_jnt"], bend=True),
+            "l_foot": _anchors("leg_L0_end_jnt", "foot_L0_1_jnt", ["foot_L0_0_jnt"]),
+        },
+    },
 }
 
 # A prefix Mixamo puts on its joint names when they aren't in a namespace.
