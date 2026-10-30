@@ -736,6 +736,54 @@ def test_guides_from_joints_round_trip(new_scene):
     _same_frames(before, _frames(joints))
 
 
+def _off_line(point, start, end):
+    """``point``'s offset from the line through ``start`` and ``end``."""
+    line = (end - start).normalize()
+    offset = point - start
+    return offset - line * (offset * line)
+
+
+def test_guides_from_joints_turn_the_up_guide_with_a_turned_straight_chain(new_scene):
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
+    found = logic.guides(group)
+    distance = _off_line(_pos(found["up"]), _pos(found["chain"][0]), _pos(found["chain"][-1])).length()
+    joints = logic.delete_guides(group)
+    cmds.rotate(90, 0, 0, joints[0], relative=True, objectSpace=True)  # turn it about its aim axis
+    joints = cmds.ls(joints[0], long=True) + cmds.listRelatives(joints[0], allDescendents=True, fullPath=True)[::-1]
+    before = _frames(joints)
+
+    group = logic.guides_from_joints(joints[0])
+
+    found = logic.guides(group)
+    off = _off_line(_pos(found["up"]), _pos(found["chain"][0]), _pos(found["chain"][-1]))
+    assert (off.normal() - _axis(logic.joints(group)[0], "y")).length() < 1e-4
+    assert abs(off.length() - distance) < 1e-4
+    _same_frames(before, _frames(logic.joints(group)))
+
+
+def test_guides_from_joints_put_the_up_guide_on_the_joints_new_bend(new_scene):
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
+    _move(logic.guides(group)["up"], 5, 0, -5)
+    _move(logic.guides(group)["chain"][1], 5, 0, -2)  # the elbow bends back, towards the up guide
+    joints = logic.delete_guides(group)
+    cmds.rotate(0, 0, 0, joints[0], absolute=True)  # leave the shoulder, bend the elbow up instead
+    cmds.joint(joints[0], edit=True, orientation=(0, 0, 0))
+    cmds.xform(joints[0], worldSpace=True, rotation=(0, 0, 0))
+    cmds.rotate(0, 0, 60, joints[1], relative=True, objectSpace=True)
+    joints = [joints[0]] + cmds.listRelatives(joints[0], allDescendents=True, fullPath=True)[::-1]
+    positions = [_pos(j) for j in joints]
+    bend = _off_line(positions[1], positions[0], positions[-1])
+    assert bend.length() > 0.5
+
+    group = logic.guides_from_joints(joints[0])
+
+    found = logic.guides(group)
+    off = _off_line(_pos(found["up"]), _pos(found["chain"][0]), _pos(found["chain"][-1]))
+    assert abs(abs(off.normal() * bend.normal()) - 1) < 1e-4  # in the plane of the bend
+    for joint, position in zip(logic.joints(group), positions):
+        assert (_pos(joint) - position).length() < 1e-4  # nothing pulled onto an old plane
+
+
 def test_guides_from_a_chain_the_tool_did_not_make(new_scene):
     cmds.select(clear=True)
     made = [cmds.joint(position=p) for p in ((0, 0, 0), (4, 1, 0), (8, 0, 0))]
