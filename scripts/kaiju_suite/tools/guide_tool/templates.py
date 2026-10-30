@@ -11,6 +11,8 @@ for joint, so the template keeps its own joints and takes that skeleton's
 proportions.
 """
 
+import re
+
 from maya import cmds
 from maya.api import OpenMaya as om
 
@@ -85,12 +87,14 @@ def build_template(name):
 # -- aligning to other skeletons --------------------------------------------------
 #
 # Each skeleton's table says, per template chain, which of its joints the
-# chain's start and end guides go on (``end``: a joint; ``_extend(a, b)``:
-# past ``b`` along ``a`` -> ``b``, for a skeleton with no joint there; or
-# ``None``: keep the way and length the chain has), which joints its middle
-# guides go on when the chain has that many (``mids``; otherwise they spread
-# evenly), and whether its up guide goes where those joints bend (``bend``,
-# like a pole vector; otherwise it stays on the side it's on).
+# chain's start and end guides go on, which joints its middle guides go on
+# when the chain has that many (``mids``; otherwise they spread evenly), and
+# whether its up guide goes where those joints bend (``bend``, like a pole
+# vector; otherwise it stays on the side it's on). An end is a joint name,
+# ``_extend(a, b)`` (past ``b``, along ``a`` -> ``b``) or ``None`` (keep the
+# chain's own way and length), or a list of those tried in order, for joints
+# a skeleton may not have. Joints are found by name, without namespaces, or
+# for HumanIK by the character slot they're assigned to.
 
 
 def _extend(a, b, scale=0.8, flat=False):
@@ -100,7 +104,7 @@ def _extend(a, b, scale=0.8, flat=False):
 
 
 def _anchors(start, end=None, mids=(), bend=False):
-    return {"start": start, "end": end, "mids": list(mids), "bend": bend}
+    return {"start": start, "end": end if isinstance(end, list) else [end], "mids": list(mids), "bend": bend}
 
 
 def _ue5_finger(finger):
@@ -108,10 +112,39 @@ def _ue5_finger(finger):
     return _anchors(joints[0], _extend(joints[1], joints[2]), joints[1:], bend=True)
 
 
+def _hik_finger(finger):
+    joints = [f"LeftHand{finger}{i}" for i in (1, 2, 3, 4)]
+    return _anchors(joints[0], [joints[3], _extend(joints[1], joints[2])], joints[1:3], bend=True)
+
+
+def _hik_chains(root=None):
+    """The chains for HumanIK slot names, which Mixamo uses for its joints too."""
+    fingers = ("Index", "Middle", "Ring", "Pinky")
+    chains = {
+        "spine": _anchors("Hips", "Neck"),
+        "neck": _anchors("Neck", "Head", ["Neck1"]),
+        "head": _anchors("Head", ["HeadTop_End", None]),
+        "l_shoulder": _anchors("LeftShoulder", "LeftArm"),
+        "l_arm": _anchors("LeftArm", "LeftHand", ["LeftForeArm"], bend=True),
+        "l_hand": _anchors("LeftHand", "LeftHandMiddle1"),
+        **{f"l_{f.lower()}_metacarpal": _anchors("LeftHand", f"LeftHand{f}1") for f in fingers},
+        "l_thumb": _hik_finger("Thumb"),
+        **{f"l_{f.lower()}": _hik_finger(f) for f in fingers},
+        "l_leg": _anchors("LeftUpLeg", "LeftFoot", ["LeftLeg"], bend=True),
+        "l_foot": _anchors(
+            "LeftFoot", ["LeftToe_End", _extend("LeftFoot", "LeftToeBase", 0.6, flat=True)], ["LeftToeBase"]
+        ),
+    }
+    if root:
+        chains["root"] = _anchors(root)
+    return chains
+
+
 SKELETONS = {
     # MetaHuman bodies use the UE5 Mannequin's joint names.
     "ue5": {
         "label": "UE5 Mannequin / MetaHuman",
+        "find": "names",
         "chains": {
             "root": _anchors("root"),
             "spine": _anchors("pelvis", "neck_01"),
@@ -130,42 +163,92 @@ SKELETONS = {
             "l_foot": _anchors("foot_l", _extend("foot_l", "ball_l", 0.6, flat=True), ["ball_l"]),
         },
     },
+    # Joints assigned to a HumanIK character, whatever they're called. Before
+    # Mixamo, so a characterized Mixamo skeleton goes by its character.
+    "humanik": {"label": "HumanIK", "find": "humanik", "chains": _hik_chains(root="Reference")},
+    # Mixamo names its joints after the HumanIK slots, in a mixamorig
+    # namespace or with a mixamorig_ prefix; it has no root joint.
+    "mixamo": {"label": "Mixamo", "find": "names", "chains": _hik_chains()},
 }
 
+# A prefix Mixamo puts on its joint names when they aren't in a namespace.
+_MIXAMO_PREFIX = re.compile(r"^mixamorig\d*_")
 
-def _named_joints(nodes):
-    """The joints in the hierarchy of the first of ``nodes``, by their names
-    without namespaces (the first one found, if a name is there twice)."""
+
+def _hierarchy(nodes):
+    """The joints in the hierarchy of the first of ``nodes``, top first."""
     found = cmds.ls(nodes, long=True) if nodes else []
     if not found:
         raise ValueError("Select a joint of the skeleton to align to.")
     top = "|" + found[0].split("|")[1]
     joints = cmds.ls(top, type="joint", long=True) or []
     joints += cmds.listRelatives(top, allDescendents=True, type="joint", fullPath=True) or []
+    return sorted(joints, key=lambda j: j.count("|"))
+
+
+def _by_name(joints):
+    """``joints`` by their names without namespaces or a Mixamo prefix (the
+    first one found, if a name is there twice)."""
     named = {}
-    for joint in sorted(joints, key=lambda j: j.count("|")):
-        named.setdefault(joint.rsplit("|", 1)[-1].rsplit(":", 1)[-1], joint)
+    for joint in joints:
+        name = joint.rsplit("|", 1)[-1].rsplit(":", 1)[-1]
+        named.setdefault(name, joint)
+        named.setdefault(_MIXAMO_PREFIX.sub("", name), joint)
     return named
 
 
-def _needs(spec):
-    """The joints ``spec`` uses, each once, in order."""
+def _by_humanik_slot(joints):
+    """``joints`` by the HumanIK character slot they're assigned to, for the
+    character most of them belong to."""
+    characters = {}
+    for joint in joints:
+        if not cmds.attributeQuery("Character", node=joint, exists=True):
+            continue
+        for plug in cmds.listConnections(f"{joint}.Character", source=False, plugs=True) or []:
+            character, slot = plug.split(".", 1)
+            if cmds.nodeType(character) == "HIKCharacterNode":
+                characters.setdefault(character, {}).setdefault(slot, joint)
+    return max(characters.values(), key=len) if characters else {}
+
+
+def _joints(skeleton, hierarchy):
+    finder = _by_humanik_slot if SKELETONS[skeleton]["find"] == "humanik" else _by_name
+    return finder(hierarchy)
+
+
+def _ends_needs(end):
+    if isinstance(end, str):
+        return [end]
+    if isinstance(end, dict):
+        return list(end["extend"])
+    return []
+
+
+def _missing(spec, named):
+    """The joints ``spec`` can't do without that aren't in ``named``, each
+    once: its start, its middle joints if it bends, and, if no end option
+    can be placed, what its first one needs."""
+    names = [spec["start"], *(spec["mids"] if spec["bend"] else [])]
+    if not any(all(n in named for n in _ends_needs(end)) for end in spec["end"]):
+        names += _ends_needs(spec["end"][0])
+    return [n for n in dict.fromkeys(names) if n not in named]
+
+
+def _every_joint(spec):
     names = [spec["start"], *spec["mids"]]
-    if isinstance(spec["end"], str):
-        names.append(spec["end"])
-    elif isinstance(spec["end"], dict):
-        names += list(spec["end"]["extend"])
-    return list(dict.fromkeys(names))
+    for end in spec["end"]:
+        names += _ends_needs(end)
+    return set(names)
 
 
 def detect(nodes):
     """The key of the skeleton in :data:`SKELETONS` the hierarchy of ``nodes``
     matches best; ``ValueError`` if it matches none."""
-    named = _named_joints(nodes)
-    scores = {
-        key: len({n for spec in skeleton["chains"].values() for n in _needs(spec)} & set(named))
-        for key, skeleton in SKELETONS.items()
-    }
+    hierarchy = _hierarchy(nodes)
+    scores = {}
+    for key, skeleton in SKELETONS.items():
+        wanted = set().union(*(_every_joint(spec) for spec in skeleton["chains"].values()))
+        scores[key] = len(wanted & set(_joints(key, hierarchy)))
     best = max(scores, key=scores.get)
     if not scores[best]:
         raise ValueError("The selected hierarchy doesn't look like any skeleton the Guide Tool knows.")
@@ -180,18 +263,22 @@ def _move(node, position):
     cmds.xform(node, worldSpace=True, translation=(position.x, position.y, position.z))
 
 
-def _end(spec, start, at, chain):
-    """Where ``chain``'s end guide goes for ``spec``'s end."""
-    end = spec["end"]
-    if isinstance(end, str):
-        return at(end)
-    if end is None:
-        return start + (_world(chain[-1]) - _world(chain[0]))
-    a, b = (at(n) for n in end["extend"])
-    way = b - a
-    if end["flat"]:
-        way = om.MVector(way.x, 0, way.z)
-    return b + way.normal() * ((b - a).length() * end["scale"])
+def _end(spec, start, named, chain):
+    """Where ``chain``'s end guide goes: its first end the skeleton has the
+    joints for, or ``None`` if none."""
+    for end in spec["end"]:
+        if not all(n in named for n in _ends_needs(end)):
+            continue
+        if isinstance(end, str):
+            return _world(named[end])
+        if end is None:
+            return start + (_world(chain[-1]) - _world(chain[0]))
+        a, b = (_world(named[n]) for n in end["extend"])
+        way = b - a
+        if end["flat"]:
+            way = om.MVector(way.x, 0, way.z)
+        return b + way.normal() * ((b - a).length() * end["scale"])
+    return None
 
 
 def _up(spec, start, end, mids, old, up_side):
@@ -231,8 +318,9 @@ def align(template, nodes, skeleton=None):
     nothing, if none of the template is built."""
     if template not in TEMPLATES:
         raise ValueError(f"There's no {template!r} template; pick one of {', '.join(TEMPLATES)}.")
-    named = _named_joints(nodes)
+    hierarchy = _hierarchy(nodes)
     skeleton = skeleton or detect(nodes)
+    named = _joints(skeleton, hierarchy)
     table = SKELETONS[skeleton]["chains"]
     chains = TEMPLATES[template]
     if not any(cmds.objExists(f"{c['name']}_guides_grp") for c in chains):
@@ -247,25 +335,21 @@ def align(template, nodes, skeleton=None):
         if spec is None:
             skipped.append((name, f"no joints for it in {SKELETONS[skeleton]['label']}"))
             continue
-        missing = [n for n in _needs(spec) if n not in named]
+        missing = _missing(spec, named)
         if missing:
             skipped.append((name, f"missing {', '.join(missing)}"))
             continue
         found = logic.guides(f"{name}_guides_grp")
         guided = found["chain"]
-
-        def at(joint):
-            return _world(named[joint])
-
-        old = (_world(guided[0]), _world(guided[-1]), _world(found["up"]))
-        start = at(spec["start"])
-        end = _end(spec, start, at, guided)
+        start = _world(named[spec["start"]])
+        end = _end(spec, start, named, guided)
         middles = guided[1:-1]
-        mid_anchors = [at(n) for n in spec["mids"]]
-        if len(mid_anchors) == len(middles):
+        mid_anchors = [_world(named[n]) for n in spec["mids"] if n in named]
+        if spec["mids"] and len(mid_anchors) == len(spec["mids"]) == len(middles):
             mids = mid_anchors
         else:
             mids = [start + (end - start) * (i / (len(middles) + 1.0)) for i in range(1, len(middles) + 1)]
+        old = (_world(guided[0]), _world(guided[-1]), _world(found["up"]))
         up = _up(spec, start, end, mid_anchors, old, chain["up_side"])
         for guide, position in zip(guided, [start, *mids, end]):
             _move(guide, position)
