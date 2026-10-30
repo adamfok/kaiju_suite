@@ -253,9 +253,10 @@ def offset(nodes):
 
 # -- default parent and reparent ----------------------------------------------
 
-# A node's default parent, saved on the node so it survives saving the scene. The
-# UUID finds the parent after renames; the long name is the fallback when the UUID
-# changed (an import). An empty name is the world.
+# A node's default parent, saved on the node (shown under Extra Attributes in the
+# Attribute Editor) so it survives saving the scene. The UUID finds the parent after
+# renames; the long name is the fallback when the UUID changed (an import). An
+# empty name is the world.
 _DEFAULT_UUID = "kaijuDefaultParentUuid"
 _DEFAULT_NAME = "kaijuDefaultParentName"
 
@@ -289,8 +290,10 @@ def set_default_parent(nodes):
         parent = (cmds.listRelatives(node, parent=True, fullPath=True) or [""])[0]
         uuid = cmds.ls(parent, uuid=True)[0] if parent else ""
         for attr, value in ((_DEFAULT_UUID, uuid), (_DEFAULT_NAME, parent)):
+            if cmds.attributeQuery(attr, node=node, exists=True) and cmds.attributeQuery(attr, node=node, hidden=True):
+                cmds.deleteAttr(node, attribute=attr)  # an older version hid it; addAttr can't unhide
             if not cmds.attributeQuery(attr, node=node, exists=True):
-                cmds.addAttr(node, longName=attr, dataType="string", hidden=True)
+                cmds.addAttr(node, longName=attr, dataType="string")
             cmds.setAttr(f"{node}.{attr}", value, type="string")
     return list(nodes)
 
