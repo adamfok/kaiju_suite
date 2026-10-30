@@ -82,8 +82,6 @@ def test_pelvis_is_one_joint_where_the_spine_starts(template):
     pelvis_way = om.MVector(c["pelvis"]["end"]) - om.MVector(c["pelvis"]["start"])
     spine_way = om.MVector(c["spine"]["end"]) - om.MVector(c["spine"]["start"])
     assert (pelvis_way.normal() - spine_way.normal()).length() < 1e-6
-    for key in ("aim", "up", "up_side"):
-        assert c["pelvis"][key] == c["spine"][key], key
 
 
 def test_quadruped_has_every_chain_in_order():
@@ -111,6 +109,8 @@ def test_quadruped_chains_go_the_way_their_presets_do():
         preset_way = om.MVector(preset["end"]) - om.MVector(preset["start"])
         assert (way.normal() - preset_way.normal()).length() < 1e-6, name
         for key in ("count", "aim", "up", "up_side", "end_joint", "mirror"):
+            if name == "spine" and key in ("aim", "up"):
+                continue  # aims Y with -Z up, as the biped spine does
             assert chain[key] == preset[key], (name, key)
 
 
@@ -182,12 +182,28 @@ def test_biped_fingers_and_metacarpals(new_scene):
 def test_biped_axes_follow_the_presets(new_scene):
     templates.build_template("biped")
 
-    for joint in logic.joints("spine_guides_grp"):
-        assert (_axis(joint, "y") - om.MVector(0, 1, 0)).length() < 1e-3
-        assert (_axis(joint, "z") - om.MVector(0, 0, -1)).length() < 1e-3
+    world = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}
+    for group in ("pelvis_guides_grp", "spine_guides_grp", "neck_guides_grp"):
+        for joint in logic.joints(group):
+            _assert_axes(joint, world)
     for joint in logic.joints("l_arm_guides_grp"):
-        assert (_axis(joint, "x") - om.MVector(1, 0, 0)).length() < 1e-3
-        assert (_axis(joint, "y") - om.MVector(0, 0, -1)).length() < 1e-3
+        _assert_axes(joint, {"x": (1, 0, 0), "z": (0, 0, 1)})  # the elbow bends a little back
+
+
+def test_quadruped_pelvis_is_world_aligned_and_spine_and_neck_aim_y_with_minus_z_up(new_scene):
+    templates.build_template("quadruped")
+
+    (pelvis,) = logic.joints("pelvis_guides_grp")
+    _assert_axes(pelvis, {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)})
+    for joint in logic.joints("spine_guides_grp"):
+        _assert_axes(joint, {"x": (1, 0, 0), "y": (0, 0, 1), "z": (0, -1, 0)})
+    for joint in logic.joints("neck_guides_grp"):  # leaning forward: Z forward and down
+        assert abs(_axis(joint, "x").x - 1) < 1e-3 and _axis(joint, "z").y < 0 < _axis(joint, "z").z, joint
+
+
+def _assert_axes(joint, want):
+    for axis, vector in want.items():
+        assert (_axis(joint, axis) - om.MVector(vector)).length() < 1e-3, (joint, axis, _axis(joint, axis))
 
 
 def test_build_template_is_one_undo_step(new_scene):

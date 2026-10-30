@@ -1422,14 +1422,13 @@ def _assert_axes(joint, x=None, y=None, z=None):
             assert (_axis(joint, axis) - om.MVector(want).normalize()).length() < 1e-3, (joint, axis, _axis(joint, axis))
 
 
-def test_pelvis_is_one_joint_aiming_up_the_spine(new_scene):
+def test_pelvis_is_one_joint_aiming_up_the_spine_aligned_with_the_world(new_scene):
     group = logic.build_guides(**logic.PRESETS["pelvis"])
 
     (joint,) = logic.joints(group)
     assert short_name(joint) == "pelvis_01_jnt"
-    for key in ("aim", "up", "up_side"):
-        assert logic.PRESETS["pelvis"][key] == logic.PRESETS["spine"][key], key
     assert _close(_pos(logic.guides(group)["chain"][-1]), (0, 10, 0))
+    _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
 
 
 def test_root_is_one_joint_at_the_origin_aligned_with_the_world(new_scene):
@@ -1444,13 +1443,15 @@ def test_root_is_one_joint_at_the_origin_aligned_with_the_world(new_scene):
 
 
 @pytest.mark.parametrize("preset", ["spine", "neck"])
-def test_spine_and_neck_aim_up_with_z_to_the_back(new_scene, preset):
-    group = logic.build_guides(**logic.PRESETS[preset])
+def test_spine_and_neck_aim_up_y_with_minus_z_to_the_back(new_scene, preset):
+    settings = logic.PRESETS[preset]
+    group = logic.build_guides(**settings)
 
+    assert (settings["aim"], settings["up"]) == ("y", "-z")
     joints = logic.joints(group)
     assert short_name(joints[-1]).endswith("_jnt_end")
     for joint in joints:
-        _assert_axes(joint, y=(0, 1, 0), z=(0, 0, -1))
+        _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
 
 
 def test_head_is_built_aligned_with_the_world(new_scene):
@@ -1543,7 +1544,8 @@ def test_arm_aims_to_the_side_with_its_up_guide_at_the_back(new_scene):
     settings = logic.PRESETS["l_arm"]
     group = logic.build_guides(**settings)
 
+    assert (settings["aim"], settings["up"]) == ("x", "-z")
     assert _pos(logic.guides(group)["up"]).z < -1
     for joint in logic.joints(group):
-        _assert_axes(joint, x=(1, 0, 0), y=(0, 0, -1))
+        _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
     assert short_name(logic.mirrored_joints(group)[0]) == "r_arm_01_jnt"
