@@ -7,7 +7,10 @@ run finds something. Also :class:`QCResultsDialog`, results in a dialog with a
 go-ahead button (Builder's Publish shows it when QC finds problems).
 
 The tool passes in its checks (:class:`kaiju_suite.core.checks.Check`) and
-callbacks, so this never imports ``datatypes`` or a tool:
+callbacks, so this never imports ``datatypes`` or a tool. ``subject`` names
+what the checks run on ("joints", "curves"...) for the hints.
+
+The callbacks:
 
 - ``on_setting(key, option, value)``: an option changed.
 - ``on_run()``: run the checks on the selection; returns ``(check,
@@ -104,7 +107,7 @@ class QCResults(QtWidgets.QTreeWidget):
 
 
 class QCTab(QtWidgets.QWidget):
-    def __init__(self, checks, settings, on_setting, on_run, on_pick, parent=None, on_fix=None):
+    def __init__(self, checks, settings, on_setting, on_run, on_pick, parent=None, on_fix=None, subject="nodes"):
         super().__init__(parent)
         self.on_setting, self.on_run, self.on_fix = on_setting, on_run, on_fix
         self.fix_buttons = {}
@@ -112,7 +115,7 @@ class QCTab(QtWidgets.QWidget):
 
         self.run_button = QtWidgets.QPushButton("Run Checks")
         self.run_button.setToolTip(
-            "Run every check below on the selected meshes. Changes nothing. "
+            f"Run every check below on the selected {subject}. Changes nothing. "
             "Turns green when they all pass, red when any finds a problem."
         )
         self.run_button.clicked.connect(self._run)
@@ -140,7 +143,7 @@ class QCTab(QtWidgets.QWidget):
                 fix.hide()  # after setItemWidget, which shows it
                 self.fix_buttons[check.key] = fix
         layout.addWidget(self.results, 1)
-        self.status = QtWidgets.QLabel("Select meshes and click Run Checks. Click a check's button to set its options.")
+        self.status = QtWidgets.QLabel(f"Select {subject} and click Run Checks. Click a check's button to set its options.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 

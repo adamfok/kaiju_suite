@@ -26,6 +26,7 @@ class MeshToolWindow(ToolWindow):
             self._run_qc,
             logic.select_problem,
             on_fix=self._fix,
+            subject="meshes",
         )
         tabs.addTab(qc, "QC")
         # A placeholder, so every datatype tool has the same two tabs.

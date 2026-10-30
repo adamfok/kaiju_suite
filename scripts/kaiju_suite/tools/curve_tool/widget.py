@@ -25,6 +25,7 @@ class CurveToolWindow(ToolWindow):
             logic.save_qc_setting,
             self._run_qc,
             logic.select_problem,
+            subject="curves",
         )
         tabs.addTab(qc, "QC")
         # A placeholder, so every datatype tool has the same two tabs.

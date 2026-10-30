@@ -58,7 +58,10 @@ qc_tab.QCOptionsDialog = FakeOptions
 
 tab = qc_tab.QCTab(CHECKS, settings, lambda *a: changes.append(list(a)), lambda: found, picks.append)
 tree = tab.results
+named = qc_tab.QCTab(CHECKS, settings, lambda *a: None, lambda: None, picks.append, subject="curves")
 out = {
+    "hint_default": [tab.status.text(), tab.run_button.toolTip()],
+    "hint_named": [named.status.text(), named.run_button.toolTip()],
     "checkboxes": len(tab.findChildren(QtWidgets.QCheckBox)),
     "spins_in_tab": len(tab.findChildren(QtWidgets.QSpinBox) + tab.findChildren(QtWidgets.QDoubleSpinBox)),
     "buttons": [b.text() for b in tab.findChildren(QtWidgets.QPushButton)],
@@ -209,6 +212,19 @@ def test_running_puts_each_checks_problems_under_it_collapsed(probe):
 
 def test_clicking_a_problem_passes_it_on_with_what_to_select(probe):
     assert probe["picks"] == [["body: 2 vertices", ["body.vtx[0:1]"]], ["plain text", []]]
+
+
+def test_the_hint_names_what_the_tool_checks(probe):
+    assert probe["hint_named"] == [
+        "Select curves and click Run Checks. Click a check's button to set its options.",
+        "Run every check below on the selected curves. Changes nothing. "
+        "Turns green when they all pass, red when any finds a problem.",
+    ]
+
+
+def test_the_hint_says_nodes_when_the_tool_names_nothing(probe):
+    assert probe["hint_default"][0].startswith("Select nodes and click Run Checks.")
+    assert "selected nodes." in probe["hint_default"][1]
 
 
 def test_a_run_that_fails_leaves_the_tab_as_it_was(probe):
