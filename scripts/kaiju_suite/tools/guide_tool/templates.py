@@ -74,9 +74,10 @@ TEMPLATES = {
     # About 100 cm at the withers, the spine level from the hips forward.
     "quadruped": [
         _placed("root", (0, 0, 0)),
-        # One joint at the hips, aiming forward along the spine.
-        {**_placed("forward_spine", (0, 100, -45), (0, 100, -35)), "name": "pelvis", "count": 0, "end_joint": False},
-        {**_placed("forward_spine", (0, 100, -45), (0, 100, 45)), "name": "spine"},
+        # One joint at the hips, aiming forward along the spine, aligned with the world like root.
+        {**_placed("root", (0, 100, -45), (0, 100, -35)), "name": "pelvis"},
+        # Aims +Y forward with -Z up: the biped spine's axes, tipped forward.
+        {**_placed("forward_spine", (0, 100, -45), (0, 100, 45)), "name": "spine", "aim": "y", "up": "-z"},
         _placed("neck", (0, 100, 45), (0, 125, 70)),
         _placed("head", (0, 125, 70)),
         _placed("tail", (0, 100, -45)),
