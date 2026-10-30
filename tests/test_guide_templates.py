@@ -210,6 +210,62 @@ def test_build_template_refuses_an_unknown_template(new_scene):
         templates.build_template("dragon")
 
 
+# -- delete_template ----------------------------------------------------------------
+
+
+def test_delete_template_deletes_every_chains_guides_and_keeps_the_joints(new_scene):
+    templates.build_template("quadruped")
+    joints = {c["name"]: logic.joints(f"{c['name']}_guides_grp") for c in templates.TEMPLATES["quadruped"]}
+    where = {j: _pos(j) for chain in joints.values() for j in chain}
+    mirrored = logic.mirrored_joints("l_front_leg_guides_grp")
+
+    extracted = templates.delete_template("quadruped")
+
+    assert not cmds.ls("*_guides_grp")
+    assert extracted == [j for chain in joints.values() for j in chain]
+    for joint, at in where.items():
+        assert _close(_pos(joint), at), joint
+        assert cmds.getAttr(f"{joint}.overrideEnabled") == 0  # no longer drawn as reference
+    assert all(cmds.objExists(j) for j in mirrored)
+
+
+def test_delete_template_skips_chains_that_are_not_built(new_scene):
+    templates.build_template("biped")
+    logic.delete_guides("l_thumb_guides_grp")
+    cmds.createNode("transform", name="other_guides_grp")  # not a guide group, not in the template
+
+    templates.delete_template("biped")
+
+    assert cmds.ls("*_guides_grp") == ["other_guides_grp"]
+
+
+def test_delete_template_leaves_another_templates_chains(new_scene):
+    templates.build_template("quadruped")
+    logic.build_guides("l_arm", 1)  # a biped chain, not in the quadruped
+
+    templates.delete_template("quadruped")
+
+    assert cmds.ls("*_guides_grp") == ["l_arm_guides_grp"]
+
+
+def test_delete_template_refuses_when_none_of_it_is_built(new_scene):
+    with pytest.raises(ValueError, match="biped"):
+        templates.delete_template("biped")
+    with pytest.raises(ValueError, match="dragon"):
+        templates.delete_template("dragon")
+
+
+def test_delete_template_is_one_undo_step(new_scene):
+    templates.build_template("biped")
+    cmds.select(clear=True)
+
+    templates.delete_template("biped")
+    cmds.undo()
+
+    assert len(cmds.ls("*_guides_grp")) == len(templates.TEMPLATES["biped"])
+    assert logic.guides("l_arm_guides_grp")["chain"]
+
+
 # -- align: UE5 Mannequin / MetaHuman ------------------------------------------------
 
 # A stand-in UE5 skeleton (MetaHuman bodies use the same names): about 170 cm,

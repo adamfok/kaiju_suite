@@ -95,6 +95,26 @@ def build_template(name):
     return [logic.build_guides(**chain) for chain in chains]
 
 
+def _built(name):
+    """The guide groups of the template ``name``'s chains that are built, in order."""
+    if name not in TEMPLATES:
+        raise ValueError(f"There's no {name!r} template; pick one of {', '.join(TEMPLATES)}.")
+    groups = [f"{chain['name']}_guides_grp" for chain in TEMPLATES[name]]
+    return [g for g in groups if cmds.objExists(g) and cmds.attributeQuery("kaijuGuides", node=g, exists=True)]
+
+
+@undoable
+def delete_template(name):
+    """Delete the guides of every built chain of the template ``name``, as
+    :func:`logic.delete_guides` does: their joints stay where they are, cut
+    loose. Returns the joints, chain by chain. Raises ``ValueError``,
+    changing nothing, if none of it is built."""
+    groups = _built(name)
+    if not groups:
+        raise ValueError(f"None of the {name} template is built.")
+    return [joint for group in groups for joint in logic.delete_guides(group)]
+
+
 # -- aligning to other skeletons --------------------------------------------------
 #
 # Each skeleton fits one template, and its table says, per chain of that
