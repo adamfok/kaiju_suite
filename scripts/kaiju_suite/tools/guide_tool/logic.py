@@ -96,7 +96,8 @@ PRESETS = {
         _preset("head", 0, (0, 20, 0), "y", "z", (0, 0, 1)),
         _preset("l_shoulder", 0, (14, 2, 0), "x", "y", (0, 1, 0)),
         _preset("l_arm", 1, (53, 0, 0), "x", "y", (0, 0, -1)),  # elbow up guide behind
-        _preset("l_hand", 0, (8, 0, 0), "x", "y", (0, 1, 0)),
+        # No end joint: the metacarpals and thumb hang off the hand joint itself.
+        _preset("l_hand", 0, (8, 0, 0), "x", "y", (0, 1, 0), end_joint=False),
         _preset("l_finger", 2, (10, 0, 0), "x", "y", (0, 1, 0)),
         _preset("l_leg", 1, (0, -85, 0), "x", "y", (0, 0, 1)),
         _preset("l_foot", 1, (0, -10, 20), "x", "y", (0, 1, 0)),

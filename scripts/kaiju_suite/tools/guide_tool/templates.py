@@ -87,8 +87,8 @@ TEMPLATES = {
 }
 
 
-# Which chain each chain hangs off: it goes under that chain's last joint before its
-# end joint. Build saves it as each chain's first joint's default parent (see
+# Which chain each chain hangs off: it goes under that chain's end joint, or its last
+# joint if it has none. Build saves it as each chain's first joint's default parent (see
 # kaiju_suite.core.hierarchy), the right side's under the right side's chain, and
 # Delete parents the joints there.
 PARENTS = {
@@ -164,11 +164,10 @@ def build_template(name):
     built = {chain["name"]: (chain, group) for chain, group in zip(chains, groups)}
     for child, parent in PARENTS[name].items():
         (chain, group), (parent_chain, parent_group) = built[child], built[parent]
-        last = parent_chain["count"]  # the parent chain's last joint before its end joint
-        hierarchy.set_default_parent(logic.joints(group)[0], logic.joints(parent_group)[last])
+        hierarchy.set_default_parent(logic.joints(group)[0], logic.joints(parent_group)[-1])  # its end joint
         if chain["mirror"]:
             mirrored_parent = logic.mirrored_joints(parent_group) if parent_chain["mirror"] else logic.joints(parent_group)
-            hierarchy.set_default_parent(logic.mirrored_joints(group)[0], mirrored_parent[last])
+            hierarchy.set_default_parent(logic.mirrored_joints(group)[0], mirrored_parent[-1])
     return groups
 
 

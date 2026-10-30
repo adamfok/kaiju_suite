@@ -1410,9 +1410,9 @@ def test_every_preset_starts_at_the_origin_and_keeps_its_direction_and_length():
         assert _close(settings["end"], ends[name]), name
 
 
-def test_only_root_and_pelvis_have_no_end_joint_and_only_left_presets_mirror():
+def test_only_root_pelvis_and_hand_have_no_end_joint_and_only_left_presets_mirror():
     for name, settings in logic.PRESETS.items():
-        assert settings["end_joint"] == (name not in ("root", "pelvis")), name
+        assert settings["end_joint"] == (name not in ("root", "pelvis", "l_hand")), name
         assert settings["mirror"] == name.startswith("l_"), name
 
 
