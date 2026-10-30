@@ -118,6 +118,12 @@ def _lock_to_move_only(node):
         cmds.setAttr(f"{node}.{attr}", lock=True, keyable=False, channelBox=False)
 
 
+def _lock_to_scale_only(node):
+    """Lock ``node``'s translate and rotate; its scale is the user's."""
+    for attr in ("tx", "ty", "tz", "rx", "ry", "rz"):
+        cmds.setAttr(f"{node}.{attr}", lock=True, keyable=False, channelBox=False)
+
+
 def _guide(name, group, position, size):
     guide = cmds.spaceLocator(name=name)[0]
     guide = _long(cmds.parent(guide, group)[0])
@@ -194,10 +200,10 @@ def _aligned(group, name, position, primary_axis, primary, secondary_axis, secon
     return f"{aim}.outputMatrix"
 
 
-def _visual(node, color=None, shaded=False):
-    """Draw ``node`` unselectable, as wireframe unless ``shaded``."""
+def _visual(node, color=None, shaded=False, selectable=False):
+    """Draw ``node`` as wireframe unless ``shaded``, unselectable unless ``selectable``."""
     cmds.setAttr(f"{node}.overrideEnabled", True)
-    cmds.setAttr(f"{node}.overrideDisplayType", 2)  # reference
+    cmds.setAttr(f"{node}.overrideDisplayType", 0 if selectable else 2)  # normal or reference
     cmds.setAttr(f"{node}.overrideShading", shaded)
     if color is not None:
         cmds.setAttr(f"{node}.overrideColor", color)
@@ -227,7 +233,8 @@ def _disc(name, parent, radius, engine):
     # Relative: the parent is already in place, and the disc must not keep its world position.
     disc = cmds.rename(cmds.parent(disc, parent, relative=True)[0], name)
     disc = _long(f"{parent}|{disc}")
-    _visual(disc, _DISC_COLOR, shaded=True)
+    _visual(disc, _DISC_COLOR, shaded=True, selectable=True)
+    _lock_to_scale_only(disc)
     cmds.sets(cmds.listRelatives(disc, shapes=True, fullPath=True), edit=True, forceElement=engine)
     return disc
 
@@ -276,10 +283,13 @@ def _preview_network(group, name, chain, up, size):
     cmds.connectAttr(start, f"{center}.input3D[0]")
     cmds.connectAttr(end, f"{center}.input3D[1]")
     matrix = _aligned(group, f"{name}_plane", f"{center}.output3D", (1, 0, 0), span, (0, 0, 1), normal)
+    # The space follows the guides and sizes the plane to them; the plane
+    # under it keeps its own scale free for the user.
+    space = _placed(group, cmds.createNode("transform", name=f"{name}_plane_space"), matrix)
     surface = cmds.nurbsPlane(
         name=f"{name}_plane", axis=(0, 0, 1), width=1, lengthRatio=1, patchesU=4, patchesV=2, constructionHistory=False
     )[0]
-    surface = _placed(group, surface, matrix)
+    surface = _long(cmds.parent(surface, space, relative=True)[0])
     length = _util(group, "distanceBetween", f"{name}_length")
     cmds.connectAttr(start, f"{length}.point1")
     cmds.connectAttr(end, f"{length}.point2")
@@ -287,8 +297,9 @@ def _preview_network(group, name, chain, up, size):
     cmds.setAttr(f"{scale}.input2", 1.2, 0.6, 1)
     for letter in "XY":
         cmds.connectAttr(f"{length}.distance", f"{scale}.input1{letter}")
-        cmds.connectAttr(f"{scale}.output{letter}", f"{surface}.scale{letter}")
-    _visual(surface, shaded=True)
+        cmds.connectAttr(f"{scale}.output{letter}", f"{space}.scale{letter}")
+    _visual(surface, shaded=True, selectable=True)
+    _lock_to_scale_only(surface)
     cmds.sets(
         cmds.listRelatives(surface, shapes=True, fullPath=True),
         edit=True,
@@ -312,7 +323,11 @@ def _apply_axes(group, aim, up):
     cmds.setAttr(f"{group}.{_AXES_TEXT}", text, type="string")
     for preview in _connected(group, _PREVIEWS):
         for disc in cmds.listRelatives(preview, children=True, type="transform", fullPath=True) or []:
+            for attr in ("rx", "ry", "rz"):
+                cmds.setAttr(f"{disc}.{attr}", lock=False)
             cmds.setAttr(f"{disc}.rotate", *_DISC_ROTATE[aim[0]])
+            for attr in ("rx", "ry", "rz"):
+                cmds.setAttr(f"{disc}.{attr}", lock=True)
 
 
 def _axes(aim, up):
@@ -579,7 +594,7 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
         raise ValueError("The number of middle guides must be 0 or more.")
     old = f"{name}_guides_grp"
     old = _long(old) if cmds.objExists(old) and _is_group(old) else None
-    owned, keep, doomed = set(), None, []
+    owned, keep, doomed, scales = set(), None, [], None
     if old:
         found = guides(old)
         start, end = _position(found["chain"][0]), _position(found["chain"][-1])
@@ -589,6 +604,7 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
         kept = kept.split() if kept else ("x", "y")
         aim, up = aim or kept[0], up or kept[1]
         linked = joints(old)
+        scales = _scales(old)
         if len(linked) == count + 2:
             keep = cmds.ls(linked, uuid=True)
         else:
@@ -612,7 +628,28 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     if old:
         cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
     _live_joints(group, name, keep)
+    if scales:
+        _set_scales(group, *scales)
     return group
+
+
+def _scales(group):
+    """The user's scale of ``group``'s plane, and of each of its discs."""
+    discs = [_disc_of(p) for p in previews(group)]
+    return cmds.getAttr(f"{plane(group)}.scale")[0], [cmds.getAttr(f"{d}.scale")[0] for d in discs]
+
+
+def _set_scales(group, plane_scale, disc_scales):
+    """Give ``group`` the plane scale, and the disc scales if it has as many discs."""
+    cmds.setAttr(f"{plane(group)}.scale", *plane_scale)
+    discs = [_disc_of(p) for p in previews(group)]
+    if len(discs) == len(disc_scales):
+        for disc, scale in zip(discs, disc_scales):
+            cmds.setAttr(f"{disc}.scale", *scale)
+
+
+def _disc_of(preview):
+    return cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
 
 
 def free_joint(nodes):
