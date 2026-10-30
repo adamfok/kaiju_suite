@@ -1307,7 +1307,7 @@ def test_guides_from_joints_without_end_puts_the_end_guide_back(new_scene):
 # -- presets --------------------------------------------------------------------
 
 _PRESET_NAMES = [
-    "root", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "l_scapula",
+    "root", "pelvis", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "l_scapula",
     "l_front_leg", "forward_spine", "tail",
 ]
 
@@ -1355,15 +1355,16 @@ def test_every_preset_starts_at_the_origin_and_keeps_its_direction_and_length():
         "l_front_leg": (0, -90, 0),
         "forward_spine": (0, 0, 60),
         "tail": (0, 0, -60),
+        "pelvis": (0, 10, 0),
     }
     for name, settings in logic.PRESETS.items():
         assert _close(settings["start"], (0, 0, 0)), name
         assert _close(settings["end"], ends[name]), name
 
 
-def test_only_root_has_no_end_joint_and_only_left_presets_mirror():
+def test_only_root_and_pelvis_have_no_end_joint_and_only_left_presets_mirror():
     for name, settings in logic.PRESETS.items():
-        assert settings["end_joint"] == (name != "root"), name
+        assert settings["end_joint"] == (name not in ("root", "pelvis")), name
         assert settings["mirror"] == name.startswith("l_"), name
 
 
@@ -1371,6 +1372,16 @@ def _assert_axes(joint, x=None, y=None, z=None):
     for axis, want in (("x", x), ("y", y), ("z", z)):
         if want is not None:
             assert (_axis(joint, axis) - om.MVector(want).normalize()).length() < 1e-3, (joint, axis, _axis(joint, axis))
+
+
+def test_pelvis_is_one_joint_aiming_up_the_spine(new_scene):
+    group = logic.build_guides(**logic.PRESETS["pelvis"])
+
+    (joint,) = logic.joints(group)
+    assert short_name(joint) == "pelvis_01_jnt"
+    for key in ("aim", "up", "up_side"):
+        assert logic.PRESETS["pelvis"][key] == logic.PRESETS["spine"][key], key
+    assert _close(_pos(logic.guides(group)["chain"][-1]), (0, 10, 0))
 
 
 def test_root_is_one_joint_at_the_origin_aligned_with_the_world(new_scene):

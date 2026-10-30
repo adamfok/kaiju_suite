@@ -89,6 +89,8 @@ PRESETS = {
     preset["name"]: preset
     for preset in (
         _preset("root", 0, (0, 0, 10), "z", "y", (0, 1, 0), end_joint=False),
+        # One joint at the hips, aiming up the spine; the spine and legs hang off it.
+        _preset("pelvis", 0, (0, 10, 0), "y", "z", (0, 0, -1), end_joint=False),
         _preset("spine", 3, (0, 45, 0), "y", "z", (0, 0, -1)),
         _preset("neck", 1, (0, 15, 0), "y", "z", (0, 0, -1)),
         _preset("head", 0, (0, 20, 0), "y", "z", (0, 0, 1)),
