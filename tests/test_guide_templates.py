@@ -169,3 +169,222 @@ def test_build_template_again_keeps_the_joints(new_scene):
 def test_build_template_refuses_an_unknown_template(new_scene):
     with pytest.raises(ValueError, match="dragon"):
         templates.build_template("dragon")
+
+
+# -- align: UE5 Mannequin / MetaHuman ------------------------------------------------
+
+# A stand-in UE5 skeleton (MetaHuman bodies use the same names): about 170 cm,
+# facing +Z, left at +X, arms down and forward a little, elbow bent back,
+# knee bent forward, under a namespace.
+_UE5 = {
+    "root": (None, (0, 0, 0)),
+    "pelvis": ("root", (0, 95, 0)),
+    "spine_01": ("pelvis", (0, 105, -1)),
+    "spine_02": ("spine_01", (0, 115, -2)),
+    "spine_03": ("spine_02", (0, 125, -2)),
+    "spine_04": ("spine_03", (0, 135, -1)),
+    "spine_05": ("spine_04", (0, 142, 0)),
+    "neck_01": ("spine_05", (0, 150, -1)),
+    "neck_02": ("neck_01", (0, 156, 0)),
+    "head": ("neck_02", (0, 162, 1)),
+    "clavicle_l": ("spine_05", (2, 145, 1)),
+    "upperarm_l": ("clavicle_l", (16, 145, -2)),
+    "lowerarm_l": ("upperarm_l", (40, 130, -8)),
+    "hand_l": ("lowerarm_l", (64, 115, -2)),
+    "thumb_01_l": ("hand_l", (66, 113, 1)),
+    "thumb_02_l": ("thumb_01_l", (68, 110, 4)),
+    "thumb_03_l": ("thumb_02_l", (69, 108, 6)),
+    "thigh_l": ("pelvis", (9, 92, 0)),
+    "calf_l": ("thigh_l", (10, 50, 4)),
+    "foot_l": ("calf_l", (10, 8, -1)),
+    "ball_l": ("foot_l", (10, 1, 12)),
+}
+for _i, (_finger, _z) in enumerate((("index", 1), ("middle", -1), ("ring", -3), ("pinky", -5))):
+    _UE5[f"{_finger}_metacarpal_l"] = ("hand_l", (66, 114, _z))
+    _UE5[f"{_finger}_01_l"] = (f"{_finger}_metacarpal_l", (72 - _i * 0.5, 110, _z))
+    _UE5[f"{_finger}_02_l"] = (f"{_finger}_01_l", (76 - _i * 0.5, 107, _z))
+    _UE5[f"{_finger}_03_l"] = (f"{_finger}_02_l", (78.5 - _i * 0.5, 105, _z))
+
+
+def _skeleton(table=None, namespace="SK", skip=()):
+    """Build a skeleton from ``table`` (name -> (parent, position)) and return
+    its joints by name."""
+    table = table or _UE5
+    if namespace and not cmds.namespace(exists=namespace):
+        cmds.namespace(add=namespace)
+    made = {}
+    for name, (parent, position) in table.items():
+        if name in skip:
+            continue
+        cmds.select(clear=True)
+        joint = cmds.joint(name=f"{namespace}:{name}" if namespace else name, position=position)
+        if parent and parent in made:
+            joint = cmds.parent(joint, made[parent])[0]
+            cmds.xform(joint, worldSpace=True, translation=position)
+        made[name] = cmds.ls(joint, long=True)[0]
+    cmds.select(clear=True)
+    return made
+
+
+def _guide_pos(chain, which):
+    found = logic.guides(f"{chain}_guides_grp")
+    return _pos(found["up"] if which == "up" else found["chain"][which])
+
+
+def _ue5_pos(name):
+    return om.MVector(_UE5[name][1])
+
+
+def test_skeletons_list_ue5():
+    assert "ue5" in templates.SKELETONS
+    assert templates.SKELETONS["ue5"]["label"] == "UE5 Mannequin / MetaHuman"
+
+
+def test_detect_finds_ue5_from_any_of_its_joints(new_scene):
+    joints = _skeleton()
+
+    assert templates.detect([joints["calf_l"]]) == "ue5"
+
+
+def test_detect_refuses_an_unknown_skeleton_or_no_selection(new_scene):
+    cmds.joint(name="not_a_known_joint")
+    with pytest.raises(ValueError):
+        templates.detect(["not_a_known_joint"])
+    with pytest.raises(ValueError, match="Select"):
+        templates.detect([])
+
+
+def test_align_puts_each_chain_on_its_anchor_joints(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+
+    report = templates.align("biped", [joints["head"]], "ue5")
+
+    assert not report["skipped"], report["skipped"]
+    for chain, start, end in (
+        ("spine", "pelvis", "neck_01"), ("neck", "neck_01", "head"), ("l_shoulder", "clavicle_l", "upperarm_l"),
+        ("l_arm", "upperarm_l", "hand_l"), ("l_hand", "hand_l", "middle_01_l"),
+        ("l_index_metacarpal", "hand_l", "index_01_l"), ("l_leg", "thigh_l", "foot_l"),
+    ):
+        assert _close(_guide_pos(chain, 0), _ue5_pos(start)), chain
+        assert _close(_guide_pos(chain, -1), _ue5_pos(end)), chain
+    for chain, start in (("root", "root"), ("head", "head"), ("l_index", "index_01_l"),
+                         ("l_thumb", "thumb_01_l"), ("l_foot", "foot_l")):
+        assert _close(_guide_pos(chain, 0), _ue5_pos(start)), chain
+
+
+def test_align_puts_middle_guides_on_key_joints_when_the_counts_match(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+
+    templates.align("biped", [joints["root"]], "ue5")
+
+    for chain, index, joint in (
+        ("l_arm", 1, "lowerarm_l"), ("l_leg", 1, "calf_l"), ("l_foot", 1, "ball_l"), ("neck", 1, "neck_02"),
+        ("l_middle", 1, "middle_02_l"), ("l_middle", 2, "middle_03_l"), ("l_thumb", 1, "thumb_02_l"),
+    ):
+        assert _close(_guide_pos(chain, index), _ue5_pos(joint)), (chain, index)
+
+
+def test_align_spreads_middle_guides_evenly_otherwise(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+
+    templates.align("biped", [joints["root"]], "ue5")
+
+    start, end = _ue5_pos("pelvis"), _ue5_pos("neck_01")
+    for i in range(1, 4):
+        assert _close(_guide_pos("spine", i), start + (end - start) * (i / 4.0)), i
+
+
+def test_align_extends_past_the_last_joint_where_there_is_no_end(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+
+    templates.align("biped", [joints["root"]], "ue5")
+
+    tip = _guide_pos("l_index", -1)
+    last, before = _ue5_pos("index_03_l"), _ue5_pos("index_02_l")
+    assert (tip - last) * (last - before) > 0  # beyond the last knuckle, the same way
+    toe, ball = _guide_pos("l_foot", -1), _ue5_pos("ball_l")
+    assert toe.z > ball.z + 1 and abs(toe.y - ball.y) < 1e-3  # forward, flat
+    assert _guide_pos("head", -1).y > _ue5_pos("head").y + 1  # still above the head
+
+
+def test_align_puts_limb_up_guides_where_they_bend(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+
+    templates.align("biped", [joints["root"]], "ue5")
+
+    assert _guide_pos("l_arm", "up").z < _ue5_pos("lowerarm_l").z - 1  # behind the elbow
+    assert _guide_pos("l_leg", "up").z > _ue5_pos("calf_l").z + 1  # in front of the knee
+    assert _guide_pos("spine", "up").z < -1  # the spine keeps its up guide behind
+
+
+def test_align_moves_the_joints_and_the_mirror(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+
+    templates.align("biped", [joints["root"]], "ue5")
+
+    elbow = _ue5_pos("lowerarm_l")
+    assert _close(_pos(logic.joints("l_arm_guides_grp")[1]), elbow)
+    assert _close(_pos(logic.mirrored_joints("l_arm_guides_grp")[1]), om.MVector(-elbow.x, elbow.y, elbow.z))
+
+
+def test_align_auto_detects_the_skeleton(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+
+    report = templates.align("biped", [joints["spine_03"]])
+
+    assert report["skeleton"] == "ue5"
+    assert _close(_guide_pos("l_arm", 0), _ue5_pos("upperarm_l"))
+
+
+def test_align_skips_chains_it_cannot_place(new_scene):
+    templates.build_template("biped")
+    logic.delete_guides("l_thumb_guides_grp")
+    joints = _skeleton(skip=("ball_l",))
+
+    report = templates.align("biped", [joints["root"]], "ue5")
+
+    skipped = dict(report["skipped"])
+    assert "l_thumb" in skipped and "built" in skipped["l_thumb"]
+    assert "l_foot" in skipped and skipped["l_foot"].count("ball_l") == 1
+    assert "l_arm" in report["aligned"]
+
+
+def test_align_refuses_when_nothing_is_built(new_scene):
+    joints = _skeleton()
+
+    with pytest.raises(ValueError, match="Build"):
+        templates.align("biped", [joints["root"]], "ue5")
+
+
+def test_align_is_one_undo_step(new_scene):
+    templates.build_template("biped")
+    before = _guide_pos("l_arm", 0)
+    joints = _skeleton()
+
+    templates.align("biped", [joints["root"]], "ue5")
+    cmds.undo()
+
+    assert _close(_guide_pos("l_arm", 0), before)
+
+
+def test_align_prints_no_errors(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton()
+    printed = []
+    kinds = (om.MCommandMessage.kWarning, om.MCommandMessage.kError)
+    callback = om.MCommandMessage.addCommandOutputCallback(
+        lambda text, kind, _: printed.append(text.strip()) if kind in kinds else None
+    )
+    try:
+        templates.align("biped", [joints["root"]], "ue5")
+    finally:
+        om.MMessage.removeCallback(callback)
+
+    assert printed == []

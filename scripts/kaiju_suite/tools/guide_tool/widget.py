@@ -146,6 +146,30 @@ class GuideToolWindow(ToolWindow):
         )
         button.clicked.connect(self._build_template)
         layout.addWidget(button)
+
+        self.skeleton = QtWidgets.QComboBox()
+        self.skeleton.setToolTip("The skeleton to align to; Auto picks the one the selected hierarchy matches best.")
+        self.skeleton.addItem("Auto", "")
+        for key, skeleton in templates.SKELETONS.items():
+            self.skeleton.addItem(skeleton["label"], key)
+        self.skeleton.setCurrentIndex(max(self.skeleton.findData(settings.get(SETTINGS_KEY, "skeleton", "")), 0))
+        self.skeleton.currentIndexChanged.connect(
+            lambda *_: settings.set(SETTINGS_KEY, "skeleton", self.skeleton.currentData())
+        )
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(QtWidgets.QLabel("Align to"))
+        row.addWidget(self.skeleton, 1)
+        layout.addLayout(row)
+        align = QtWidgets.QPushButton("Align")
+        align.setToolTip(
+            "Select a joint of the skeleton to align to, then Align: each built chain's start and end\n"
+            "guides go on two of its joints (not joint for joint), middle guides on its elbow, knee,\n"
+            "ball and knuckles when the counts match (else evenly), and arm, leg and finger up guides\n"
+            "where they bend. Your joints follow, keeping their own count. Chains it can't place are\n"
+            "skipped and listed."
+        )
+        align.clicked.connect(self._align)
+        layout.addWidget(align)
         layout.addStretch()
         return page
 
@@ -228,6 +252,17 @@ class GuideToolWindow(ToolWindow):
         if groups is not None:
             cmds.select(clear=True)
             _say(f"{self.template.currentText()} template built: {len(groups)} chains.")
+
+    def _align(self, *_):
+        report = self._run(
+            templates.align, self.template.currentData(), selected(), self.skeleton.currentData() or None
+        )
+        if report is None:
+            return
+        label = templates.SKELETONS[report["skeleton"]]["label"]
+        _say(f"{len(report['aligned'])} chains aligned to {label}.")
+        if report["skipped"]:
+            _warn("Not aligned: " + "; ".join(f"{name} ({why})" for name, why in report["skipped"]))
 
     @undoable
     def _delete(self, *_):
