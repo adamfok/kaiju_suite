@@ -24,7 +24,7 @@ class GuideToolWindow(ToolWindow):
     TITLE = "Kaiju Guide Tool"
 
     def build_ui(self):
-        # Three rows: name and middle guides; axes and mirror; Build and Delete.
+        # Three rows: name, middle guides and end joint; axes and mirror; Build and Delete.
         self.name = QtWidgets.QLineEdit(settings.get(SETTINGS_KEY, "name", "chain"))
         self.name.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
         self.name.textChanged.connect(lambda text: settings.set(SETTINGS_KEY, "name", text))
@@ -33,6 +33,13 @@ class GuideToolWindow(ToolWindow):
         self.count.setValue(int(settings.get(SETTINGS_KEY, "count", 1)))
         self.count.setToolTip("How many guides go between the start and end guides.")
         self.count.valueChanged.connect(lambda value: settings.set(SETTINGS_KEY, "count", int(value)))
+        self.end_joint = QtWidgets.QCheckBox("End")
+        self.end_joint.setChecked(bool(int(settings.get(SETTINGS_KEY, "end_joint", 1))))
+        self.end_joint.setToolTip(
+            "Build a joint on the end guide too, named <name>_<N>_jnt_end.\n"
+            "Off: no joint there; the end guide still aims the last joint."
+        )
+        self.end_joint.toggled.connect(lambda on: settings.set(SETTINGS_KEY, "end_joint", int(on)))
         self.aim = self._combo("aim", "x", "The axis that points at the next joint.")
         self.up = self._combo("up", "y", "The axis that points towards the up guide's side, in the chain's plane.")
         self.mirror = QtWidgets.QCheckBox("Mirror")
@@ -49,6 +56,7 @@ class GuideToolWindow(ToolWindow):
         name_row.addWidget(self.name, 1)
         name_row.addWidget(QtWidgets.QLabel("# Mid"))
         name_row.addWidget(self.count)
+        name_row.addWidget(self.end_joint)
         self.layout.addLayout(name_row)
 
         settings_row = QtWidgets.QHBoxLayout()
@@ -121,7 +129,9 @@ class GuideToolWindow(ToolWindow):
             if group is not None:
                 _say(f"Guides built on the joints of {cmds.ls(group)[0]}.")
             return
-        group = self._run(logic.build_guides, name, self.count.value(), **axes)
+        group = self._run(
+            logic.build_guides, name, self.count.value(), end_joint=self.end_joint.isChecked(), **axes
+        )
         if group is not None:
             cmds.select(logic.guides(group)["chain"][1:-1] or logic.guides(group)["chain"])
             _say(f"Guides built for {name}.")
