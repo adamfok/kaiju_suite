@@ -54,9 +54,9 @@ _NOTE_UP = "kaijuGuideUp"
 _TOLERANCE = 1e-4
 _UP_COLOR = 17  # yellow
 _DISC_COLOR = 18  # light blue
-# The material (color, transparency) the discs and the plane share: shaded, so
-# they show where they cut a mesh, and see-through, so they don't hide the guides.
-_SHADE = ((0.35, 0.75, 1.0), 0.4)  # light blue
+# The solid color the discs and the plane share: shaded, so they show where
+# they cut a mesh.
+_SHADE = (0.35, 0.75, 1.0)  # light blue
 # Turns a disc made around X to ring the aim axis, by the aim axis' index.
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
@@ -211,12 +211,10 @@ def _placed(group, node, matrix):
     return node
 
 
-def _material(group, name, shade):
-    """A shading group with a lambert of ``shade`` (color, transparency)."""
-    color, transparency = shade
+def _material(group, name, color):
+    """A shading group with a solid lambert of ``color``."""
     material = _util(group, "lambert", f"{name}_mat")
     cmds.setAttr(f"{material}.color", *color)
-    cmds.setAttr(f"{material}.transparency", transparency, transparency, transparency)
     engine = _track(group, cmds.sets(renderable=True, noSurfaceShader=True, empty=True, name=f"{name}_sg"))
     cmds.connectAttr(f"{material}.outColor", f"{engine}.surfaceShader")
     return engine
@@ -483,6 +481,9 @@ def _live_joints(group, name, uuids=None):
             cmds.setAttr(f"{joint}.{attr}", 0, 0, 0)
         for attr in _MOVES:
             cmds.setAttr(f"{joint}.{attr}", lock=True)
+        # Reference while the guides drive them, so a click picks a guide.
+        cmds.setAttr(f"{joint}.overrideEnabled", True)
+        cmds.setAttr(f"{joint}.overrideDisplayType", 2)
         if i == 0:
             cmds.connectAttr(f"{preview}.worldMatrix[0]", f"{joint}.offsetParentMatrix", force=True)
         else:
@@ -510,6 +511,7 @@ def _extract(group):
         cmds.setAttr(f"{joint}.offsetParentMatrix", list(om.MMatrix()), type="matrix")
         for attr in _MOVES:
             cmds.setAttr(f"{joint}.{attr}", lock=False)
+        _unreference(joint)
     for uuid, world in zip(uuids, worlds):
         joint = _by_uuid(uuid)
         cmds.xform(joint, worldSpace=True, translation=(world[12], world[13], world[14]))
@@ -517,6 +519,13 @@ def _extract(group):
     if uuids:
         _leave_note(_by_uuid(uuids[0]), *note)
     return [_by_uuid(uuid) for uuid in uuids]
+
+
+def _unreference(joint):
+    """Draw ``joint`` normally again, keeping a color override if it has one."""
+    cmds.setAttr(f"{joint}.overrideDisplayType", 0)
+    if not cmds.getAttr(f"{joint}.overrideColor") and not cmds.getAttr(f"{joint}.overrideRGBColors"):
+        cmds.setAttr(f"{joint}.overrideEnabled", False)
 
 
 def _leave_note(joint, name, axes, up):

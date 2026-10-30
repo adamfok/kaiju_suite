@@ -470,7 +470,7 @@ def test_preview_discs_ring_the_bone(new_scene, aim, up):
         assert abs(_axis(_disc(preview), "x") * _axis(preview, aim)) == pytest.approx(1.0, abs=1e-4)
 
 
-def test_preview_discs_and_plane_share_one_see_through_shader(new_scene):
+def test_preview_discs_and_plane_share_one_solid_shader(new_scene):
     group = logic.build_guides("arm", 1)
     plane = logic.plane(group)
 
@@ -483,7 +483,7 @@ def test_preview_discs_and_plane_share_one_see_through_shader(new_scene):
         engines = cmds.listConnections(shape, type="shadingEngine") or []
         material = cmds.listConnections(f"{engines[0]}.surfaceShader")[0]
         assert cmds.nodeType(material) == "lambert"
-        assert cmds.getAttr(f"{material}.transparency")[0][0] > 0
+        assert cmds.getAttr(f"{material}.transparency")[0] == (0, 0, 0)  # solid
 
 
 def test_plane_is_centered_between_start_and_end(new_scene):
@@ -832,3 +832,49 @@ def test_building_again_prints_no_errors(new_scene):
     _bent_arm()
 
     assert _maya_errors(logic.build_guides, "arm", 1) == []
+
+
+def _referenced(joint):
+    return cmds.getAttr(f"{joint}.overrideEnabled") and cmds.getAttr(f"{joint}.overrideDisplayType") == 2
+
+
+def test_live_joints_are_drawn_as_reference(new_scene):
+    group = _bent_arm()
+
+    assert all(_referenced(j) for j in logic.joints(group))
+
+
+def test_building_again_keeps_the_joints_reference(new_scene):
+    _bent_arm()
+
+    group = logic.build_guides("arm", 1)
+
+    assert all(_referenced(j) for j in logic.joints(group))
+
+
+def test_delete_guides_makes_the_joints_normal_again(new_scene):
+    joints = logic.delete_guides(_bent_arm())
+
+    for joint in joints:
+        assert not cmds.getAttr(f"{joint}.overrideEnabled")
+        assert cmds.getAttr(f"{joint}.overrideDisplayType") == 0
+
+
+def test_delete_guides_keeps_a_joint_color_override(new_scene):
+    group = _bent_arm()
+    top = logic.joints(group)[0]
+    cmds.setAttr(f"{top}.overrideColor", 13)
+
+    top = logic.delete_guides(group)[0]
+
+    assert cmds.getAttr(f"{top}.overrideEnabled")
+    assert cmds.getAttr(f"{top}.overrideDisplayType") == 0
+    assert cmds.getAttr(f"{top}.overrideColor") == 13
+
+
+def test_guides_from_joints_draws_them_as_reference(new_scene):
+    joints = logic.delete_guides(_bent_arm())
+
+    group = logic.guides_from_joints(joints[0])
+
+    assert all(_referenced(j) for j in logic.joints(group))
