@@ -16,6 +16,7 @@ import re
 from maya import cmds
 from maya.api import OpenMaya as om
 
+from kaiju_suite.core import hierarchy
 from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.guide_tool import logic
 
@@ -53,6 +54,7 @@ _TIPS = {"index": (89, 147, 3), "middle": (90, 147, 1), "ring": (89, 147, -1), "
 TEMPLATES = {
     "biped": [
         _placed("root", (0, 0, 0)),
+        _placed("pelvis", (0, 100, 0)),
         _placed("spine", (0, 100, 0)),
         _placed("neck", (0, 145, 0)),
         _placed("head", (0, 160, 0)),
@@ -70,6 +72,8 @@ TEMPLATES = {
     # About 100 cm at the withers, the spine level from the hips forward.
     "quadruped": [
         _placed("root", (0, 0, 0)),
+        # One joint at the hips, aiming forward along the spine.
+        {**_placed("forward_spine", (0, 100, -45), (0, 100, -35)), "name": "pelvis", "count": 0, "end_joint": False},
         {**_placed("forward_spine", (0, 100, -45), (0, 100, 45)), "name": "spine"},
         _placed("neck", (0, 100, 45), (0, 125, 70)),
         _placed("head", (0, 125, 70)),
@@ -81,18 +85,62 @@ TEMPLATES = {
 }
 
 
+# Which chain each chain hangs off: it goes under that chain's last joint before its
+# end joint. Build saves it as each chain's first joint's default parent (see
+# kaiju_suite.core.hierarchy), the right side's under the right side's chain, and
+# Delete parents the joints there.
+PARENTS = {
+    "biped": {
+        "pelvis": "root",
+        "spine": "pelvis",
+        "neck": "spine",
+        "head": "neck",
+        "l_shoulder": "spine",
+        "l_arm": "l_shoulder",
+        "l_hand": "l_arm",
+        **{f"l_{finger}_metacarpal": "l_hand" for finger in _KNUCKLES},
+        "l_thumb": "l_hand",
+        **{f"l_{finger}": f"l_{finger}_metacarpal" for finger in _KNUCKLES},
+        "l_leg": "pelvis",
+        "l_foot": "l_leg",
+    },
+    "quadruped": {
+        "pelvis": "root",
+        "spine": "pelvis",
+        "neck": "spine",
+        "head": "neck",
+        "tail": "pelvis",
+        "l_scapula": "spine",
+        "l_front_leg": "l_scapula",
+        "l_quad_leg": "pelvis",
+    },
+}
+
+
 @undoable
 def build_template(name):
     """Build every chain of the template ``name`` (see :data:`TEMPLATES`) and
     return their guide groups, in order. Chains already built are built
-    again in place, as :func:`logic.build_guides` does. Raises ``ValueError``,
-    building nothing, if any chain can't be built."""
+    again in place, as :func:`logic.build_guides` does. Each chain's first
+    joint (and its mirror's) gets its default parent (see :data:`PARENTS`);
+    nothing is parented yet. Raises ``ValueError``, building nothing, if any
+    chain can't be built."""
     if name not in TEMPLATES:
         raise ValueError(f"There's no {name!r} template; pick one of {', '.join(TEMPLATES)}.")
     chains = TEMPLATES[name]
     for chain in chains:
         logic.check_build(**chain)
-    return [logic.build_guides(**chain) for chain in chains]
+    groups = [logic.build_guides(**chain) for chain in chains]
+
+    built = {chain["name"]: (chain, group) for chain, group in zip(chains, groups)}
+    for child, parent in PARENTS[name].items():
+        (chain, group), (parent_chain, parent_group) = built[child], built[parent]
+        last = parent_chain["count"]  # the parent chain's last joint before its end joint
+        hierarchy.set_default_parent(logic.joints(group)[0], logic.joints(parent_group)[last])
+        if chain["mirror"]:
+            mirrored_parent = logic.mirrored_joints(parent_group) if parent_chain["mirror"] else logic.joints(parent_group)
+            hierarchy.set_default_parent(logic.mirrored_joints(group)[0], mirrored_parent[last])
+    return groups
 
 
 def _built(name):
@@ -106,13 +154,24 @@ def _built(name):
 @undoable
 def delete_template(name):
     """Delete the guides of every built chain of the template ``name``, as
-    :func:`logic.delete_guides` does: their joints stay where they are, cut
-    loose. Returns the joints, chain by chain. Raises ``ValueError``,
-    changing nothing, if none of it is built."""
+    :func:`logic.delete_guides` does, then parent each chain's joints (and
+    its mirror's) under their default parent (see :data:`PARENTS`), keeping
+    them where they are; a chain whose parent is gone stays at the world.
+    Returns the joints, chain by chain. Raises ``ValueError``, changing
+    nothing, if none of it is built."""
     groups = _built(name)
     if not groups:
         raise ValueError(f"None of the {name} template is built.")
-    return [joint for group in groups for joint in logic.delete_guides(group)]
+    tops = []
+    for group in groups:
+        tops += [logic.joints(group)[0], *logic.mirrored_joints(group)[:1]]
+    tops = cmds.ls(tops, uuid=True)
+    joints = cmds.ls([joint for group in groups for joint in logic.delete_guides(group)], uuid=True)
+
+    tops = [cmds.ls(uuid, long=True)[0] for uuid in tops]
+    if any(hierarchy.has_default_parent(top) for top in tops):
+        hierarchy.reparent(tops, skip_missing=True)
+    return [cmds.ls(uuid, long=True)[0] for uuid in joints]
 
 
 # -- aligning to other skeletons --------------------------------------------------
@@ -169,6 +228,7 @@ def _hik_chains(root=None):
     """The chains for HumanIK slot names, which Mixamo uses for its joints too."""
     fingers = ("Index", "Middle", "Ring", "Pinky")
     chains = {
+        "pelvis": _anchors("Hips"),
         "spine": _anchors("Hips", "Neck"),
         "neck": _anchors("Neck", "Head", ["Neck1"]),
         "head": _anchors("Head", ["HeadTop_End", None]),
@@ -196,6 +256,7 @@ SKELETONS = {
         "find": "names",
         "chains": {
             "root": _anchors("root"),
+            "pelvis": _anchors("pelvis"),
             "spine": _anchors("pelvis", "neck_01"),
             "neck": _anchors("neck_01", "head", ["neck_02"]),
             "head": _anchors("head"),
@@ -226,6 +287,7 @@ SKELETONS = {
         "template": "biped",
         "find": "names",
         "chains": {
+            "pelvis": _anchors("spine_C0_0_jnt"),
             "spine": _anchors("spine_C0_0_jnt", "neck_C0_0_jnt"),
             "neck": _anchors("neck_C0_0_jnt", "neck_C0_head_jnt", ["neck_C0_1_jnt"]),
             "head": _anchors("neck_C0_head_jnt"),
@@ -249,6 +311,7 @@ SKELETONS = {
         "template": "quadruped",
         "find": "names",
         "chains": {
+            "pelvis": _anchors("spine_C0_0_jnt"),
             "spine": _anchors("spine_C0_0_jnt", "neck_C0_0_jnt"),
             "neck": _anchors("neck_C0_0_jnt", "neck_C0_head_jnt", ["neck_C0_2_jnt"]),
             "head": _anchors("neck_C0_head_jnt"),
@@ -266,6 +329,7 @@ SKELETONS = {
         "find": "humanik",
         "chains": {
             "root": _anchors("Reference"),
+            "pelvis": _anchors("Hips"),
             "spine": _anchors("Hips", "Neck"),
             "neck": _anchors("Neck", "Head"),
             "head": _anchors("Head"),

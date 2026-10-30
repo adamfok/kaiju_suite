@@ -171,8 +171,9 @@ class GuideToolWindow(ToolWindow):
             (
                 "delete",
                 "Delete",
-                "Delete the guides of every chain of the template that's built. Their joints (and\n"
-                "mirrored joints) stay where they are, cut loose, as the Chain tab's Delete leaves them.",
+                "Delete the guides of every chain of the template that's built, then parent its joints\n"
+                "(and mirrored joints) into one skeleton, each chain under its default parent (arm under\n"
+                "shoulder, legs under pelvis...), where they are. Reparent in the Outliner Tool does it again.",
                 self._delete_template,
             ),
         ):

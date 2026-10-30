@@ -7,11 +7,11 @@ from kaiju_suite.tools.guide_tool import logic, templates
 
 _FINGERS = ("index", "middle", "ring", "pinky")
 _BIPED = [
-    "root", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand",
+    "root", "pelvis", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand",
     *(f"l_{f}_metacarpal" for f in _FINGERS), "l_thumb", *(f"l_{f}" for f in _FINGERS),
     "l_leg", "l_foot",
 ]
-_QUADRUPED = ["root", "spine", "neck", "head", "tail", "l_scapula", "l_front_leg", "l_quad_leg"]
+_QUADRUPED = ["root", "pelvis", "spine", "neck", "head", "tail", "l_scapula", "l_front_leg", "l_quad_leg"]
 
 
 def _pos(node):
@@ -72,6 +72,18 @@ def test_biped_chains_go_the_way_their_presets_do():
         assert (way.normal() - preset_way.normal()).length() < 1e-6, name
         for key in ("count", "aim", "up", "up_side", "end_joint", "mirror"):
             assert chain[key] == preset[key], (name, key)
+
+
+@pytest.mark.parametrize("template", ["biped", "quadruped"])
+def test_pelvis_is_one_joint_where_the_spine_starts(template):
+    c = _chains(template)
+    assert c["pelvis"]["count"] == 0 and not c["pelvis"]["end_joint"] and not c["pelvis"]["mirror"]
+    assert _close(c["pelvis"]["start"], c["spine"]["start"])
+    pelvis_way = om.MVector(c["pelvis"]["end"]) - om.MVector(c["pelvis"]["start"])
+    spine_way = om.MVector(c["spine"]["end"]) - om.MVector(c["spine"]["start"])
+    assert (pelvis_way.normal() - spine_way.normal()).length() < 1e-6
+    for key in ("aim", "up", "up_side"):
+        assert c["pelvis"][key] == c["spine"][key], key
 
 
 def test_quadruped_has_every_chain_in_order():
@@ -219,14 +231,18 @@ def test_delete_template_deletes_every_chains_guides_and_keeps_the_joints(new_sc
     where = {j: _pos(j) for chain in joints.values() for j in chain}
     mirrored = logic.mirrored_joints("l_front_leg_guides_grp")
 
+    uuids = {j: cmds.ls(j, uuid=True)[0] for j in where}
+    mirrored = cmds.ls(mirrored, uuid=True)
+
     extracted = templates.delete_template("quadruped")
 
     assert not cmds.ls("*_guides_grp")
-    assert extracted == [j for chain in joints.values() for j in chain]
+    assert extracted == [cmds.ls(uuids[j], long=True)[0] for chain in joints.values() for j in chain]
     for joint, at in where.items():
+        joint = cmds.ls(uuids[joint], long=True)[0]  # parented now, so its path changed
         assert _close(_pos(joint), at), joint
         assert cmds.getAttr(f"{joint}.overrideEnabled") == 0  # no longer drawn as reference
-    assert all(cmds.objExists(j) for j in mirrored)
+    assert all(cmds.ls(j) for j in mirrored)
 
 
 def test_delete_template_skips_chains_that_are_not_built(new_scene):
@@ -363,7 +379,7 @@ def test_align_puts_each_chain_on_its_anchor_joints(new_scene):
     ):
         assert _close(_guide_pos(chain, 0), _ue5_pos(start)), chain
         assert _close(_guide_pos(chain, -1), _ue5_pos(end)), chain
-    for chain, start in (("root", "root"), ("head", "head"), ("l_index", "index_01_l"),
+    for chain, start in (("root", "root"), ("pelvis", "pelvis"), ("head", "head"), ("l_index", "index_01_l"),
                          ("l_thumb", "thumb_01_l"), ("l_foot", "foot_l")):
         assert _close(_guide_pos(chain, 0), _ue5_pos(start)), chain
 
@@ -914,3 +930,75 @@ def test_align_quadruped_to_humanik_front_legs_in_the_arm_slots(new_scene):
         # No toe tip slot: the end goes a little ahead of the paw, along the ground.
         tip, paw = _guide_pos(chain, -1), _quad_pos(f"{leg}_end_jnt")
         assert abs(tip.y - paw.y) < 1e-3 and tip.z > paw.z + 1, chain
+
+
+# -- default parents ----------------------------------------------------------------
+
+
+def _parent(joint):
+    return short_name((cmds.listRelatives(joint, parent=True) or [""])[0])
+
+
+@pytest.mark.parametrize("template", ["biped", "quadruped"])
+def test_every_chain_but_root_has_an_earlier_parent_chain(template):
+    names = [chain["name"] for chain in templates.TEMPLATES[template]]
+    parents = templates.PARENTS[template]
+    assert sorted(parents) == sorted(names[1:])
+    for child, parent in parents.items():
+        assert names.index(parent) < names.index(child), child
+
+
+def test_build_template_saves_default_parents_on_each_chains_first_joint(new_scene):
+    templates.build_template("biped")
+    for joint, parent in (
+        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("neck_01_jnt", "spine_04_jnt"),
+        ("l_shoulder_01_jnt", "spine_04_jnt"), ("r_shoulder_01_jnt", "spine_04_jnt"),
+        ("l_arm_01_jnt", "l_shoulder_01_jnt"), ("r_arm_01_jnt", "r_shoulder_01_jnt"),
+        ("l_index_01_jnt", "l_index_metacarpal_01_jnt"), ("l_thumb_01_jnt", "l_hand_01_jnt"),
+        ("l_leg_01_jnt", "pelvis_01_jnt"), ("r_foot_01_jnt", "r_leg_02_jnt"),
+    ):
+        assert cmds.getAttr(f"{joint}.kaijuDefaultParentName") == parent, joint
+    assert not cmds.attributeQuery("kaijuDefaultParentName", node="root_01_jnt", exists=True)
+    assert not cmds.listRelatives("l_arm_01_jnt", parent=True)  # nothing moves until Delete
+
+
+def test_delete_template_parents_the_biped_into_one_skeleton(new_scene):
+    templates.build_template("biped")
+    templates.delete_template("biped")
+
+    for joint, parent in (
+        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("head_01_jnt", "neck_02_jnt"),
+        ("r_shoulder_01_jnt", "spine_04_jnt"), ("r_hand_01_jnt", "r_arm_02_jnt"),
+        ("l_middle_metacarpal_01_jnt", "l_hand_01_jnt"), ("r_pinky_01_jnt", "r_pinky_metacarpal_01_jnt"),
+        ("l_leg_01_jnt", "pelvis_01_jnt"), ("l_foot_01_jnt", "l_leg_02_jnt"),
+    ):
+        assert _parent(joint) == parent, joint
+    roots = [j for j in cmds.ls(type="joint", long=True) if j.count("|") == 1]
+    assert roots == ["|root_01_jnt"]
+
+
+def test_delete_template_parents_the_quadruped(new_scene):
+    templates.build_template("quadruped")
+    templates.delete_template("quadruped")
+    for joint, parent in (
+        ("tail_01_jnt", "pelvis_01_jnt"), ("l_quad_leg_01_jnt", "pelvis_01_jnt"),
+        ("r_scapula_01_jnt", "spine_04_jnt"), ("r_front_leg_01_jnt", "r_scapula_01_jnt"),
+    ):
+        assert _parent(joint) == parent, joint
+
+
+def test_delete_template_leaves_a_chain_whose_parent_is_gone_at_the_world(new_scene):
+    templates.build_template("biped")
+    hand = logic.joints("l_hand_guides_grp")
+    logic.delete_guides("l_hand_guides_grp")
+    cmds.delete(hand)
+
+    templates.delete_template("biped")
+
+    assert _parent("l_index_metacarpal_01_jnt") == ""
+    assert _parent("l_arm_01_jnt") == "l_shoulder_01_jnt"
+
+
+def test_delete_template_with_only_root_built(new_scene):
+    logic.build_guides(**templates.TEMPLATES["biped"][0])
+    assert templates.delete_template("biped") == ["|root_01_jnt"]
