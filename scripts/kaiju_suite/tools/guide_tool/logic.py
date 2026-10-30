@@ -68,11 +68,11 @@ _SHADE = (0.35, 0.75, 1.0)  # light blue
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
 
-def _preset(name, count, start, end, aim, up, up_side, end_joint=True):
+def _preset(name, count, end, aim, up, up_side, end_joint=True):
     return {
         "name": name,
         "count": count,
-        "start": start,
+        "start": (0, 0, 0),
         "end": end,
         "aim": aim,
         "up": up,
@@ -82,26 +82,26 @@ def _preset(name, count, start, end, aim, up, up_side, end_joint=True):
     }
 
 
-# Ready-made chains on a ~180 cm body (Y up, facing +Z, left side at +X),
-# each one's end on the next one's start: build_guides(**PRESETS[name]).
+# Ready-made chains, each starting at the origin and going the way it goes
+# on a ~180 cm body (Y up, facing +Z, left side at +X): build_guides(**PRESETS[name]).
 # ``up_side`` is where the up guide goes, so the up axis points that way.
 PRESETS = {
     preset["name"]: preset
     for preset in (
-        _preset("root", 0, (0, 0, 0), (0, 0, 10), "z", "y", (0, 1, 0), end_joint=False),
-        _preset("spine", 3, (0, 100, 0), (0, 145, 0), "y", "z", (0, 0, -1)),
-        _preset("neck", 1, (0, 145, 0), (0, 160, 0), "y", "z", (0, 0, -1)),
-        _preset("head", 0, (0, 160, 0), (0, 180, 0), "y", "z", (0, 0, 1)),
-        _preset("l_shoulder", 0, (3, 145, 0), (17, 147, 0), "x", "y", (0, 1, 0)),
-        _preset("l_arm", 1, (17, 147, 0), (70, 147, 0), "x", "y", (0, 0, -1)),  # elbow up guide behind
-        _preset("l_hand", 0, (70, 147, 0), (78, 147, 0), "x", "y", (0, 1, 0)),
-        _preset("l_finger", 2, (78, 147, 0), (88, 147, 0), "x", "y", (0, 1, 0)),
-        _preset("l_leg", 1, (10, 95, 0), (10, 10, 0), "x", "y", (0, 0, 1)),
-        _preset("l_foot", 1, (10, 10, 0), (10, 0, 20), "x", "y", (0, 1, 0)),
-        # A hind leg: hip, stifle, hock, fetlock and the toe tip, behind the leg.
-        _preset("l_quad_leg", 3, (10, 95, -15), (10, 0, -15), "x", "y", (0, 0, 1)),
-        _preset("forward_spine", 3, (0, 100, -10), (0, 100, 50), "x", "y", (0, 1, 0)),
-        _preset("tail", 4, (0, 100, -10), (0, 100, -70), "x", "y", (0, 1, 0)),
+        _preset("root", 0, (0, 0, 10), "z", "y", (0, 1, 0), end_joint=False),
+        _preset("spine", 3, (0, 45, 0), "y", "z", (0, 0, -1)),
+        _preset("neck", 1, (0, 15, 0), "y", "z", (0, 0, -1)),
+        _preset("head", 0, (0, 20, 0), "y", "z", (0, 0, 1)),
+        _preset("l_shoulder", 0, (14, 2, 0), "x", "y", (0, 1, 0)),
+        _preset("l_arm", 1, (53, 0, 0), "x", "y", (0, 0, -1)),  # elbow up guide behind
+        _preset("l_hand", 0, (8, 0, 0), "x", "y", (0, 1, 0)),
+        _preset("l_finger", 2, (10, 0, 0), "x", "y", (0, 1, 0)),
+        _preset("l_leg", 1, (0, -85, 0), "x", "y", (0, 0, 1)),
+        _preset("l_foot", 1, (0, -10, 20), "x", "y", (0, 1, 0)),
+        # A hind leg: hip, stifle, hock, fetlock and the toe tip.
+        _preset("l_quad_leg", 3, (0, -95, 0), "x", "y", (0, 0, 1)),
+        _preset("forward_spine", 3, (0, 0, 60), "x", "y", (0, 1, 0)),
+        _preset("tail", 4, (0, 0, -60), "x", "y", (0, 1, 0)),
     )
 }
 

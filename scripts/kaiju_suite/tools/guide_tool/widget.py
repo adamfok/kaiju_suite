@@ -55,8 +55,8 @@ class GuideToolWindow(ToolWindow):
         self.preset = QtWidgets.QComboBox()
         self.preset.setToolTip(
             "Custom: build from 0 to 10 along X.\n"
-            "A preset fills the fields below, and Build places its guides on a ~180 cm body\n"
-            "(Y up, facing +Z, left at +X), each chain's end on the next one's start."
+            "A preset fills the fields below, and Build places its guides from the origin, going\n"
+            "the way that chain goes on a ~180 cm body (Y up, facing +Z, left at +X)."
         )
         self.preset.addItem("Custom", "")
         for preset in logic.PRESETS:

@@ -1338,13 +1338,25 @@ def test_every_preset_builds_from_its_start_to_its_end(new_scene, preset):
     assert len(logic.joints(group)) == settings["count"] + (2 if settings["end_joint"] else 1)
 
 
-def test_presets_line_up_end_to_start():
-    p = logic.PRESETS
-    for a, b in (("spine", "neck"), ("neck", "head"), ("l_shoulder", "l_arm"), ("l_arm", "l_hand"),
-                 ("l_hand", "l_finger"), ("l_leg", "l_foot")):
-        assert _close(p[a]["end"], p[b]["start"]), (a, b)
-    # The tail hangs off the back of the forward spine.
-    assert _close(p["forward_spine"]["start"], p["tail"]["start"])
+def test_every_preset_starts_at_the_origin_and_keeps_its_direction_and_length():
+    ends = {
+        "root": (0, 0, 10),
+        "spine": (0, 45, 0),
+        "neck": (0, 15, 0),
+        "head": (0, 20, 0),
+        "l_shoulder": (14, 2, 0),
+        "l_arm": (53, 0, 0),
+        "l_hand": (8, 0, 0),
+        "l_finger": (10, 0, 0),
+        "l_leg": (0, -85, 0),
+        "l_foot": (0, -10, 20),
+        "l_quad_leg": (0, -95, 0),
+        "forward_spine": (0, 0, 60),
+        "tail": (0, 0, -60),
+    }
+    for name, settings in logic.PRESETS.items():
+        assert _close(settings["start"], (0, 0, 0)), name
+        assert _close(settings["end"], ends[name]), name
 
 
 def test_only_root_has_no_end_joint_and_only_left_presets_mirror():
