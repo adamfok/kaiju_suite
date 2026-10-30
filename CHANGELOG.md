@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### New
+- **Guide Tool** (Kaiju ▸ Guide Tool) is back as its own tool: place a joint chain with move-only guides (start, middles, end and an up guide like a pole vector). The joints follow the guides live and always stay planar. **Build Guides** builds them, also from an existing chain; **Delete Guides** leaves clean joints.
 - **Outliner Tool**: **Unparent** sets selected nodes to world parent and remembers their previous parent. **Reparent** restores selected nodes back to where they were before. The two buttons sit to the left of Lock and Unlock. Each is one undo step.
 - **Outliner Tool**: **Lock** locks and hides every channel box attribute of the selected nodes. **Unlock** unlocks them and makes Translate, Rotate, Scale, Visibility and the nodes' own number attributes keyable again (a joint's Radius comes back shown, not keyable). Each is one undo step.
 

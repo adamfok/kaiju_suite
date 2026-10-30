@@ -87,7 +87,7 @@ def test_there_is_no_rigging_package():
     assert importlib.util.find_spec("kaiju_suite.rigging") is None
 
 
-@pytest.mark.parametrize("name", ["attributes", "colors", "mirror", "orient"])
+@pytest.mark.parametrize("name", ["attributes", "colors", "mirror"])
 def test_core_helpers_nothing_uses_are_gone(name):
     # Only the removed Assembler, rig modules and Utilities features used them.
     import importlib.util

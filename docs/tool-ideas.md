@@ -65,7 +65,7 @@ Reusable pieces in the repo: `rigging/rig_module/helpers.py` (`circle`, `box`, `
     by animators testing the rig.
 
 ## Added since
-11. **Guide Tool** — **Done** (branch `feature/guide-tool`). Place a joint chain with move-only guide
+11. **Guide Tool** — **Done** (branch `feature/guide-tool`; replaced by guide modules, then restored as a standalone Kaiju menu tool on `feature/guide-tool-restore`). Place a joint chain with move-only guide
     locators (start, middles, end, and an up guide like a pole vector) and a joint chain that follows them
     live and is always planar: middle guides are projected onto the start/end/up plane, every joint bends
     around the plane normal, and the end joint lines up with its parent. Building again resets the middle
