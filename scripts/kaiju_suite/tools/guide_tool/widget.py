@@ -24,7 +24,8 @@ class GuideToolWindow(ToolWindow):
     TITLE = "Kaiju Guide Tool"
 
     def build_ui(self):
-        # Three rows: name, middle guides and end joint; axes and mirror; Build and Delete.
+        # Four rows: preset; name, middle guides and end joint; axes and mirror; Build and Delete.
+        self._filling = False  # True while a preset fills the fields
         self.name = QtWidgets.QLineEdit(settings.get(SETTINGS_KEY, "name", "chain"))
         self.name.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
         self.name.textChanged.connect(lambda text: settings.set(SETTINGS_KEY, "name", text))
@@ -50,6 +51,23 @@ class GuideToolWindow(ToolWindow):
             "or get _mirrored with no side. Building again with Mirror off removes it."
         )
         self.mirror.toggled.connect(lambda on: settings.set(SETTINGS_KEY, "mirror", int(on)))
+
+        self.preset = QtWidgets.QComboBox()
+        self.preset.setToolTip(
+            "Custom: build from 0 to 10 along X.\n"
+            "A preset fills the fields below, and Build places its guides on a ~180 cm body\n"
+            "(Y up, facing +Z, left at +X), each chain's end on the next one's start."
+        )
+        self.preset.addItem("Custom", "")
+        for preset in logic.PRESETS:
+            self.preset.addItem(preset, preset)
+        self.preset.setCurrentIndex(max(self.preset.findData(settings.get(SETTINGS_KEY, "preset", "")), 0))
+        self.preset.currentIndexChanged.connect(self._fill_preset)
+
+        preset_row = QtWidgets.QHBoxLayout()
+        preset_row.addWidget(QtWidgets.QLabel("Preset"))
+        preset_row.addWidget(self.preset, 1)
+        self.layout.addLayout(preset_row)
 
         name_row = QtWidgets.QHBoxLayout()
         name_row.addWidget(QtWidgets.QLabel("Name"))
@@ -105,6 +123,24 @@ class GuideToolWindow(ToolWindow):
         combo.currentIndexChanged.connect(self._preview_axes)
         return combo
 
+    def _fill_preset(self, *_):
+        """Fill the fields from the chosen preset (Custom leaves them)."""
+        key = self.preset.currentData()
+        settings.set(SETTINGS_KEY, "preset", key)
+        preset = logic.PRESETS.get(key)
+        if preset is None:
+            return
+        self._filling = True
+        try:
+            self.name.setText(preset["name"])
+            self.count.setValue(preset["count"])
+            self.end_joint.setChecked(preset["end_joint"])
+            self.mirror.setChecked(preset["mirror"])
+            self.aim.setCurrentIndex(self.aim.findData(preset["aim"]))
+            self.up.setCurrentIndex(self.up.findData(preset["up"]))
+        finally:
+            self._filling = False
+
     # -- actions ---------------------------------------------------------------
 
     def _run(self, func, *args, **kwargs):
@@ -129,8 +165,10 @@ class GuideToolWindow(ToolWindow):
             if group is not None:
                 _say(f"Guides built on the joints of {cmds.ls(group)[0]}.")
             return
+        preset = logic.PRESETS.get(self.preset.currentData())
+        place = {k: preset[k] for k in ("start", "end", "up_side")} if preset else {}
         group = self._run(
-            logic.build_guides, name, self.count.value(), end_joint=self.end_joint.isChecked(), **axes
+            logic.build_guides, name, self.count.value(), end_joint=self.end_joint.isChecked(), **axes, **place
         )
         if group is not None:
             cmds.select(logic.guides(group)["chain"][1:-1] or logic.guides(group)["chain"])
@@ -139,8 +177,8 @@ class GuideToolWindow(ToolWindow):
     def _preview_axes(self, *_):
         """Turn the selected chain to the chosen axes. Quiet when no guides
         are selected, or while the two combos share an axis."""
-        if not hasattr(self, "up"):
-            return  # still building the window
+        if not hasattr(self, "up") or self._filling:
+            return  # still building the window, or a preset is filling the fields
         try:
             logic.set_axes(logic.find_group(selected()), aim=self.aim.currentData(), up=self.up.currentData())
         except ValueError:

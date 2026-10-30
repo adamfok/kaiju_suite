@@ -1302,3 +1302,129 @@ def test_guides_from_joints_without_end_puts_the_end_guide_back(new_scene):
         for row_now, row in zip(_rows(joint), rows):
             assert (row_now - row).length() < 1e-4
     assert not cmds.getAttr(f"{logic.previews(group)[-1]}.visibility")
+
+
+# -- presets --------------------------------------------------------------------
+
+_PRESET_NAMES = [
+    "root", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "tail"
+]
+
+
+def _close(a, b, tolerance=1e-3):
+    return (om.MVector(a) - om.MVector(b)).length() < tolerance
+
+
+def test_presets_are_listed_in_order():
+    assert list(logic.PRESETS) == _PRESET_NAMES
+
+
+def test_up_side_places_the_up_guide(new_scene):
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0), up_side=(0, 0, -1))
+
+    assert _close(_pos(logic.guides(group)["up"]), (5, 0, -5))
+
+
+@pytest.mark.parametrize("preset", _PRESET_NAMES)
+def test_every_preset_builds_from_its_start_to_its_end(new_scene, preset):
+    settings = logic.PRESETS[preset]
+
+    group = logic.build_guides(**settings)
+
+    chain = logic.guides(group)["chain"]
+    assert len(chain) == settings["count"] + 2
+    assert _close(_pos(chain[0]), settings["start"]) and _close(_pos(chain[-1]), settings["end"])
+    assert len(logic.joints(group)) == settings["count"] + (2 if settings["end_joint"] else 1)
+
+
+def test_presets_line_up_end_to_start():
+    p = logic.PRESETS
+    for a, b in (("spine", "neck"), ("neck", "head"), ("l_shoulder", "l_arm"), ("l_arm", "l_hand"),
+                 ("l_hand", "l_finger"), ("l_leg", "l_foot")):
+        assert _close(p[a]["end"], p[b]["start"]), (a, b)
+
+
+def test_only_root_has_no_end_joint_and_only_left_presets_mirror():
+    for name, settings in logic.PRESETS.items():
+        assert settings["end_joint"] == (name != "root"), name
+        assert settings["mirror"] == name.startswith("l_"), name
+
+
+def _assert_axes(joint, x=None, y=None, z=None):
+    for axis, want in (("x", x), ("y", y), ("z", z)):
+        if want is not None:
+            assert (_axis(joint, axis) - om.MVector(want).normalize()).length() < 1e-3, (joint, axis, _axis(joint, axis))
+
+
+def test_root_is_one_joint_at_the_origin_aligned_with_the_world(new_scene):
+    group = logic.build_guides(**logic.PRESETS["root"])
+
+    (joint,) = logic.joints(group)
+    assert short_name(joint) == "root_01_jnt"
+    assert _close(_pos(joint), (0, 0, 0))
+    _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
+
+
+@pytest.mark.parametrize("preset", ["spine", "neck"])
+def test_spine_and_neck_aim_up_with_z_to_the_back(new_scene, preset):
+    group = logic.build_guides(**logic.PRESETS[preset])
+
+    joints = logic.joints(group)
+    assert short_name(joints[-1]).endswith("_jnt_end")
+    for joint in joints:
+        _assert_axes(joint, y=(0, 1, 0), z=(0, 0, -1))
+
+
+def test_head_is_built_aligned_with_the_world(new_scene):
+    group = logic.build_guides(**logic.PRESETS["head"])
+
+    assert [short_name(j) for j in logic.joints(group)] == ["head_01_jnt", "head_02_jnt_end"]
+    for joint in logic.joints(group):
+        _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
+
+
+@pytest.mark.parametrize("preset", ["l_shoulder", "l_arm", "l_hand", "l_finger"])
+def test_arm_presets_aim_to_the_side_with_y_up(new_scene, preset):
+    settings = logic.PRESETS[preset]
+    group = logic.build_guides(**settings)
+
+    out = om.MVector(settings["end"]) - om.MVector(settings["start"])
+    for joint in logic.joints(group):
+        _assert_axes(joint, x=out)
+        assert _axis(joint, "y").y > 0.9
+    assert short_name(logic.mirrored_joints(group)[0]) == f"r_{preset[2:]}_01_jnt"
+
+
+def test_leg_aims_down_with_y_forward(new_scene):
+    group = logic.build_guides(**logic.PRESETS["l_leg"])
+
+    for joint in logic.joints(group):
+        _assert_axes(joint, x=(0, -1, 0), y=(0, 0, 1))
+
+
+def test_foot_aims_forward_with_y_up(new_scene):
+    settings = logic.PRESETS["l_foot"]
+    group = logic.build_guides(**settings)
+
+    for joint in logic.joints(group):
+        _assert_axes(joint, x=om.MVector(settings["end"]) - om.MVector(settings["start"]))
+        assert _axis(joint, "y").y > 0.8
+
+
+def test_quad_leg_is_a_four_joint_hind_leg_aiming_down_with_y_forward(new_scene):
+    group = logic.build_guides(**logic.PRESETS["l_quad_leg"])
+
+    joints = logic.joints(group)
+    assert [short_name(j) for j in joints] == [f"l_quad_leg_{i:02d}_jnt" for i in range(1, 5)] + ["l_quad_leg_05_jnt_end"]
+    for joint in joints:
+        _assert_axes(joint, x=(0, -1, 0), y=(0, 0, 1))
+    assert short_name(logic.mirrored_joints(group)[0]) == "r_quad_leg_01_jnt"
+
+
+def test_tail_goes_back_with_x_aim_and_y_up(new_scene):
+    group = logic.build_guides(**logic.PRESETS["tail"])
+
+    assert short_name(logic.joints(group)[-1]).endswith("_jnt_end")
+    for joint in logic.joints(group):
+        _assert_axes(joint, x=(0, 0, -1), y=(0, 1, 0))
+    assert logic.mirrored_joints(group) == []
