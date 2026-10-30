@@ -58,6 +58,7 @@ TEMPLATES = {
         _placed("root", (0, 0, 0)),
         _placed("pelvis", (0, 100, 0)),
         _placed("spine", (0, 100, 0)),
+        _placed("torso", (0, 130, 0)),
         _placed("neck", (0, 145, 0)),
         _placed("head", (0, 160, 0)),
         _placed("l_shoulder", (3, 145, 0)),
@@ -96,9 +97,10 @@ PARENTS = {
     "biped": {
         "pelvis": "root",
         "spine": "pelvis",
-        "neck": "spine",
+        "torso": "spine",
+        "neck": "torso",
         "head": "neck",
-        "l_shoulder": "spine",
+        "l_shoulder": "torso",
         "l_arm": "l_shoulder",
         "l_hand": "l_arm",
         **{f"l_{finger}_metacarpal": "l_hand" for finger in _KNUCKLES},
@@ -258,7 +260,8 @@ def _hik_chains(root=None):
     fingers = ("Index", "Middle", "Ring", "Pinky")
     chains = {
         "pelvis": _anchors("Hips"),
-        "spine": _anchors("Hips", "Neck"),
+        "spine": _anchors("Hips", "Spine2", ["Spine", "Spine1"]),
+        "torso": _anchors("Spine2", "Neck"),
         "neck": _anchors("Neck", "Head", ["Neck1"]),
         "head": _anchors("Head", ["HeadTop_End", None]),
         "l_shoulder": _anchors("LeftShoulder", "LeftArm"),
@@ -286,7 +289,8 @@ SKELETONS = {
         "chains": {
             "root": _anchors("root"),
             "pelvis": _anchors("pelvis"),
-            "spine": _anchors("pelvis", "neck_01"),
+            "spine": _anchors("pelvis", "spine_03", ["spine_01", "spine_02"]),
+            "torso": _anchors("spine_03", "neck_01"),
             "neck": _anchors("neck_01", "head", ["neck_02"]),
             "head": _anchors("head"),
             "l_shoulder": _anchors("clavicle_l", "upperarm_l"),
@@ -317,7 +321,8 @@ SKELETONS = {
         "find": "names",
         "chains": {
             "pelvis": _anchors("spine_C0_0_jnt"),
-            "spine": _anchors("spine_C0_0_jnt", "neck_C0_0_jnt"),
+            "spine": _anchors("spine_C0_0_jnt", "spine_C0_3_jnt", ["spine_C0_1_jnt", "spine_C0_2_jnt"]),
+            "torso": _anchors("spine_C0_3_jnt", "neck_C0_0_jnt"),
             "neck": _anchors("neck_C0_0_jnt", "neck_C0_head_jnt", ["neck_C0_1_jnt"]),
             "head": _anchors("neck_C0_head_jnt"),
             "l_shoulder": _anchors("shoulder_L0_shoulder_jnt", "arm_L0_0_jnt"),

@@ -7,7 +7,7 @@ from kaiju_suite.tools.guide_tool import logic, templates
 
 _FINGERS = ("index", "middle", "ring", "pinky")
 _BIPED = [
-    "root", "pelvis", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand",
+    "root", "pelvis", "spine", "torso", "neck", "head", "l_shoulder", "l_arm", "l_hand",
     *(f"l_{f}_metacarpal" for f in _FINGERS), "l_thumb", *(f"l_{f}" for f in _FINGERS),
     "l_leg", "l_foot",
 ]
@@ -42,7 +42,7 @@ def test_biped_has_every_chain_in_order():
 
 def test_biped_chains_connect():
     c = _chains()
-    for a, b in (("spine", "neck"), ("neck", "head"), ("l_shoulder", "l_arm"), ("l_arm", "l_hand"),
+    for a, b in (("spine", "torso"), ("torso", "neck"), ("neck", "head"), ("l_shoulder", "l_arm"), ("l_arm", "l_hand"),
                  ("l_leg", "l_foot")):
         assert _close(c[a]["end"], c[b]["start"]), (a, b)
     for finger in _FINGERS:
@@ -82,6 +82,16 @@ def test_pelvis_is_one_joint_where_the_spine_starts(template):
     pelvis_way = om.MVector(c["pelvis"]["end"]) - om.MVector(c["pelvis"]["start"])
     spine_way = om.MVector(c["spine"]["end"]) - om.MVector(c["spine"]["start"])
     assert (pelvis_way.normal() - spine_way.normal()).length() < 1e-6
+
+
+def test_biped_spine_and_torso_split_the_back():
+    c = _chains()
+    assert (c["spine"]["count"], c["torso"]["count"]) == (2, 0)
+    assert c["spine"]["end_joint"] and c["torso"]["end_joint"]
+    for name, a, b in (("spine", (0, 100, 0), (0, 130, 0)), ("torso", (0, 130, 0), (0, 145, 0))):
+        assert _close(c[name]["start"], a) and _close(c[name]["end"], b), name
+    for key in ("aim", "up", "up_side"):
+        assert c["torso"][key] == c["spine"][key], key
 
 
 def test_quadruped_has_every_chain_in_order():
@@ -183,7 +193,7 @@ def test_biped_axes_follow_the_presets(new_scene):
     templates.build_template("biped")
 
     world = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}
-    for group in ("pelvis_guides_grp", "spine_guides_grp", "neck_guides_grp"):
+    for group in ("pelvis_guides_grp", "spine_guides_grp", "torso_guides_grp", "neck_guides_grp"):
         for joint in logic.joints(group):
             _assert_axes(joint, world)
     for joint in logic.joints("l_arm_guides_grp"):
@@ -389,7 +399,7 @@ def test_align_puts_each_chain_on_its_anchor_joints(new_scene):
 
     assert not report["skipped"], report["skipped"]
     for chain, start, end in (
-        ("spine", "pelvis", "neck_01"), ("neck", "neck_01", "head"), ("l_shoulder", "clavicle_l", "upperarm_l"),
+        ("spine", "pelvis", "spine_03"), ("torso", "spine_03", "neck_01"), ("neck", "neck_01", "head"), ("l_shoulder", "clavicle_l", "upperarm_l"),
         ("l_arm", "upperarm_l", "hand_l"), ("l_hand", "hand_l", "middle_01_l"),
         ("l_index_metacarpal", "hand_l", "index_01_l"), ("l_leg", "thigh_l", "foot_l"),
     ):
@@ -407,6 +417,7 @@ def test_align_puts_middle_guides_on_key_joints_when_the_counts_match(new_scene)
     templates.align("biped", [joints["root"]], "ue5")
 
     for chain, index, joint in (
+        ("spine", 1, "spine_01"), ("spine", 2, "spine_02"),
         ("l_arm", 1, "lowerarm_l"), ("l_leg", 1, "calf_l"), ("l_foot", 1, "ball_l"), ("neck", 1, "neck_02"),
         ("l_middle", 1, "middle_02_l"), ("l_middle", 2, "middle_03_l"), ("l_thumb", 1, "thumb_02_l"),
     ):
@@ -415,13 +426,15 @@ def test_align_puts_middle_guides_on_key_joints_when_the_counts_match(new_scene)
 
 def test_align_spreads_middle_guides_evenly_otherwise(new_scene):
     templates.build_template("biped")
-    joints = _skeleton()
+    table = {name: entry for name, entry in _UE5.items() if name != "spine_02"}
+    table["spine_03"] = ("spine_01", _UE5["spine_03"][1])
+    joints = _skeleton(table)
 
     templates.align("biped", [joints["root"]], "ue5")
 
-    start, end = _ue5_pos("pelvis"), _ue5_pos("neck_01")
-    for i in range(1, 4):
-        assert _close(_guide_pos("spine", i), start + (end - start) * (i / 4.0)), i
+    start, end = _ue5_pos("pelvis"), _ue5_pos("spine_03")
+    for i in range(1, 3):
+        assert _close(_guide_pos("spine", i), start + (end - start) * (i / 3.0)), i
 
 
 def test_align_extends_past_the_last_joint_where_there_is_no_end(new_scene):
@@ -446,7 +459,8 @@ def test_align_puts_limb_up_guides_where_they_bend(new_scene):
 
     assert _guide_pos("l_arm", "up").z < _ue5_pos("lowerarm_l").z - 1  # behind the elbow
     assert _guide_pos("l_leg", "up").z > _ue5_pos("calf_l").z + 1  # in front of the knee
-    assert _guide_pos("spine", "up").z < -1  # the spine keeps its up guide behind
+    assert _guide_pos("spine", "up").z < -1  # the spine and torso keep their up guides behind
+    assert _guide_pos("torso", "up").z < -1
 
 
 def test_align_moves_the_joints_and_the_mirror(new_scene):
@@ -577,7 +591,8 @@ def test_align_to_mixamo(new_scene):
     assert report["skeleton"] == "mixamo"
     assert [name for name, _ in report["skipped"]] == ["root"]  # Mixamo has no root joint
     for chain, start, end in (
-        ("spine", "Hips", "Neck"), ("neck", "Neck", "Head"), ("head", "Head", "HeadTop_End"),
+        ("spine", "Hips", "Spine2"), ("torso", "Spine2", "Neck"), ("neck", "Neck", "Head"),
+        ("head", "Head", "HeadTop_End"),
         ("l_shoulder", "LeftShoulder", "LeftArm"), ("l_arm", "LeftArm", "LeftHand"),
         ("l_hand", "LeftHand", "LeftHandMiddle1"), ("l_ring_metacarpal", "LeftHand", "LeftHandRing1"),
         ("l_index", "LeftHandIndex1", "LeftHandIndex4"), ("l_thumb", "LeftHandThumb1", "LeftHandThumb4"),
@@ -585,6 +600,8 @@ def test_align_to_mixamo(new_scene):
     ):
         assert _close(_guide_pos(chain, 0), _mixamo_pos(start)), chain
         assert _close(_guide_pos(chain, -1), _mixamo_pos(end)), chain
+    assert _close(_guide_pos("spine", 1), _mixamo_pos("Spine"))
+    assert _close(_guide_pos("spine", 2), _mixamo_pos("Spine1"))
     assert _close(_guide_pos("l_arm", 1), _mixamo_pos("LeftForeArm"))
     assert _close(_guide_pos("l_index", 2), _mixamo_pos("LeftHandIndex3"))
     assert _close(_guide_pos("l_foot", 1), _mixamo_pos("LeftToeBase"))
@@ -751,7 +768,8 @@ def test_align_to_mgear(new_scene):
     assert report["skeleton"] == "mgear"
     assert [name for name, _ in report["skipped"]] == ["root"]  # mGear's biped has no root joint
     for chain, start, end in (
-        ("spine", "spine_C0_0_jnt", "neck_C0_0_jnt"),
+        ("spine", "spine_C0_0_jnt", "spine_C0_3_jnt"),
+        ("torso", "spine_C0_3_jnt", "neck_C0_0_jnt"),
         ("neck", "neck_C0_0_jnt", "neck_C0_head_jnt"),
         ("l_shoulder", "shoulder_L0_shoulder_jnt", "arm_L0_0_jnt"),
         ("l_arm", "arm_L0_0_jnt", "arm_L0_end_jnt"),
@@ -967,8 +985,9 @@ def test_every_chain_but_root_has_an_earlier_parent_chain(template):
 def test_build_template_saves_the_parent_chains_end_joint_as_default_parent(new_scene):
     templates.build_template("biped")
     for joint, parent in (
-        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("neck_01_jnt", "spine_05_jnt_end"),
-        ("l_shoulder_01_jnt", "spine_05_jnt_end"), ("r_shoulder_01_jnt", "spine_05_jnt_end"),
+        ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("torso_01_jnt", "spine_04_jnt_end"),
+        ("neck_01_jnt", "torso_02_jnt_end"),
+        ("l_shoulder_01_jnt", "torso_02_jnt_end"), ("r_shoulder_01_jnt", "torso_02_jnt_end"),
         ("l_arm_01_jnt", "l_shoulder_02_jnt_end"), ("r_arm_01_jnt", "r_shoulder_02_jnt_end"),
         ("l_index_01_jnt", "l_index_metacarpal_02_jnt_end"), ("l_thumb_01_jnt", "l_hand_01_jnt"),
         ("l_leg_01_jnt", "pelvis_01_jnt"), ("r_foot_01_jnt", "r_leg_03_jnt_end"),
@@ -984,7 +1003,7 @@ def test_delete_template_parents_the_biped_into_one_skeleton(new_scene):
 
     for joint, parent in (
         ("pelvis_01_jnt", "root_01_jnt"), ("spine_01_jnt", "pelvis_01_jnt"), ("head_01_jnt", "neck_03_jnt_end"),
-        ("r_shoulder_01_jnt", "spine_05_jnt_end"), ("r_hand_01_jnt", "r_arm_03_jnt_end"),
+        ("r_shoulder_01_jnt", "torso_02_jnt_end"), ("r_hand_01_jnt", "r_arm_03_jnt_end"),
         ("l_middle_metacarpal_01_jnt", "l_hand_01_jnt"), ("r_pinky_01_jnt", "r_pinky_metacarpal_02_jnt_end"),
         ("l_leg_01_jnt", "pelvis_01_jnt"), ("l_foot_01_jnt", "l_leg_03_jnt_end"),
     ):

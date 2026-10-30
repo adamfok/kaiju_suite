@@ -1355,7 +1355,7 @@ def test_guides_from_joints_without_end_puts_the_end_guide_back(new_scene):
 # -- presets --------------------------------------------------------------------
 
 _PRESET_NAMES = [
-    "root", "pelvis", "spine", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "l_scapula",
+    "root", "pelvis", "spine", "torso", "neck", "head", "l_shoulder", "l_arm", "l_hand", "l_finger", "l_leg", "l_foot", "l_quad_leg", "l_scapula",
     "l_front_leg", "forward_spine", "tail",
 ]
 
@@ -1389,7 +1389,8 @@ def test_every_preset_builds_from_its_start_to_its_end(new_scene, preset):
 def test_every_preset_starts_at_the_origin_and_keeps_its_direction_and_length():
     ends = {
         "root": (0, 0, 10),
-        "spine": (0, 45, 0),
+        "spine": (0, 30, 0),
+        "torso": (0, 15, 0),
         "neck": (0, 15, 0),
         "head": (0, 20, 0),
         "l_shoulder": (14, 2, 0),
@@ -1442,8 +1443,17 @@ def test_root_is_one_joint_at_the_origin_aligned_with_the_world(new_scene):
     _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
 
 
-@pytest.mark.parametrize("preset", ["spine", "neck"])
-def test_spine_and_neck_aim_up_y_with_minus_z_to_the_back(new_scene, preset):
+def test_spine_has_four_joints_and_torso_two(new_scene):
+    for preset, names in (
+        ("spine", ["spine_01_jnt", "spine_02_jnt", "spine_03_jnt", "spine_04_jnt_end"]),
+        ("torso", ["torso_01_jnt", "torso_02_jnt_end"]),
+    ):
+        group = logic.build_guides(**logic.PRESETS[preset])
+        assert [short_name(j) for j in logic.joints(group)] == names
+
+
+@pytest.mark.parametrize("preset", ["spine", "torso", "neck"])
+def test_spine_torso_and_neck_aim_up_y_with_minus_z_to_the_back(new_scene, preset):
     settings = logic.PRESETS[preset]
     group = logic.build_guides(**settings)
 
