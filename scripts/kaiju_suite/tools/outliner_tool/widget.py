@@ -22,7 +22,7 @@ def _remove_callback(callback_id):
 
 class OutlinerToolWindow(ToolWindow):
     """Preview line, one rename field (see ``logic.SHORTCUTS``), Group / Chain / Offset,
-    and Parent / Unparent / Reparent / Lock / Unlock at the right."""
+    and Set Default Parent / Reparent / Lock / Unlock at the right."""
 
     TITLE = "Kaiju Outliner Tool"
 
@@ -54,11 +54,9 @@ class OutlinerToolWindow(ToolWindow):
             ("chain", "Chain: parent each selected node under the one selected before it", self._chain),
             ("offset", "Offset: put a lined-up <node>_offset group above each selected node", self._offset),
             None,  # the rest sit at the right edge
-            ("parent", "Parent: parent the selected nodes under the one selected last (like P),\n"
-                       "saving their previous parent on them for Reparent", self._parent),
-            ("unparent", "Unparent: parent selected nodes to the world, saving their previous parent on them", self._unparent),
-            ("reparent", "Reparent: put selected nodes back under the parent Parent or Unparent saved\n"
-                         "(where they were before their first move), wherever they are now", self._reparent),
+            ("default_parent", "Set Default Parent: save each selected node's current parent on it\n"
+                               "as its default parent, for Reparent", self._set_default_parent),
+            ("reparent", "Reparent: put selected nodes back under their default parent, wherever they are now", self._reparent),
             ("lock", "Lock: lock and hide every channel box attribute of the selected nodes", self._lock),
             ("unlock", "Unlock: unlock and make keyable the transform channels and the nodes' own\n"
                        "number attributes (a joint's radius comes back shown, not keyable)", self._unlock),
@@ -131,11 +129,8 @@ class OutlinerToolWindow(ToolWindow):
     def _offset(self):
         self._run(logic.offset)
 
-    def _parent(self):
-        self._run(logic.parent_under_last)
-
-    def _unparent(self):
-        self._run(logic.unparent)
+    def _set_default_parent(self):
+        self._run(logic.set_default_parent)
 
     def _reparent(self):
         self._run(logic.reparent)

@@ -251,35 +251,23 @@ def offset(nodes):
     return [_long(uuid) for uuid in offsets]
 
 
-# -- parent, unparent and reparent --------------------------------------------
+# -- default parent and reparent ----------------------------------------------
 
-# The parent a node had before Parent or Unparent moved it, saved on the node so
-# it survives saving the scene. The UUID finds the parent after renames; the long
-# name is the fallback when the UUID changed (an import). An empty name is the world.
-_SAVED_UUID = "kaijuPrevParentUuid"
-_SAVED_NAME = "kaijuPrevParentName"
-
-
-def _has_saved_parent(node):
-    return cmds.attributeQuery(_SAVED_UUID, node=node, exists=True)
+# A node's default parent, saved on the node so it survives saving the scene. The
+# UUID finds the parent after renames; the long name is the fallback when the UUID
+# changed (an import). An empty name is the world.
+_DEFAULT_UUID = "kaijuDefaultParentUuid"
+_DEFAULT_NAME = "kaijuDefaultParentName"
 
 
-def _save_parent(node):
-    """Save ``node``'s current parent on it, unless one is saved already: Reparent
-    goes back to where the node was before its first move."""
-    if _has_saved_parent(node):
-        return
-    parents = cmds.listRelatives(node, parent=True, fullPath=True) or [""]
-    uuid = cmds.ls(parents[0], uuid=True)[0] if parents[0] else ""
-    for attr, value in ((_SAVED_UUID, uuid), (_SAVED_NAME, parents[0])):
-        cmds.addAttr(node, longName=attr, dataType="string", hidden=True)
-        cmds.setAttr(f"{node}.{attr}", value, type="string")
+def _has_default_parent(node):
+    return cmds.attributeQuery(_DEFAULT_UUID, node=node, exists=True)
 
 
-def _saved_parent(node):
-    """The long name of ``node``'s saved parent, ``""`` for the world, or ``None`` if it's gone."""
-    uuid = cmds.getAttr(f"{node}.{_SAVED_UUID}")
-    name = cmds.getAttr(f"{node}.{_SAVED_NAME}") or ""
+def _default_parent(node):
+    """The long name of ``node``'s default parent, ``""`` for the world, or ``None`` if it's gone."""
+    uuid = cmds.getAttr(f"{node}.{_DEFAULT_UUID}")
+    name = cmds.getAttr(f"{node}.{_DEFAULT_NAME}") or ""
     if not name:
         return ""
     try:
@@ -291,56 +279,29 @@ def _saved_parent(node):
     return matches[0] if matches else None
 
 
-def _clear_saved_parent(node):
-    cmds.deleteAttr(node, attribute=_SAVED_UUID)
-    cmds.deleteAttr(node, attribute=_SAVED_NAME)
-
-
 @undoable
-def parent_under_last(nodes):
-    """Parent ``nodes`` under the last one (like Maya's P key), keeping world positions
-    and saving each node's previous parent for Reparent. Returns the moved nodes' new
-    long names. Raises ``ValueError`` without changing anything if the last node is
-    under one of the others.
-    """
-    if len(nodes) < 2:
-        raise ValueError("Select the nodes to move, then the new parent last")
-    *children, target = nodes
-    for node in children:
-        if target.startswith(node + "|"):
-            raise ValueError(f"{short_name(target)} is under {short_name(node)}")
-    uuids = cmds.ls(children, uuid=True)
-    target_uuid = cmds.ls(target, uuid=True)[0]
-    for uuid in uuids:
-        node = _long(uuid)
-        if cmds.listRelatives(node, parent=True, fullPath=True) == [_long(target_uuid)]:
-            continue
-        _save_parent(node)
-        cmds.parent(_long(uuid), _long(target_uuid))
-    return [_long(uuid) for uuid in uuids]
-
-
-@undoable
-def unparent(nodes):
-    """Parent ``nodes`` to the world, saving their previous parent. Returns their new long names."""
+def set_default_parent(nodes):
+    """Save each node's current parent (or the world) on it as its default parent,
+    replacing any saved before. Returns ``nodes``."""
     if not nodes:
         raise ValueError("Nothing selected")
-    uuids = cmds.ls(nodes, uuid=True)
-    for uuid in uuids:
-        node = _long(uuid)
-        if cmds.listRelatives(node, parent=True):
-            _save_parent(node)
-            cmds.parent(node, world=True)
-    return [_long(uuid) for uuid in uuids]
+    for node in nodes:
+        parent = (cmds.listRelatives(node, parent=True, fullPath=True) or [""])[0]
+        uuid = cmds.ls(parent, uuid=True)[0] if parent else ""
+        for attr, value in ((_DEFAULT_UUID, uuid), (_DEFAULT_NAME, parent)):
+            if not cmds.attributeQuery(attr, node=node, exists=True):
+                cmds.addAttr(node, longName=attr, dataType="string", hidden=True)
+            cmds.setAttr(f"{node}.{attr}", value, type="string")
+    return list(nodes)
 
 
 @undoable
 def reparent(nodes):
-    """Parent ``nodes`` back under the parent Parent or Unparent saved, wherever they
-    are now, and clear it. Returns their new long names.
+    """Parent ``nodes`` back under their default parent, wherever they are now, keeping
+    world positions. Returns their new long names.
 
-    Nodes with nothing saved are skipped. Raises ``ValueError`` without changing
-    anything if a saved parent is gone or now sits under the node.
+    Nodes with no default parent are skipped. Raises ``ValueError`` without changing
+    anything if a default parent is gone or now sits under the node.
     """
     if not nodes:
         raise ValueError("Nothing selected")
@@ -348,24 +309,24 @@ def reparent(nodes):
     moves = []
     for uuid in uuids:
         node = _long(uuid)
-        if not _has_saved_parent(node):
+        if not _has_default_parent(node):
             continue
-        target = _saved_parent(node)
+        target = _default_parent(node)
         if target is None:
-            raise ValueError(f"Previous parent for '{short_name(node)}' no longer exists")
+            raise ValueError(f"Default parent for '{short_name(node)}' no longer exists")
         if target.startswith(node + "|"):
             raise ValueError(f"{short_name(target)} is now under {short_name(node)}")
         moves.append((uuid, cmds.ls(target, uuid=True)[0] if target else ""))
     if not moves:
-        raise ValueError("No previous parent remembered")
+        raise ValueError("No default parent set")
 
     for uuid, parent_uuid in moves:
-        current = cmds.listRelatives(_long(uuid), parent=True, fullPath=True) or [""]
+        current = (cmds.listRelatives(_long(uuid), parent=True, fullPath=True) or [""])[0]
         target = _long(parent_uuid) if parent_uuid else ""
-        if current[0] != target:
-            if target:
-                cmds.parent(_long(uuid), target)
-            else:
-                cmds.parent(_long(uuid), world=True)
-        _clear_saved_parent(_long(uuid))
+        if current == target:
+            continue
+        if target:
+            cmds.parent(_long(uuid), target)
+        else:
+            cmds.parent(_long(uuid), world=True)
     return [_long(uuid) for uuid in uuids]
