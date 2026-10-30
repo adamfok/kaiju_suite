@@ -388,3 +388,154 @@ def test_align_prints_no_errors(new_scene):
         om.MMessage.removeCallback(callback)
 
     assert printed == []
+
+
+# -- align: Mixamo and HumanIK ------------------------------------------------------
+
+# A stand-in Mixamo skeleton: HumanIK-style names, a HeadTop_End, finger tips
+# (…4) and a toe end, no root joint.
+_MIXAMO = {
+    "Hips": (None, (0, 95, 0)),
+    "Spine": ("Hips", (0, 105, -1)),
+    "Spine1": ("Spine", (0, 120, -2)),
+    "Spine2": ("Spine1", (0, 135, -1)),
+    "Neck": ("Spine2", (0, 150, -1)),
+    "Head": ("Neck", (0, 160, 1)),
+    "HeadTop_End": ("Head", (0, 178, 2)),
+    "LeftShoulder": ("Spine2", (2, 145, 1)),
+    "LeftArm": ("LeftShoulder", (16, 145, -2)),
+    "LeftForeArm": ("LeftArm", (40, 130, -8)),
+    "LeftHand": ("LeftForeArm", (64, 115, -2)),
+    "LeftHandThumb1": ("LeftHand", (66, 113, 1)),
+    "LeftHandThumb2": ("LeftHandThumb1", (68, 110, 4)),
+    "LeftHandThumb3": ("LeftHandThumb2", (69, 108, 6)),
+    "LeftHandThumb4": ("LeftHandThumb3", (70, 106, 8)),
+    "LeftUpLeg": ("Hips", (9, 92, 0)),
+    "LeftLeg": ("LeftUpLeg", (10, 50, 4)),
+    "LeftFoot": ("LeftLeg", (10, 8, -1)),
+    "LeftToeBase": ("LeftFoot", (10, 1, 12)),
+    "LeftToe_End": ("LeftToeBase", (10, 1, 19)),
+}
+for _i, (_finger, _z) in enumerate((("Index", 1), ("Middle", -1), ("Ring", -3), ("Pinky", -5))):
+    for _n, _x in enumerate((72, 76, 78.5, 80.5), start=1):
+        _parent = "LeftHand" if _n == 1 else f"LeftHand{_finger}{_n - 1}"
+        _MIXAMO[f"LeftHand{_finger}{_n}"] = (_parent, (_x - _i * 0.5, 110 - (_n - 1) * 2.5, _z))
+
+
+def _mixamo_pos(name):
+    return om.MVector(_MIXAMO[name][1])
+
+
+def test_skeletons_list_mixamo_and_humanik():
+    labels = {key: skeleton["label"] for key, skeleton in templates.SKELETONS.items()}
+    assert labels["mixamo"] == "Mixamo" and labels["humanik"] == "HumanIK"
+
+
+def test_detect_finds_mixamo_in_a_namespace_or_with_a_name_prefix(new_scene):
+    joints = _skeleton(_MIXAMO, namespace="mixamorig")
+    assert templates.detect([joints["LeftLeg"]]) == "mixamo"
+
+    cmds.file(new=True, force=True)
+    renamed = {f"mixamorig_{name}": ((f"mixamorig_{p}" if p else None), at) for name, (p, at) in _MIXAMO.items()}
+    joints = _skeleton(renamed, namespace=None)
+    assert templates.detect([joints["mixamorig_Hips"]]) == "mixamo"
+
+
+def test_align_to_mixamo(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton(_MIXAMO, namespace="mixamorig")
+
+    report = templates.align("biped", [joints["Hips"]])
+
+    assert report["skeleton"] == "mixamo"
+    assert [name for name, _ in report["skipped"]] == ["root"]  # Mixamo has no root joint
+    for chain, start, end in (
+        ("spine", "Hips", "Neck"), ("neck", "Neck", "Head"), ("head", "Head", "HeadTop_End"),
+        ("l_shoulder", "LeftShoulder", "LeftArm"), ("l_arm", "LeftArm", "LeftHand"),
+        ("l_hand", "LeftHand", "LeftHandMiddle1"), ("l_ring_metacarpal", "LeftHand", "LeftHandRing1"),
+        ("l_index", "LeftHandIndex1", "LeftHandIndex4"), ("l_thumb", "LeftHandThumb1", "LeftHandThumb4"),
+        ("l_leg", "LeftUpLeg", "LeftFoot"), ("l_foot", "LeftFoot", "LeftToe_End"),
+    ):
+        assert _close(_guide_pos(chain, 0), _mixamo_pos(start)), chain
+        assert _close(_guide_pos(chain, -1), _mixamo_pos(end)), chain
+    assert _close(_guide_pos("l_arm", 1), _mixamo_pos("LeftForeArm"))
+    assert _close(_guide_pos("l_index", 2), _mixamo_pos("LeftHandIndex3"))
+    assert _close(_guide_pos("l_foot", 1), _mixamo_pos("LeftToeBase"))
+
+
+def test_align_to_mixamo_without_tip_joints_extends_past_the_last_knuckle(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton(_MIXAMO, namespace="mixamorig", skip=("LeftHandIndex4", "LeftToe_End", "HeadTop_End"))
+
+    report = templates.align("biped", [joints["Hips"]], "mixamo")
+
+    assert [name for name, _ in report["skipped"]] == ["root"]
+    last, before = _mixamo_pos("LeftHandIndex3"), _mixamo_pos("LeftHandIndex2")
+    assert (_guide_pos("l_index", -1) - last) * (last - before) > 0
+    assert _guide_pos("l_foot", -1).z > _mixamo_pos("LeftToeBase").z + 1
+    assert _guide_pos("head", -1).y > _mixamo_pos("Head").y + 1
+
+
+def _humanik(table, names):
+    """Characterize the skeleton ``names`` (slot -> joint) as a HumanIK
+    character and return it."""
+    from maya import mel
+
+    cmds.loadPlugin("mayaHIK", quiet=True)
+    character = cmds.createNode("HIKCharacterNode", name="Character1")
+    for slot, joint in names.items():
+        node_id = mel.eval(f'hikGetNodeIdFromName("{slot}")')
+        mel.eval(f'setCharacterObject("{joint}", "{character}", {node_id}, 0)')
+    return character
+
+
+def test_align_to_humanik_finds_joints_by_their_slots_not_their_names(new_scene):
+    templates.build_template("biped")
+    # The Mixamo layout, with every joint renamed to something HumanIK can't guess.
+    odd = {name: f"bone_{i:02d}" for i, name in enumerate(_MIXAMO)}
+    renamed = {odd[name]: ((odd[p] if p else None), at) for name, (p, at) in _MIXAMO.items()}
+    joints = _skeleton(renamed, namespace=None)
+    cmds.select(clear=True)
+    reference = cmds.joint(name="bone_ref", position=(0, 0, 0))
+    cmds.parent(joints[odd["Hips"]], reference)
+    joints = {name: cmds.ls(odd[name], long=True)[0] for name in _MIXAMO}
+    _humanik(renamed, {"Reference": reference, **{name: joints[name] for name in _MIXAMO if name != "HeadTop_End"
+                                                  and name != "LeftToe_End"}})
+
+    report = templates.align("biped", [joints["Spine1"]])
+
+    assert report["skeleton"] == "humanik"
+    assert not report["skipped"], report["skipped"]
+    assert _close(_guide_pos("root", 0), (0, 0, 0))
+    assert _close(_guide_pos("l_arm", 0), _mixamo_pos("LeftArm"))
+    assert _close(_guide_pos("l_arm", 1), _mixamo_pos("LeftForeArm"))
+    assert _close(_guide_pos("l_leg", -1), _mixamo_pos("LeftFoot"))
+    assert _close(_guide_pos("l_pinky", -1), _mixamo_pos("LeftHandPinky4"))
+
+
+def test_humanik_neck_middle_goes_on_neck1_when_it_is_defined(new_scene):
+    templates.build_template("biped")
+    table = {}
+    for name, entry in _MIXAMO.items():
+        if name == "Head":
+            table["Neck1"] = ("Neck", (0, 155, 0))
+            entry = ("Neck1", entry[1])
+        table[name] = entry
+    joints = _skeleton(table, namespace=None)
+    _humanik(table, {name: joints[name] for name in ("Hips", "Spine", "Neck", "Neck1", "Head")})
+
+    templates.align("biped", [joints["Hips"]], "humanik")
+
+    assert _close(_guide_pos("neck", 1), (0, 155, 0))
+
+
+def test_ue5_neck_spreads_evenly_without_neck_02(new_scene):
+    templates.build_template("biped")
+    table = {name: entry for name, entry in _UE5.items() if name != "neck_02"}
+    table["head"] = ("neck_01", _UE5["head"][1])
+    joints = _skeleton(table)
+
+    report = templates.align("biped", [joints["root"]], "ue5")
+
+    assert "neck" in report["aligned"]
+    assert _close(_guide_pos("neck", 1), (_ue5_pos("neck_01") + _ue5_pos("head")) * 0.5)
