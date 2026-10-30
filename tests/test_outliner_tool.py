@@ -425,7 +425,7 @@ def test_set_default_parent_saves_current_parent_on_the_node(new_scene):
     child = _placed("child", parent=rig)
     assert logic.set_default_parent([child]) == [child]
     assert cmds.getAttr(f"{child}.kaijuDefaultParentUuid") == cmds.ls(rig, uuid=True)[0]
-    assert cmds.getAttr(f"{child}.kaijuDefaultParentName") == "|rig"
+    assert cmds.getAttr(f"{child}.kaijuDefaultParentName") == "rig"
 
 
 def test_set_default_parent_needs_a_selection(new_scene):
@@ -602,3 +602,49 @@ def test_set_default_parent_shows_attributes_hidden_by_an_older_version(new_scen
     logic.set_default_parent([child])
     for attr in ("kaijuDefaultParentUuid", "kaijuDefaultParentName"):
         assert not cmds.attributeQuery(attr, node=child, hidden=True)
+
+
+def test_set_default_parent_saves_the_node_name_not_the_path(new_scene):
+    rig = _placed("rig", parent=_placed("grp"))
+    child = _placed("child", parent=rig)
+    logic.set_default_parent([child])
+    assert cmds.getAttr(f"{child}.kaijuDefaultParentName") == "rig"
+
+
+def _forget_uuid(node):
+    cmds.setAttr(f"{node}.kaijuDefaultParentUuid", "00000000-0000-0000-0000-000000000000", type="string")
+
+
+def test_reparent_finds_a_nested_parent_by_name(new_scene):
+    rig = _placed("rig", parent=_placed("grp"))
+    child = _placed("child", parent=rig)
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    _forget_uuid("|child")
+    assert logic.reparent(["|child"]) == ["|grp|rig|child"]
+
+
+def test_reparent_warns_and_skips_when_several_nodes_have_the_name(new_scene, monkeypatch):
+    warnings = []
+    monkeypatch.setattr(logic.cmds, "warning", warnings.append)
+    child = _placed("child", parent=_placed("rig", parent=_placed("a")))
+    _placed("rig", parent=_placed("b"))
+    other = _placed("other", parent=_placed("home"))
+    logic.set_default_parent([child, other])
+    cmds.parent(child, other, world=True)
+    _forget_uuid("|child")
+
+    assert logic.reparent(["|child", "|other"]) == ["|child", "|home|other"]
+    assert len(warnings) == 1 and "rig" in warnings[0] and "child" in warnings[0]
+
+
+def test_reparent_only_ambiguous_nodes_warns_without_raising(new_scene, monkeypatch):
+    warnings = []
+    monkeypatch.setattr(logic.cmds, "warning", warnings.append)
+    child = _placed("child", parent=_placed("rig", parent=_placed("a")))
+    _placed("rig", parent=_placed("b"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    _forget_uuid("|child")
+    assert logic.reparent(["|child"]) == ["|child"]
+    assert len(warnings) == 1
