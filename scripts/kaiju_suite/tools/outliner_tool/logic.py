@@ -255,8 +255,8 @@ def offset(nodes):
 
 # A node's default parent, saved on the node (shown under Extra Attributes in the
 # Attribute Editor) so it survives saving the scene. The UUID finds the parent after
-# renames; the long name is the fallback when the UUID changed (an import). An
-# empty name is the world.
+# renames; the node name (no path) is the fallback when the UUID changed (an import).
+# An empty name is the world.
 _DEFAULT_UUID = "kaijuDefaultParentUuid"
 _DEFAULT_NAME = "kaijuDefaultParentName"
 
@@ -265,19 +265,18 @@ def _has_default_parent(node):
     return cmds.attributeQuery(_DEFAULT_UUID, node=node, exists=True)
 
 
-def _default_parent(node):
-    """The long name of ``node``'s default parent, ``""`` for the world, or ``None`` if it's gone."""
+def _default_parents(node):
+    """Long names of the nodes that can be ``node``'s default parent: ``[""]`` for the
+    world, none if it's gone, several if the UUID is lost and more than one node has its name."""
     uuid = cmds.getAttr(f"{node}.{_DEFAULT_UUID}")
     name = cmds.getAttr(f"{node}.{_DEFAULT_NAME}") or ""
     if not name:
-        return ""
+        return [""]
     try:
         matches = cmds.ls(uuid, long=True) if uuid else []
     except RuntimeError:
         matches = []  # not a UUID Maya can parse
-    if not matches and cmds.objExists(name):
-        matches = cmds.ls(name, long=True)
-    return matches[0] if matches else None
+    return matches or cmds.ls(name, long=True, type="transform")
 
 
 @undoable
@@ -289,7 +288,8 @@ def set_default_parent(nodes):
     for node in nodes:
         parent = (cmds.listRelatives(node, parent=True, fullPath=True) or [""])[0]
         uuid = cmds.ls(parent, uuid=True)[0] if parent else ""
-        for attr, value in ((_DEFAULT_UUID, uuid), (_DEFAULT_NAME, parent)):
+        name = short_name(parent) if parent else ""
+        for attr, value in ((_DEFAULT_UUID, uuid), (_DEFAULT_NAME, name)):
             if cmds.attributeQuery(attr, node=node, exists=True) and cmds.attributeQuery(attr, node=node, hidden=True):
                 cmds.deleteAttr(node, attribute=attr)  # an older version hid it; addAttr can't unhide
             if not cmds.attributeQuery(attr, node=node, exists=True):
@@ -303,24 +303,33 @@ def reparent(nodes):
     """Parent ``nodes`` back under their default parent, wherever they are now, keeping
     world positions. Returns their new long names.
 
-    Nodes with no default parent are skipped. Raises ``ValueError`` without changing
-    anything if a default parent is gone or now sits under the node.
+    Nodes with no default parent are skipped, and so, with a warning, are nodes whose
+    default parent is only found by name and more than one node has that name. Raises
+    ``ValueError`` without changing anything if a default parent is gone or now sits
+    under the node.
     """
     if not nodes:
         raise ValueError("Nothing selected")
     uuids = cmds.ls(nodes, uuid=True)
     moves = []
+    ambiguous = False
     for uuid in uuids:
         node = _long(uuid)
         if not _has_default_parent(node):
             continue
-        target = _default_parent(node)
+        targets = _default_parents(node)
+        if len(targets) > 1:
+            cmds.warning(f"Kaiju Outliner Tool: more than one '{short_name(targets[0])}' for "
+                         f"'{short_name(node)}' to go back under; skipped it")
+            ambiguous = True
+            continue
+        target = targets[0] if targets else None
         if target is None:
             raise ValueError(f"Default parent for '{short_name(node)}' no longer exists")
         if target.startswith(node + "|"):
             raise ValueError(f"{short_name(target)} is now under {short_name(node)}")
         moves.append((uuid, cmds.ls(target, uuid=True)[0] if target else ""))
-    if not moves:
+    if not moves and not ambiguous:
         raise ValueError("No default parent set")
 
     for uuid, parent_uuid in moves:
