@@ -88,12 +88,12 @@ def _preset(name, count, start, end, aim, up, up_side, end_joint=True):
 PRESETS = {
     preset["name"]: preset
     for preset in (
-        _preset("root", 0, (0, 0, 0), (10, 0, 0), "x", "y", (0, 1, 0), end_joint=False),
+        _preset("root", 0, (0, 0, 0), (0, 0, 10), "z", "y", (0, 1, 0), end_joint=False),
         _preset("spine", 3, (0, 100, 0), (0, 145, 0), "y", "z", (0, 0, -1)),
         _preset("neck", 1, (0, 145, 0), (0, 160, 0), "y", "z", (0, 0, -1)),
         _preset("head", 0, (0, 160, 0), (0, 180, 0), "y", "z", (0, 0, 1)),
         _preset("l_shoulder", 0, (3, 145, 0), (17, 147, 0), "x", "y", (0, 1, 0)),
-        _preset("l_arm", 1, (17, 147, 0), (70, 147, 0), "x", "y", (0, 1, 0)),
+        _preset("l_arm", 1, (17, 147, 0), (70, 147, 0), "x", "y", (0, 0, -1)),  # elbow up guide behind
         _preset("l_hand", 0, (70, 147, 0), (78, 147, 0), "x", "y", (0, 1, 0)),
         _preset("l_finger", 2, (78, 147, 0), (88, 147, 0), "x", "y", (0, 1, 0)),
         _preset("l_leg", 1, (10, 95, 0), (10, 10, 0), "x", "y", (0, 0, 1)),

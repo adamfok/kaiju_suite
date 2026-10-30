@@ -1364,6 +1364,8 @@ def test_root_is_one_joint_at_the_origin_aligned_with_the_world(new_scene):
 
     (joint,) = logic.joints(group)
     assert short_name(joint) == "root_01_jnt"
+    assert logic.PRESETS["root"]["aim"] == "z"
+    assert _close(_pos(logic.guides(group)["chain"][-1]), (0, 0, 10))
     assert _close(_pos(joint), (0, 0, 0))
     _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
 
@@ -1386,7 +1388,7 @@ def test_head_is_built_aligned_with_the_world(new_scene):
         _assert_axes(joint, x=(1, 0, 0), y=(0, 1, 0), z=(0, 0, 1))
 
 
-@pytest.mark.parametrize("preset", ["l_shoulder", "l_arm", "l_hand", "l_finger"])
+@pytest.mark.parametrize("preset", ["l_shoulder", "l_hand", "l_finger"])
 def test_arm_presets_aim_to_the_side_with_y_up(new_scene, preset):
     settings = logic.PRESETS[preset]
     group = logic.build_guides(**settings)
@@ -1441,3 +1443,13 @@ def test_forward_spine_goes_forward_with_x_aim_and_y_up(new_scene):
     for joint in joints:
         _assert_axes(joint, x=(0, 0, 1), y=(0, 1, 0))
     assert logic.mirrored_joints(group) == []
+
+
+def test_arm_aims_to_the_side_with_its_up_guide_at_the_back(new_scene):
+    settings = logic.PRESETS["l_arm"]
+    group = logic.build_guides(**settings)
+
+    assert _pos(logic.guides(group)["up"]).z < -1
+    for joint in logic.joints(group):
+        _assert_axes(joint, x=(1, 0, 0), y=(0, 0, -1))
+    assert short_name(logic.mirrored_joints(group)[0]) == "r_arm_01_jnt"
