@@ -539,3 +539,123 @@ def test_ue5_neck_spreads_evenly_without_neck_02(new_scene):
 
     assert "neck" in report["aligned"]
     assert _close(_guide_pos("neck", 1), (_ue5_pos("neck_01") + _ue5_pos("head")) * 0.5)
+
+
+# -- align: mGear -------------------------------------------------------------------
+
+# The left and middle joints of the skeleton mGear 5.4.4 builds from its own
+# biped template (biped.sgt), scaled up 10 times: twist joints along the arm
+# and leg (the elbow and knee are the 4th), no root joint, fingers L0-L3 index
+# to pinky.
+_MGEAR = {
+    "spine_C0_0_jnt": (None, (0.0, 108.5, 1.8)),
+    "spine_C0_1_jnt": ("spine_C0_0_jnt", (0.0, 114.2, 1.8)),
+    "spine_C0_2_jnt": ("spine_C0_1_jnt", (0.0, 119.9, 1.8)),
+    "spine_C0_3_jnt": ("spine_C0_2_jnt", (0.0, 125.5, 1.8)),
+    "spine_C0_4_jnt": ("spine_C0_3_jnt", (0.0, 131.2, 1.8)),
+    "shoulder_L0_shoulder_jnt": ("spine_C0_4_jnt", (1.1, 147.7, 2.0)),
+    "arm_L0_0_jnt": ("shoulder_L0_shoulder_jnt", (15.7, 144.7, -6.8)),
+    "arm_L0_1_jnt": ("arm_L0_0_jnt", (21.9, 138.3, -7.2)),
+    "arm_L0_2_jnt": ("arm_L0_1_jnt", (28.2, 131.9, -7.7)),
+    "arm_L0_3_jnt": ("arm_L0_2_jnt", (34.2, 125.9, -8.1)),
+    "arm_L0_4_jnt": ("arm_L0_3_jnt", (34.5, 125.5, -8.1)),
+    "arm_L0_5_jnt": ("arm_L0_4_jnt", (34.9, 125.1, -8.1)),
+    "arm_L0_6_jnt": ("arm_L0_5_jnt", (41.1, 118.9, -7.5)),
+    "arm_L0_7_jnt": ("arm_L0_6_jnt", (47.7, 112.3, -6.9)),
+    "arm_L0_8_jnt": ("arm_L0_7_jnt", (53.8, 106.1, -6.3)),
+    "arm_L0_end_jnt": ("arm_L0_8_jnt", (54.2, 105.7, -6.2)),
+    "meta_L0_0_jnt": ("arm_L0_end_jnt", (55.3, 103.8, -2.6)),
+    "finger_L0_0_jnt": ("meta_L0_0_jnt", (60.3, 97.5, -1.1)),
+    "finger_L0_1_jnt": ("finger_L0_0_jnt", (62.3, 94.5, 0.1)),
+    "finger_L0_2_jnt": ("finger_L0_1_jnt", (63.8, 92.0, 1.2)),
+    "meta_L0_1_jnt": ("meta_L0_0_jnt", (55.3, 103.5, -4.5)),
+    "finger_L1_0_jnt": ("meta_L0_1_jnt", (61.1, 97.1, -3.6)),
+    "finger_L1_1_jnt": ("finger_L1_0_jnt", (63.3, 94.1, -2.9)),
+    "finger_L1_2_jnt": ("finger_L1_1_jnt", (65.4, 91.2, -2.2)),
+    "meta_L0_2_jnt": ("meta_L0_1_jnt", (55.3, 103.2, -6.5)),
+    "finger_L2_0_jnt": ("meta_L0_2_jnt", (60.8, 96.9, -6.2)),
+    "finger_L2_1_jnt": ("finger_L2_0_jnt", (63.2, 94.2, -6.3)),
+    "finger_L2_2_jnt": ("finger_L2_1_jnt", (65.2, 92.1, -6.3)),
+    "meta_L0_3_jnt": ("meta_L0_2_jnt", (55.3, 102.9, -8.4)),
+    "finger_L3_0_jnt": ("meta_L0_3_jnt", (60.1, 97.3, -8.4)),
+    "finger_L3_1_jnt": ("finger_L3_0_jnt", (62.2, 95.0, -9.2)),
+    "finger_L3_2_jnt": ("finger_L3_1_jnt", (63.6, 93.4, -9.8)),
+    "leg_L0_0_jnt": ("spine_C0_0_jnt", (9.7, 97.2, 1.8)),
+    "leg_L0_1_jnt": ("leg_L0_0_jnt", (9.7, 83.4, 0.6)),
+    "leg_L0_2_jnt": ("leg_L0_1_jnt", (9.6, 69.5, -0.6)),
+    "leg_L0_3_jnt": ("leg_L0_2_jnt", (9.5, 56.4, -1.8)),
+    "leg_L0_4_jnt": ("leg_L0_3_jnt", (9.5, 55.5, -1.9)),
+    "leg_L0_5_jnt": ("leg_L0_4_jnt", (9.5, 54.7, -2.0)),
+    "leg_L0_6_jnt": ("leg_L0_5_jnt", (9.4, 41.1, -4.2)),
+    "leg_L0_7_jnt": ("leg_L0_6_jnt", (9.4, 26.7, -6.6)),
+    "leg_L0_8_jnt": ("leg_L0_7_jnt", (9.3, 13.1, -8.8)),
+    "leg_L0_end_jnt": ("leg_L0_8_jnt", (9.3, 12.3, -9.0)),
+    "foot_L0_0_jnt": ("leg_L0_end_jnt", (10.6, 4.9, 4.2)),
+    "foot_L0_1_jnt": ("foot_L0_0_jnt", (11.1, 3.3, 9.4)),
+    "neck_C0_0_jnt": ("spine_C0_4_jnt", (0.0, 152.8, -3.3)),
+    "neck_C0_1_jnt": ("neck_C0_0_jnt", (0.0, 159.8, -1.5)),
+    "neck_C0_2_jnt": ("neck_C0_1_jnt", (0.0, 166.8, 0.5)),
+    "neck_C0_head_jnt": ("neck_C0_2_jnt", (0.0, 167.4, 0.5)),
+    "thumb_L0_0_jnt": ("meta_L0_0_jnt", (55.1, 102.9, -3.1)),
+    "thumb_L0_1_jnt": ("thumb_L0_0_jnt", (55.5, 99.9, -0.2)),
+    "thumb_L0_2_jnt": ("thumb_L0_1_jnt", (56.0, 97.1, 2.2)),
+}
+
+
+def _mgear_pos(name):
+    return om.MVector(_MGEAR[name][1])
+
+
+def test_skeletons_list_mgear():
+    assert templates.SKELETONS["mgear"]["label"] == "mGear biped"
+
+
+def test_detect_finds_mgear(new_scene):
+    joints = _skeleton(_MGEAR, namespace=None)
+    assert templates.detect([joints["arm_L0_3_jnt"]]) == "mgear"
+
+
+def test_align_to_mgear(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton(_MGEAR, namespace="rig")
+
+    report = templates.align("biped", [joints["spine_C0_0_jnt"]])
+
+    assert report["skeleton"] == "mgear"
+    assert [name for name, _ in report["skipped"]] == ["root"]  # mGear's biped has no root joint
+    for chain, start, end in (
+        ("spine", "spine_C0_0_jnt", "neck_C0_0_jnt"),
+        ("neck", "neck_C0_0_jnt", "neck_C0_head_jnt"),
+        ("l_shoulder", "shoulder_L0_shoulder_jnt", "arm_L0_0_jnt"),
+        ("l_arm", "arm_L0_0_jnt", "arm_L0_end_jnt"),
+        ("l_hand", "arm_L0_end_jnt", "finger_L1_0_jnt"),
+        ("l_index_metacarpal", "arm_L0_end_jnt", "finger_L0_0_jnt"),
+        ("l_pinky_metacarpal", "arm_L0_end_jnt", "finger_L3_0_jnt"),
+        ("l_leg", "leg_L0_0_jnt", "leg_L0_end_jnt"),
+        ("l_foot", "leg_L0_end_jnt", "foot_L0_1_jnt"),
+    ):
+        assert _close(_guide_pos(chain, 0), _mgear_pos(start)), chain
+        assert _close(_guide_pos(chain, -1), _mgear_pos(end)), chain
+    assert _close(_guide_pos("head", 0), _mgear_pos("neck_C0_head_jnt"))
+    assert _close(_guide_pos("neck", 1), _mgear_pos("neck_C0_1_jnt"))
+    assert _close(_guide_pos("l_arm", 1), _mgear_pos("arm_L0_4_jnt"))  # the elbow, not a twist joint
+    assert _close(_guide_pos("l_leg", 1), _mgear_pos("leg_L0_4_jnt"))
+    assert _close(_guide_pos("l_foot", 1), _mgear_pos("foot_L0_0_jnt"))
+    for chain, finger in (("l_thumb", "thumb_L0"), ("l_index", "finger_L0"), ("l_ring", "finger_L2")):
+        assert _close(_guide_pos(chain, 0), _mgear_pos(f"{finger}_0_jnt")), chain
+        assert _close(_guide_pos(chain, 2), _mgear_pos(f"{finger}_2_jnt")), chain
+        last, before = _mgear_pos(f"{finger}_2_jnt"), _mgear_pos(f"{finger}_1_jnt")
+        assert (_guide_pos(chain, -1) - last) * (last - before) > 0, chain  # past the last knuckle
+
+
+def test_align_to_mgear_bends_the_arm_up_guide_toward_the_elbow(new_scene):
+    templates.build_template("biped")
+    joints = _skeleton(_MGEAR, namespace=None)
+
+    templates.align("biped", [joints["spine_C0_0_jnt"]], "mgear")
+
+    start, end = _mgear_pos("arm_L0_0_jnt"), _mgear_pos("arm_L0_end_jnt")
+    span = end - start
+    elbow = _mgear_pos("arm_L0_4_jnt") - start
+    bend = elbow - span * ((elbow * span) / (span * span))
+    assert (_guide_pos("l_arm", "up") - start) * bend > 0
