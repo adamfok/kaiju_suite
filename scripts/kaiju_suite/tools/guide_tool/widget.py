@@ -134,30 +134,6 @@ class GuideToolWindow(ToolWindow):
         row.addWidget(QtWidgets.QLabel("Template"))
         row.addWidget(self.template, 1)
         layout.addLayout(row)
-        buttons = QtWidgets.QHBoxLayout()
-        for icon, label, tip, action in (
-            (
-                "build",
-                "Build Template",
-                "Build every chain of the template on a body (Y up, facing +Z, left at +X), each one\n"
-                "starting where the one it hangs off ends. Chains already built are built again in place.\n"
-                "Use the Chain tab's Build and Delete on any one of them.",
-                self._build_template,
-            ),
-            (
-                "delete",
-                "Delete Template",
-                "Delete the guides of every chain of the template that's built. Their joints (and\n"
-                "mirrored joints) stay where they are, cut loose, as the Chain tab's Delete leaves them.",
-                self._delete_template,
-            ),
-        ):
-            button = QtWidgets.QPushButton(icons.icon(f"guide_tool_{icon}.svg"), label)
-            button.setIconSize(QtCore.QSize(20, 20))
-            button.setToolTip(tip)
-            button.clicked.connect(action)
-            buttons.addWidget(button, 1)
-        layout.addLayout(buttons)
 
         self.skeleton = QtWidgets.QComboBox()
         self.skeleton.setToolTip("The skeleton to align to; Auto picks the one the selected hierarchy matches best.")
@@ -169,17 +145,45 @@ class GuideToolWindow(ToolWindow):
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("Align to"))
         row.addWidget(self.skeleton, 1)
-        align = QtWidgets.QPushButton("Align")
-        align.setToolTip(
-            "Select a joint of the skeleton to align to, then Align: each built chain's start and end\n"
-            "guides go on two of its joints (not joint for joint), middle guides on its elbow, knee,\n"
-            "ball and knuckles when the counts match (else evenly), and arm, leg and finger up guides\n"
-            "where they bend. Your joints follow, keeping their own count. Chains it can't place are\n"
-            "skipped and listed."
-        )
-        align.clicked.connect(self._align)
-        row.addWidget(align)
         layout.addLayout(row)
+
+        # The buttons in the order they're used: build, align, delete.
+        buttons = QtWidgets.QHBoxLayout()
+        for icon, label, tip, action in (
+            (
+                "build",
+                "Build Template",
+                "Build every chain of the template on a body (Y up, facing +Z, left at +X), each one\n"
+                "starting where the one it hangs off ends. Chains already built are built again in place.\n"
+                "Use the Chain tab's Build and Delete on any one of them.",
+                self._build_template,
+            ),
+            (
+                None,
+                "Align",
+                "Select a joint of the skeleton to align to, then Align: each built chain's start and end\n"
+                "guides go on two of its joints (not joint for joint), middle guides on its elbow, knee,\n"
+                "ball and knuckles when the counts match (else evenly), and arm, leg and finger up guides\n"
+                "where they bend. Your joints follow, keeping their own count. Chains it can't place are\n"
+                "skipped and listed.",
+                self._align,
+            ),
+            (
+                "delete",
+                "Delete Template",
+                "Delete the guides of every chain of the template that's built. Their joints (and\n"
+                "mirrored joints) stay where they are, cut loose, as the Chain tab's Delete leaves them.",
+                self._delete_template,
+            ),
+        ):
+            button = QtWidgets.QPushButton(label)
+            if icon:
+                button.setIcon(icons.icon(f"guide_tool_{icon}.svg"))
+                button.setIconSize(QtCore.QSize(20, 20))
+            button.setToolTip(tip)
+            button.clicked.connect(action)
+            buttons.addWidget(button, 1)
+        layout.addLayout(buttons)
         layout.addStretch()
         return page
 
