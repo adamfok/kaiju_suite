@@ -71,6 +71,10 @@ def _disc(preview):
     return cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[0]
 
 
+def _cylinder(preview):
+    return cmds.listRelatives(preview, children=True, type="transform", fullPath=True)[1]
+
+
 def _frames(nodes):
     return [(_pos(n), _rows(n)) for n in nodes]
 
@@ -439,14 +443,14 @@ def test_set_axes_is_one_undo_step(new_scene):
             assert (row - old).length() < 1e-4
 
 
-def test_previews_show_their_local_axis_and_cannot_be_selected(new_scene):
+def test_previews_show_their_local_axis_and_their_discs_can_be_selected(new_scene):
     group = logic.build_guides("arm", 1)
 
     for preview in logic.previews(group):
         assert cmds.getAttr(f"{preview}.displayLocalAxis")
         disc = _disc(preview)
         assert cmds.getAttr(f"{disc}.overrideEnabled")
-        assert cmds.getAttr(f"{disc}.overrideDisplayType") == 2  # reference
+        assert cmds.getAttr(f"{disc}.overrideDisplayType") == 0  # normal: selectable
         assert cmds.listRelatives(disc, shapes=True, type="nurbsSurface")
 
 
@@ -506,7 +510,7 @@ def test_plane_lies_on_the_guides_plane_and_follows_them(new_scene):
     assert (_pos(plane) - (start + end) * 0.5).length() < 1e-4
     assert (_axis(plane, "x") - (end - start).normalize()).length() < 1e-4
     assert (_axis(plane, "z") - _normal(group)).length() < 1e-4
-    assert cmds.getAttr(f"{plane}.overrideDisplayType") == 2
+    assert cmds.getAttr(f"{plane}.overrideDisplayType") == 0  # normal: selectable
     assert cmds.listRelatives(plane, shapes=True, type="nurbsSurface")
 
 
@@ -878,3 +882,132 @@ def test_guides_from_joints_draws_them_as_reference(new_scene):
     group = logic.guides_from_joints(joints[0])
 
     assert all(_referenced(j) for j in logic.joints(group))
+
+
+
+# -- scaling the plane and discs ----------------------------------------------
+
+
+def _scalables(group):
+    return [logic.plane(group)] + [part(p) for p in logic.previews(group) for part in (_disc, _cylinder)]
+
+
+def _extent(node, axis):
+    box = cmds.exactWorldBoundingBox(node)
+    return box[3 + axis] - box[axis]
+
+
+def test_plane_and_discs_can_only_be_scaled(new_scene):
+    group = logic.build_guides("arm", 1)
+
+    for node in _scalables(group):
+        for attr in ("tx", "ty", "tz", "rx", "ry", "rz"):
+            assert cmds.getAttr(f"{node}.{attr}", lock=True), f"{node}.{attr}"
+        for attr in ("sx", "sy", "sz"):
+            assert not cmds.getAttr(f"{node}.{attr}", lock=True), f"{node}.{attr}"
+            assert cmds.getAttr(f"{node}.{attr}", keyable=True), f"{node}.{attr}"
+            assert not cmds.listConnections(f"{node}.{attr}", source=True, destination=False), f"{node}.{attr}"
+
+
+def test_scaled_plane_keeps_following_the_guides(new_scene):
+    group = logic.build_guides("arm", 1, start=(0, 0, 0), end=(10, 0, 0))
+    plane = logic.plane(group)
+    before = _extent(plane, 0)
+
+    cmds.setAttr(f"{plane}.scaleX", 2)
+    assert _extent(plane, 0) == pytest.approx(before * 2, rel=1e-3)
+
+    _move(logic.guides(group)["chain"][-1], 20, 0, 0)
+    assert _extent(plane, 0) == pytest.approx(before * 4, rel=1e-3)
+    assert (_center(plane) - om.MVector(10, 0, 0)).length() < 1e-3
+
+
+def test_scaling_the_plane_and_discs_leaves_the_joints_alone(new_scene):
+    group = _bent_arm()
+    before = [_pos(j) for j in logic.joints(group)]
+
+    for node in _scalables(group):
+        cmds.setAttr(f"{node}.scale", 3, 0.5, 2)
+
+    assert all((_pos(j) - b).length() < 1e-5 for j, b in zip(logic.joints(group), before))
+
+
+def test_scaled_disc_stays_on_its_joint_and_turns_with_the_axes(new_scene):
+    group = _bent_arm()
+    for preview in logic.previews(group):
+        cmds.setAttr(f"{_disc(preview)}.scale", 2, 2, 2)
+
+    logic.set_axes(group, aim="y", up="x")
+
+    for preview in logic.previews(group):
+        disc = _disc(preview)
+        assert (_center(disc) - _pos(preview)).length() < 1e-3
+        assert abs(_axis(disc, "x") * _axis(preview, "y")) == pytest.approx(1.0, abs=1e-4)
+        assert cmds.getAttr(f"{disc}.rx", lock=True)
+
+
+def test_building_again_keeps_the_plane_and_disc_scales(new_scene):
+    group = _bent_arm()
+    cmds.setAttr(f"{logic.plane(group)}.scale", 2, 3, 1)
+    for i, preview in enumerate(logic.previews(group)):
+        cmds.setAttr(f"{_disc(preview)}.scale", i + 1, i + 1, i + 1)
+        cmds.setAttr(f"{_cylinder(preview)}.scale", 1, i + 2, i + 2)
+
+    group = logic.build_guides("arm", 3)
+
+    assert cmds.getAttr(f"{logic.plane(group)}.scale")[0] == pytest.approx((2, 3, 1))
+    for i, preview in enumerate(logic.previews(group)):
+        assert cmds.getAttr(f"{_disc(preview)}.scale")[0] == pytest.approx((i + 1,) * 3)
+        assert cmds.getAttr(f"{_cylinder(preview)}.scale")[0] == pytest.approx((1, i + 2, i + 2))
+
+
+def test_building_again_with_another_count_keeps_the_plane_scale(new_scene):
+    group = _bent_arm()
+    cmds.setAttr(f"{logic.plane(group)}.scale", 2, 3, 1)
+
+    group = logic.build_guides("arm", 1)
+
+    assert cmds.getAttr(f"{logic.plane(group)}.scale")[0] == pytest.approx((2, 3, 1))
+
+
+
+# -- the rotate-axis cylinders ---------------------------------------------------
+
+
+@pytest.mark.parametrize("aim, up", [("x", "y"), ("y", "x"), ("-z", "y"), ("x", "-z")])
+def test_each_joint_has_a_cylinder_along_its_rotate_axis(new_scene, aim, up):
+    group = _bent_arm(aim=aim, up=up)
+    normal = _normal(group)
+
+    for preview in logic.previews(group):
+        cylinder = _cylinder(preview)
+        assert cmds.listRelatives(cylinder, shapes=True, type="nurbsSurface")
+        assert abs(_axis(cylinder, "x") * normal) == pytest.approx(1.0, abs=1e-4)
+        assert (_center(cylinder) - _pos(preview)).length() < 1e-3
+        # Along its own X: longer than it is wide.
+        shape = cmds.listRelatives(cylinder, shapes=True, fullPath=True)[0]
+        length, width, depth = cmds.getAttr(f"{shape}.boundingBoxSize")[0]
+        assert length > 2 * width and width == pytest.approx(depth)
+
+
+def test_cylinders_follow_new_axes(new_scene):
+    group = _bent_arm()
+
+    logic.set_axes(group, aim="z", up="-x")
+
+    for preview in logic.previews(group):
+        assert abs(_axis(_cylinder(preview), "x") * _normal(group)) == pytest.approx(1.0, abs=1e-4)
+
+
+def test_cylinders_are_solid_selectable_and_share_the_preview_shader(new_scene):
+    group = logic.build_guides("arm", 1)
+    disc_shape = cmds.listRelatives(_disc(logic.previews(group)[0]), shapes=True, fullPath=True)[0]
+    engine = cmds.listConnections(disc_shape, type="shadingEngine")
+
+    for preview in logic.previews(group):
+        cylinder = _cylinder(preview)
+        assert cmds.getAttr(f"{cylinder}.overrideEnabled")
+        assert cmds.getAttr(f"{cylinder}.overrideDisplayType") == 0
+        assert cmds.getAttr(f"{cylinder}.overrideShading")
+        shape = cmds.listRelatives(cylinder, shapes=True, fullPath=True)[0]
+        assert cmds.listConnections(shape, type="shadingEngine") == engine

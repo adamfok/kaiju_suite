@@ -57,7 +57,7 @@ _DISC_COLOR = 18  # light blue
 # The solid color the discs and the plane share: shaded, so they show where
 # they cut a mesh.
 _SHADE = (0.35, 0.75, 1.0)  # light blue
-# Turns a disc made around X to ring the aim axis, by the aim axis' index.
+# Turns a disc or cylinder made around X to lie around the axis with this index.
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
 
@@ -115,6 +115,12 @@ def _plane(points, up):
 
 def _lock_to_move_only(node):
     for attr in ("rx", "ry", "rz", "sx", "sy", "sz"):
+        cmds.setAttr(f"{node}.{attr}", lock=True, keyable=False, channelBox=False)
+
+
+def _lock_to_scale_only(node):
+    """Lock ``node``'s translate and rotate; its scale is the user's."""
+    for attr in ("tx", "ty", "tz", "rx", "ry", "rz"):
         cmds.setAttr(f"{node}.{attr}", lock=True, keyable=False, channelBox=False)
 
 
@@ -194,10 +200,10 @@ def _aligned(group, name, position, primary_axis, primary, secondary_axis, secon
     return f"{aim}.outputMatrix"
 
 
-def _visual(node, color=None, shaded=False):
-    """Draw ``node`` unselectable, as wireframe unless ``shaded``."""
+def _visual(node, color=None, shaded=False, selectable=False):
+    """Draw ``node`` as wireframe unless ``shaded``, unselectable unless ``selectable``."""
     cmds.setAttr(f"{node}.overrideEnabled", True)
-    cmds.setAttr(f"{node}.overrideDisplayType", 2)  # reference
+    cmds.setAttr(f"{node}.overrideDisplayType", 0 if selectable else 2)  # normal or reference
     cmds.setAttr(f"{node}.overrideShading", shaded)
     if color is not None:
         cmds.setAttr(f"{node}.overrideColor", color)
@@ -227,9 +233,24 @@ def _disc(name, parent, radius, engine):
     # Relative: the parent is already in place, and the disc must not keep its world position.
     disc = cmds.rename(cmds.parent(disc, parent, relative=True)[0], name)
     disc = _long(f"{parent}|{disc}")
-    _visual(disc, _DISC_COLOR, shaded=True)
+    _visual(disc, _DISC_COLOR, shaded=True, selectable=True)
+    _lock_to_scale_only(disc)
     cmds.sets(cmds.listRelatives(disc, shapes=True, fullPath=True), edit=True, forceElement=engine)
     return disc
+
+
+def _cylinder(name, parent, radius, length, engine):
+    """A cylinder through ``parent`` along X, turned onto the rotate axis by
+    ``_apply_axes``: the axis the joint bends around."""
+    cylinder = cmds.cylinder(
+        axis=(1, 0, 0), radius=radius, heightRatio=length / radius, sections=12, constructionHistory=False
+    )[0]
+    cylinder = cmds.rename(cmds.parent(cylinder, parent, relative=True)[0], name)
+    cylinder = _long(f"{parent}|{cylinder}")
+    _visual(cylinder, _DISC_COLOR, shaded=True, selectable=True)
+    _lock_to_scale_only(cylinder)
+    cmds.sets(cmds.listRelatives(cylinder, shapes=True, fullPath=True), edit=True, forceElement=engine)
+    return cylinder
 
 
 def _preview_network(group, name, chain, up, size):
@@ -268,7 +289,8 @@ def _preview_network(group, name, chain, up, size):
         )
         preview = _placed(group, cmds.createNode("transform", name=f"{label}_preview"), matrix)
         cmds.setAttr(f"{preview}.displayLocalAxis", True)
-        _disc(f"{label}_disc", preview, size * 2, engine)
+        _disc(f"{label}_disc", preview, size * 2, engine)  # first child
+        _cylinder(f"{label}_axis", preview, size * 0.3, size * 6, engine)  # second child
         _link(preview, group, f"{_PREVIEWS}[{i}]")
 
     center = _util(group, "plusMinusAverage", f"{name}_center")
@@ -276,10 +298,13 @@ def _preview_network(group, name, chain, up, size):
     cmds.connectAttr(start, f"{center}.input3D[0]")
     cmds.connectAttr(end, f"{center}.input3D[1]")
     matrix = _aligned(group, f"{name}_plane", f"{center}.output3D", (1, 0, 0), span, (0, 0, 1), normal)
+    # The space follows the guides and sizes the plane to them; the plane
+    # under it keeps its own scale free for the user.
+    space = _placed(group, cmds.createNode("transform", name=f"{name}_plane_space"), matrix)
     surface = cmds.nurbsPlane(
         name=f"{name}_plane", axis=(0, 0, 1), width=1, lengthRatio=1, patchesU=4, patchesV=2, constructionHistory=False
     )[0]
-    surface = _placed(group, surface, matrix)
+    surface = _long(cmds.parent(surface, space, relative=True)[0])
     length = _util(group, "distanceBetween", f"{name}_length")
     cmds.connectAttr(start, f"{length}.point1")
     cmds.connectAttr(end, f"{length}.point2")
@@ -287,8 +312,9 @@ def _preview_network(group, name, chain, up, size):
     cmds.setAttr(f"{scale}.input2", 1.2, 0.6, 1)
     for letter in "XY":
         cmds.connectAttr(f"{length}.distance", f"{scale}.input1{letter}")
-        cmds.connectAttr(f"{scale}.output{letter}", f"{surface}.scale{letter}")
-    _visual(surface, shaded=True)
+        cmds.connectAttr(f"{scale}.output{letter}", f"{space}.scale{letter}")
+    _visual(surface, shaded=True, selectable=True)
+    _lock_to_scale_only(surface)
     cmds.sets(
         cmds.listRelatives(surface, shapes=True, fullPath=True),
         edit=True,
@@ -311,8 +337,13 @@ def _apply_axes(group, aim, up):
     text = " ".join(("-" if sign < 0 else "") + "xyz"[index] for index, sign in (aim, up))
     cmds.setAttr(f"{group}.{_AXES_TEXT}", text, type="string")
     for preview in _connected(group, _PREVIEWS):
-        for disc in cmds.listRelatives(preview, children=True, type="transform", fullPath=True) or []:
-            cmds.setAttr(f"{disc}.rotate", *_DISC_ROTATE[aim[0]])
+        # The disc rings the aim axis; the cylinder lies along the third axis.
+        for node, index in zip(_parts(preview), (aim[0], third)):
+            for attr in ("rx", "ry", "rz"):
+                cmds.setAttr(f"{node}.{attr}", lock=False)
+            cmds.setAttr(f"{node}.rotate", *_DISC_ROTATE[index])
+            for attr in ("rx", "ry", "rz"):
+                cmds.setAttr(f"{node}.{attr}", lock=True)
 
 
 def _axes(aim, up):
@@ -579,7 +610,7 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
         raise ValueError("The number of middle guides must be 0 or more.")
     old = f"{name}_guides_grp"
     old = _long(old) if cmds.objExists(old) and _is_group(old) else None
-    owned, keep, doomed = set(), None, []
+    owned, keep, doomed, scales = set(), None, [], None
     if old:
         found = guides(old)
         start, end = _position(found["chain"][0]), _position(found["chain"][-1])
@@ -589,6 +620,7 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
         kept = kept.split() if kept else ("x", "y")
         aim, up = aim or kept[0], up or kept[1]
         linked = joints(old)
+        scales = _scales(old)
         if len(linked) == count + 2:
             keep = cmds.ls(linked, uuid=True)
         else:
@@ -612,7 +644,30 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
     if old:
         cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
     _live_joints(group, name, keep)
+    if scales:
+        _set_scales(group, *scales)
     return group
+
+
+def _scales(group):
+    """The user's scale of ``group``'s plane, and of each joint's disc and cylinder."""
+    parts = [n for p in previews(group) for n in _parts(p)]
+    return cmds.getAttr(f"{plane(group)}.scale")[0], [cmds.getAttr(f"{n}.scale")[0] for n in parts]
+
+
+def _set_scales(group, plane_scale, part_scales):
+    """Give ``group`` the plane scale, and the disc and cylinder scales if it
+    has as many joints."""
+    cmds.setAttr(f"{plane(group)}.scale", *plane_scale)
+    parts = [n for p in previews(group) for n in _parts(p)]
+    if len(parts) == len(part_scales):
+        for node, scale in zip(parts, part_scales):
+            cmds.setAttr(f"{node}.scale", *scale)
+
+
+def _parts(preview):
+    """A preview's disc and cylinder, in the order ``_preview_network`` made them."""
+    return cmds.listRelatives(preview, children=True, type="transform", fullPath=True) or []
 
 
 def free_joint(nodes):
