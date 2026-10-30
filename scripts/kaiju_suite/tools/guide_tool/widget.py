@@ -4,7 +4,7 @@ from PySide6 import QtCore, QtWidgets
 from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
 from kaiju_suite.core.undo import undoable
-from kaiju_suite.tools.guide_tool import logic
+from kaiju_suite.tools.guide_tool import logic, templates
 from kaiju_suite.ui import icons
 from kaiju_suite.ui.base_window import ToolWindow
 
@@ -24,7 +24,11 @@ class GuideToolWindow(ToolWindow):
     TITLE = "Kaiju Guide Tool"
 
     def build_ui(self):
-        # Four rows: preset; name, middle guides and end joint; axes and mirror; Build and Delete.
+        # Two tabs: Chain (one chain at a time) and Templates (a whole body).
+        chain_page = QtWidgets.QWidget()
+        chain = QtWidgets.QVBoxLayout(chain_page)
+        # The Chain tab's four rows: preset; name, middle guides and end joint; axes and mirror;
+        # Build and Delete.
         self._filling = False  # True while a preset fills the fields
         self.name = QtWidgets.QLineEdit(settings.get(SETTINGS_KEY, "name", "chain"))
         self.name.setToolTip("The chain's name: guides are <name>_start_guide..., joints <name>_01_jnt...")
@@ -67,7 +71,7 @@ class GuideToolWindow(ToolWindow):
         preset_row = QtWidgets.QHBoxLayout()
         preset_row.addWidget(QtWidgets.QLabel("Preset"))
         preset_row.addWidget(self.preset, 1)
-        self.layout.addLayout(preset_row)
+        chain.addLayout(preset_row)
 
         name_row = QtWidgets.QHBoxLayout()
         name_row.addWidget(QtWidgets.QLabel("Name"))
@@ -75,14 +79,14 @@ class GuideToolWindow(ToolWindow):
         name_row.addWidget(QtWidgets.QLabel("# Mid"))
         name_row.addWidget(self.count)
         name_row.addWidget(self.end_joint)
-        self.layout.addLayout(name_row)
+        chain.addLayout(name_row)
 
         settings_row = QtWidgets.QHBoxLayout()
         for label, field in (("Aim", self.aim), ("Up", self.up)):
             settings_row.addWidget(QtWidgets.QLabel(label))
             settings_row.addWidget(field, 1)
         settings_row.addWidget(self.mirror)
-        self.layout.addLayout(settings_row)
+        chain.addLayout(settings_row)
 
         buttons = QtWidgets.QHBoxLayout()
         for name, tip, action in (
@@ -108,8 +112,42 @@ class GuideToolWindow(ToolWindow):
             button.setToolTip(tip)
             button.clicked.connect(action)
             buttons.addWidget(button)
-        self.layout.addLayout(buttons)
-        self.layout.addStretch()
+        chain.addLayout(buttons)
+        chain.addStretch()
+
+        tabs = QtWidgets.QTabWidget()
+        tabs.addTab(chain_page, "Chain")
+        tabs.addTab(self._templates_page(), "Templates")
+        tabs.setCurrentIndex(int(settings.get(SETTINGS_KEY, "tab", 0)))
+        tabs.currentChanged.connect(lambda index: settings.set(SETTINGS_KEY, "tab", index))
+        self.layout.addWidget(tabs)
+
+    def _templates_page(self):
+        page = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(page)
+        self.template = QtWidgets.QComboBox()
+        self.template.setToolTip("The body to build: every chain at once, the left ones mirrored.")
+        for name in templates.TEMPLATES:
+            self.template.addItem(name.capitalize(), name)
+        self.template.setCurrentIndex(max(self.template.findData(settings.get(SETTINGS_KEY, "template", "")), 0))
+        self.template.currentIndexChanged.connect(
+            lambda *_: settings.set(SETTINGS_KEY, "template", self.template.currentData())
+        )
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(QtWidgets.QLabel("Template"))
+        row.addWidget(self.template, 1)
+        layout.addLayout(row)
+        button = QtWidgets.QPushButton(icons.icon("guide_tool_build.svg"), "Build Template")
+        button.setIconSize(QtCore.QSize(20, 20))
+        button.setToolTip(
+            "Build every chain of the template on a body (Y up, facing +Z, left at +X), each one\n"
+            "starting where the one it hangs off ends. Chains already built are built again in place.\n"
+            "Use the Chain tab's Build and Delete on any one of them."
+        )
+        button.clicked.connect(self._build_template)
+        layout.addWidget(button)
+        layout.addStretch()
+        return page
 
     # -- layout ----------------------------------------------------------------
 
@@ -183,6 +221,13 @@ class GuideToolWindow(ToolWindow):
             logic.set_axes(logic.find_group(selected()), aim=self.aim.currentData(), up=self.up.currentData())
         except ValueError:
             return
+
+    @undoable
+    def _build_template(self, *_):
+        groups = self._run(templates.build_template, self.template.currentData())
+        if groups is not None:
+            cmds.select(clear=True)
+            _say(f"{self.template.currentText()} template built: {len(groups)} chains.")
 
     @undoable
     def _delete(self, *_):

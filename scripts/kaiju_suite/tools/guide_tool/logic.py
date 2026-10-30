@@ -735,12 +735,44 @@ def build_guides(
     :func:`~kaiju_suite.core.naming.mirrored_name`) mirrors the joints across
     X with behavior and follows them live; building again without it removes
     that chain. Returns the guide group."""
+    plan = _plan_build(name, count, start, end, aim, up, mirror, end_joint)
+    old, keep, doomed, scales, keep_mirror = (
+        plan["old"], plan["keep"], plan["doomed"], plan["scales"], plan["keep_mirror"]
+    )
+    if old:
+        _remove(old)
+        for uuid in doomed:
+            if cmds.ls(uuid):
+                cmds.delete(cmds.ls(uuid, long=True))
+    group = _create_guides(name, count, plan["start"], plan["end"], plan["axes"], up_side)
+    if old:
+        up_position = plan["up_position"]
+        cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
+    _live_joints(group, name, keep, end_joint)
+    if mirror:
+        _mirror_joints(group, keep_mirror)
+    if scales:
+        _set_scales(group, *scales)
+    return group
+
+
+def check_build(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None, mirror=False, end_joint=True, **_):
+    """Raise ``ValueError`` if :func:`build_guides` would refuse these
+    settings (other keyword arguments, e.g. ``up_side``, are ignored).
+    Changes nothing."""
+    _plan_build(name, count, start, end, aim, up, mirror, end_joint)
+
+
+def _plan_build(name, count, start, end, aim, up, mirror, end_joint):
+    """Check :func:`build_guides`' settings against the scene, changing
+    nothing, and return what it will keep, remove and reuse; raise
+    ``ValueError`` if it can't build."""
     _check_name(name)
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise ValueError("The number of middle guides must be 0 or more.")
     old = f"{name}_guides_grp"
     old = _long(old) if cmds.objExists(old) and _is_group(old) else None
-    owned, keep, doomed, scales, keep_mirror = set(), None, [], None, None
+    owned, keep, doomed, scales, keep_mirror, up_position = set(), None, [], None, None, None
     if old:
         found = guides(old)
         start, end = _position(found["chain"][0]), _position(found["chain"][-1])
@@ -774,21 +806,17 @@ def build_guides(
     taken = [n for n in names if set(cmds.ls(n, long=True)) - owned]
     if taken:
         raise ValueError(f"These names are already used, rename or delete them first: {', '.join(taken)}")
-
-    if old:
-        _remove(old)
-        for uuid in doomed:
-            if cmds.ls(uuid):
-                cmds.delete(cmds.ls(uuid, long=True))
-    group = _create_guides(name, count, start, end, axes, up_side)
-    if old:
-        cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
-    _live_joints(group, name, keep, end_joint)
-    if mirror:
-        _mirror_joints(group, keep_mirror)
-    if scales:
-        _set_scales(group, *scales)
-    return group
+    return {
+        "old": old,
+        "keep": keep,
+        "doomed": doomed,
+        "scales": scales,
+        "keep_mirror": keep_mirror,
+        "start": start,
+        "end": end,
+        "axes": axes,
+        "up_position": up_position,
+    }
 
 
 def _scales(group):
