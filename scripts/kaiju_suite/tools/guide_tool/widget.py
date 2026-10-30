@@ -3,6 +3,7 @@ from PySide6 import QtCore, QtWidgets
 
 from kaiju_suite.core import settings
 from kaiju_suite.core.selection import selected
+from kaiju_suite.core.undo import undoable
 from kaiju_suite.tools.guide_tool import logic
 from kaiju_suite.ui import icons
 from kaiju_suite.ui.base_window import ToolWindow
@@ -99,7 +100,9 @@ class GuideToolWindow(ToolWindow):
     def _group(self):
         return self._run(logic.find_group, selected())
 
-    def _build(self):
+    # Build and Delete also select what they made: one undo step with it.
+    @undoable
+    def _build(self, *_):
         name = self.name.text().strip()
         axes = {"aim": self.aim.currentData(), "up": self.up.currentData()}
         joint = logic.free_joint(selected())
@@ -123,7 +126,8 @@ class GuideToolWindow(ToolWindow):
         except ValueError:
             return
 
-    def _delete(self):
+    @undoable
+    def _delete(self, *_):
         group = self._group()
         if group is None:
             return

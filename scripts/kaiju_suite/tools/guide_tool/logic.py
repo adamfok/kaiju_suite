@@ -544,7 +544,12 @@ def _check_name(name):
 
 
 def _remove(group):
-    cmds.delete(_connected(group, _NODES) + [group])
+    nodes = _connected(group, _NODES)
+    # While the delete cuts their inputs, a normalizing cross product would
+    # print "found a zero-length output vector" as an error.
+    for node in cmds.ls(nodes, type="vectorProduct"):
+        cmds.setAttr(f"{node}.normalizeOutput", False)
+    cmds.delete(nodes + [group])
 
 
 @undoable

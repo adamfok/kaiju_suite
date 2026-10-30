@@ -806,3 +806,29 @@ def test_guide_tool_is_a_top_level_menu_entry():
     assert tool is not None
     assert "category" not in tool
     assert "Guide Tool" in [t["name"] for t in registry.menu_tools()]
+
+
+def _maya_errors(func, *args, **kwargs):
+    """Run ``func`` and return the errors and warnings Maya printed meanwhile."""
+    printed = []
+    kinds = (om.MCommandMessage.kWarning, om.MCommandMessage.kError)
+    callback = om.MCommandMessage.addCommandOutputCallback(
+        lambda text, kind, _: printed.append(text.strip()) if kind in kinds else None
+    )
+    try:
+        func(*args, **kwargs)
+    finally:
+        om.MMessage.removeCallback(callback)
+    return printed
+
+
+def test_delete_guides_prints_no_errors(new_scene):
+    group = _bent_arm()
+
+    assert _maya_errors(logic.delete_guides, group) == []
+
+
+def test_building_again_prints_no_errors(new_scene):
+    _bent_arm()
+
+    assert _maya_errors(logic.build_guides, "arm", 1) == []
