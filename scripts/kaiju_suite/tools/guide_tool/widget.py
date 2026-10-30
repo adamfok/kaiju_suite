@@ -134,15 +134,30 @@ class GuideToolWindow(ToolWindow):
         row.addWidget(QtWidgets.QLabel("Template"))
         row.addWidget(self.template, 1)
         layout.addLayout(row)
-        button = QtWidgets.QPushButton(icons.icon("guide_tool_build.svg"), "Build Template")
-        button.setIconSize(QtCore.QSize(20, 20))
-        button.setToolTip(
-            "Build every chain of the template on a body (Y up, facing +Z, left at +X), each one\n"
-            "starting where the one it hangs off ends. Chains already built are built again in place.\n"
-            "Use the Chain tab's Build and Delete on any one of them."
-        )
-        button.clicked.connect(self._build_template)
-        layout.addWidget(button)
+        buttons = QtWidgets.QHBoxLayout()
+        for icon, label, tip, action in (
+            (
+                "build",
+                "Build Template",
+                "Build every chain of the template on a body (Y up, facing +Z, left at +X), each one\n"
+                "starting where the one it hangs off ends. Chains already built are built again in place.\n"
+                "Use the Chain tab's Build and Delete on any one of them.",
+                self._build_template,
+            ),
+            (
+                "delete",
+                "Delete Template",
+                "Delete the guides of every chain of the template that's built. Their joints (and\n"
+                "mirrored joints) stay where they are, cut loose, as the Chain tab's Delete leaves them.",
+                self._delete_template,
+            ),
+        ):
+            button = QtWidgets.QPushButton(icons.icon(f"guide_tool_{icon}.svg"), label)
+            button.setIconSize(QtCore.QSize(20, 20))
+            button.setToolTip(tip)
+            button.clicked.connect(action)
+            buttons.addWidget(button, 1)
+        layout.addLayout(buttons)
 
         self.skeleton = QtWidgets.QComboBox()
         self.skeleton.setToolTip("The skeleton to align to; Auto picks the one the selected hierarchy matches best.")
@@ -154,7 +169,6 @@ class GuideToolWindow(ToolWindow):
         row = QtWidgets.QHBoxLayout()
         row.addWidget(QtWidgets.QLabel("Align to"))
         row.addWidget(self.skeleton, 1)
-        layout.addLayout(row)
         align = QtWidgets.QPushButton("Align")
         align.setToolTip(
             "Select a joint of the skeleton to align to, then Align: each built chain's start and end\n"
@@ -164,7 +178,8 @@ class GuideToolWindow(ToolWindow):
             "skipped and listed."
         )
         align.clicked.connect(self._align)
-        layout.addWidget(align)
+        row.addWidget(align)
+        layout.addLayout(row)
         layout.addStretch()
         return page
 
@@ -263,6 +278,13 @@ class GuideToolWindow(ToolWindow):
         if groups is not None:
             cmds.select(clear=True)
             _say(f"{self.template.currentText()} template built: {len(groups)} chains.")
+
+    @undoable
+    def _delete_template(self, *_):
+        joints = self._run(templates.delete_template, self.template.currentData())
+        if joints is not None:
+            cmds.select(clear=True)
+            _say(f"{self.template.currentText()} template guides deleted; {len(joints)} joints extracted.")
 
     def _align(self, *_):
         report = self._run(
