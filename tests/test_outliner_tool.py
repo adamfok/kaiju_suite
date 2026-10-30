@@ -278,7 +278,7 @@ def test_offset_is_one_undo_step(new_scene):
 # -- button icons ------------------------------------------------------------
 
 
-@pytest.mark.parametrize("button", ["group", "chain", "offset", "unparent", "reparent", "lock", "unlock"])
+@pytest.mark.parametrize("button", ["group", "chain", "offset", "default_parent", "reparent", "lock", "unlock"])
 def test_button_icons_ship_as_svg(button):
     import os
     import xml.etree.ElementTree as ET
@@ -413,205 +413,176 @@ def test_lock_and_unlock_need_a_selection(func):
         getattr(logic, func)([])
 
 
-# -- unparent and reparent ---------------------------------------------------
+# -- default parent and reparent ----------------------------------------------
 
 
-def test_unparent_moves_node_to_world(new_scene):
-    parent = _placed("rig", translate=(1, 2, 3))
-    child = _placed("child", translate=(4, 5, 6), parent=parent)
-    before_world = _world(child)
-
-    result = logic.unparent([child])
-
-    assert result == ["|child"]
-    assert cmds.listRelatives("|child", parent=True, fullPath=True) is None
-    assert _world("|child") == before_world
+def _has_default(node):
+    return cmds.attributeQuery("kaijuDefaultParentUuid", node=node, exists=True)
 
 
-def test_unparent_node_already_at_world(new_scene):
-    node = _placed("root", translate=(1, 2, 3))
-    result = logic.unparent([node])
-    assert result == ["|root"]
-    assert cmds.listRelatives("|root", parent=True, fullPath=True) is None
+def test_set_default_parent_saves_current_parent_on_the_node(new_scene):
+    rig = _placed("rig")
+    child = _placed("child", parent=rig)
+    assert logic.set_default_parent([child]) == [child]
+    assert cmds.getAttr(f"{child}.kaijuDefaultParentUuid") == cmds.ls(rig, uuid=True)[0]
+    assert cmds.getAttr(f"{child}.kaijuDefaultParentName") == "|rig"
 
 
-def test_unparent_is_one_undo_step(new_scene):
+def test_set_default_parent_needs_a_selection(new_scene):
+    with pytest.raises(ValueError):
+        logic.set_default_parent([])
+
+
+def test_set_default_parent_overwrites_the_old_default(new_scene):
+    rig = _placed("rig")
+    other = _placed("other")
+    child = _placed("child", parent=rig)
+    logic.set_default_parent([child])
+    cmds.parent(child, other)
+    logic.set_default_parent(["|other|child"])
+    cmds.parent("|other|child", world=True)
+    assert logic.reparent(["|child"]) == ["|other|child"]
+
+
+def test_set_default_parent_is_one_undo_step(new_scene):
     cmds.undoInfo(state=True)
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-    logic.unparent([child])
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
     cmds.undo()
-    assert cmds.ls(child, long=True) == [child]
+    assert not _has_default(child)
 
 
-def test_reparent_restores_previous_parent(new_scene):
-    parent = _placed("rig", translate=(1, 2, 3))
-    child = _placed("child", translate=(4, 5, 6), parent=parent)
-    before_world = _world(child)
+def test_reparent_moves_node_back_from_anywhere_keeping_world_position(new_scene):
+    rig = _placed("rig", translate=(1, 2, 3))
+    child = _placed("child", translate=(4, 5, 6), parent=rig)
+    temp = _placed("temp", translate=(-2, 0, 1), rotate=(0, 30, 0))
+    logic.set_default_parent([child])
+    cmds.parent(child, temp)
+    before = _world("|temp|child")
 
-    logic.unparent([child])
-    result = logic.reparent(["|child"])
-
-    assert result == ["|rig|child"]
-    assert cmds.listRelatives(result[0], parent=True, fullPath=True) == ["|rig"]
-    assert _world(result[0]) == before_world
-
-
-def test_unparent_and_reparent_multiple_nodes(new_scene):
-    p1 = _placed("rig1")
-    p2 = _placed("rig2")
-    c1 = _placed("c1", parent=p1)
-    c2 = _placed("c2", parent=p2)
-
-    unparented = logic.unparent([c1, c2])
-    assert unparented == ["|c1", "|c2"]
-
-    reparented = logic.reparent(unparented)
-    assert reparented == ["|rig1|c1", "|rig2|c2"]
+    assert logic.reparent(["|temp|child"]) == ["|rig|child"]
+    assert _world("|rig|child") == before
 
 
-def test_unparent_and_reparent_nested_hierarchy(new_scene):
-    grandparent = _placed("grandparent")
-    parent = _placed("parent", parent=grandparent)
+def test_reparent_keeps_the_default_for_next_time(new_scene):
+    rig = _placed("rig")
+    child = _placed("child", parent=rig)
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    logic.reparent(["|child"])
+    cmds.parent("|rig|child", world=True)
+    assert logic.reparent(["|child"]) == ["|rig|child"]
+    assert _has_default("|rig|child")
+
+
+def test_reparent_to_world_default(new_scene):
+    node = _placed("node")
+    logic.set_default_parent([node])
+    cmds.parent(node, _placed("temp"))
+    assert logic.reparent(["|temp|node"]) == ["|node"]
+
+
+def test_reparent_node_already_under_default_is_unchanged(new_scene):
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    assert logic.reparent([child]) == [child]
+
+
+def test_reparent_multiple_nodes(new_scene):
+    c1 = _placed("c1", parent=_placed("rig1"))
+    c2 = _placed("c2", parent=_placed("rig2"))
+    logic.set_default_parent([c1, c2])
+    cmds.parent(c1, c2, world=True)
+    assert logic.reparent(["|c1", "|c2"]) == ["|rig1|c1", "|rig2|c2"]
+
+
+def test_reparent_nested_hierarchy(new_scene):
+    parent = _placed("parent", parent=_placed("grandparent"))
     child = _placed("child", parent=parent)
-
-    unparented = logic.unparent([parent, child])
-    assert unparented == ["|parent", "|child"]
-
-    reparented = logic.reparent(unparented)
-    assert reparented == ["|grandparent|parent", "|grandparent|parent|child"]
+    logic.set_default_parent([parent, child])
+    cmds.parent("|grandparent|parent|child", world=True)
+    cmds.parent("|grandparent|parent", world=True)
+    assert logic.reparent(["|parent", "|child"]) == ["|grandparent|parent", "|grandparent|parent|child"]
 
 
 def test_reparent_works_after_parent_renamed(new_scene):
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-
-    logic.unparent([child])
-    cmds.rename(parent, "rig_renamed")
-
-    reparented = logic.reparent(["|child"])
-    assert reparented == ["|rig_renamed|child"]
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    cmds.rename("|rig", "rig_renamed")
+    assert logic.reparent(["|child"]) == ["|rig_renamed|child"]
 
 
 def test_reparent_works_after_child_renamed(new_scene):
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-
-    logic.unparent([child])
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
     cmds.rename("|child", "child_renamed")
-
-    reparented = logic.reparent(["|child_renamed"])
-    assert reparented == ["|rig|child_renamed"]
+    assert logic.reparent(["|child_renamed"]) == ["|rig|child_renamed"]
 
 
-def test_reparent_without_unparent_raises(new_scene):
-    node = _placed("standalone")
-    with pytest.raises(ValueError, match="No previous parent"):
-        logic.reparent([node])
+def test_reparent_works_after_saving_and_reopening_the_scene(new_scene, tmp_path):
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    path = str(tmp_path / "scene.ma").replace("\\", "/")
+    cmds.file(rename=path)
+    cmds.file(save=True, type="mayaAscii")
+    cmds.file(new=True, force=True)
+    cmds.file(path, open=True, force=True)
+    assert logic.reparent(["|child"]) == ["|rig|child"]
 
 
-def test_reparent_when_parent_deleted_raises(new_scene):
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
+def test_reparent_falls_back_to_the_name_when_uuid_is_gone(new_scene):
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    cmds.setAttr("|child.kaijuDefaultParentUuid", "00000000-0000-0000-0000-000000000000", type="string")
+    assert logic.reparent(["|child"]) == ["|rig|child"]
 
-    logic.unparent([child])
-    cmds.delete(parent)
 
+def test_reparent_without_default_raises(new_scene):
+    with pytest.raises(ValueError, match="No default parent"):
+        logic.reparent([_placed("standalone")])
+
+
+def test_reparent_when_default_deleted_raises(new_scene):
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    cmds.delete("|rig")
     with pytest.raises(ValueError, match="no longer exists"):
         logic.reparent(["|child"])
 
 
+def test_reparent_when_default_now_under_node_raises(new_scene):
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    cmds.parent("|rig", "|child")
+    with pytest.raises(ValueError, match="under"):
+        logic.reparent(["|child"])
+    assert cmds.ls("|child|rig", long=True) == ["|child|rig"]
+
+
+def test_reparent_skips_nodes_without_default(new_scene):
+    child = _placed("child", parent=_placed("rig"))
+    other = _placed("other")
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
+    assert logic.reparent(["|child", other]) == ["|rig|child", "|other"]
+
+
 def test_reparent_is_one_undo_step(new_scene):
     cmds.undoInfo(state=True)
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-    logic.unparent([child])
+    child = _placed("child", parent=_placed("rig"))
+    logic.set_default_parent([child])
+    cmds.parent(child, world=True)
     logic.reparent(["|child"])
     cmds.undo()
     assert cmds.ls("|child", long=True) == ["|child"]
 
 
-def test_reparent_skips_node_already_at_target_parent(new_scene):
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-    logic.unparent([child])
-    logic.reparent(["|child"])
-    # Calling reparent again when child is already under parent is a no-op
-    assert logic.reparent([f"|rig|child"]) == ["|rig|child"]
-
-
-def test_unparent_mixed_world_and_child_nodes(new_scene):
-    root = _placed("root")
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-
-    result = logic.unparent([root, child])
-    assert result == ["|root", "|child"]
-
-
-def test_reparent_mixed_nodes_reparents_the_remembered_ones(new_scene):
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-    other = _placed("other")
-
-    logic.unparent([child])
-    result = logic.reparent(["|child", other])
-    assert result == ["|rig|child", "|other"]
-
-
-@pytest.mark.parametrize("func", ["unparent", "reparent"])
-def test_unparent_and_reparent_need_a_selection(func):
-    with pytest.raises(ValueError, match="Nothing selected"):
-        getattr(logic, func)([])
-
-
-def test_reparent_changes_nothing_when_one_previous_parent_is_gone(new_scene):
-    keep = _placed("keep")
-    gone = _placed("gone")
-    _placed("a", parent=keep)
-    _placed("b", parent=gone)
-    logic.unparent(["|keep|a", "|gone|b"])
-    cmds.delete(gone)
-
-    with pytest.raises(ValueError, match="no longer exists"):
-        logic.reparent(["|a", "|b"])
-
-    assert cmds.ls("a", long=True) == ["|a"]
-
-
-def test_reparent_skips_node_moved_since_unparent_was_undone(new_scene):
-    cmds.undoInfo(state=True)
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-    logic.unparent([child])
-    cmds.undo()
-    other = _placed("other")
-    cmds.parent(child, other)
-
-    with pytest.raises(ValueError, match="No previous parent"):
-        logic.reparent(["|other|child"])
-
-    assert cmds.ls("child", long=True) == ["|other|child"]
-
-
-def test_reparent_works_again_after_undo(new_scene):
-    cmds.undoInfo(state=True)
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-    logic.unparent([child])
-    logic.reparent(["|child"])
-    cmds.undo()
-
-    assert logic.reparent(["|child"]) == ["|rig|child"]
-
-
-def test_reparent_under_own_descendant_raises_value_error(new_scene):
-    parent = _placed("rig")
-    child = _placed("child", parent=parent)
-    logic.unparent([child])
-    cmds.parent(parent, "|child")
-
-    with pytest.raises(ValueError, match="is now under"):
-        logic.reparent(["|child"])
-
-    assert cmds.ls("child", long=True) == ["|child"]
+def test_reparent_needs_a_selection():
+    with pytest.raises(ValueError):
+        logic.reparent([])
