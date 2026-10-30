@@ -68,6 +68,44 @@ _SHADE = (0.35, 0.75, 1.0)  # light blue
 _DISC_ROTATE = {0: (0, 0, 0), 1: (0, 0, 90), 2: (0, -90, 0)}
 
 
+def _preset(name, count, start, end, aim, up, up_side, end_joint=True):
+    return {
+        "name": name,
+        "count": count,
+        "start": start,
+        "end": end,
+        "aim": aim,
+        "up": up,
+        "up_side": up_side,
+        "end_joint": end_joint,
+        "mirror": name.startswith("l_"),
+    }
+
+
+# Ready-made chains on a ~180 cm body (Y up, facing +Z, left side at +X),
+# each one's end on the next one's start: build_guides(**PRESETS[name]).
+# ``up_side`` is where the up guide goes, so the up axis points that way.
+PRESETS = {
+    preset["name"]: preset
+    for preset in (
+        _preset("root", 0, (0, 0, 0), (10, 0, 0), "x", "y", (0, 1, 0), end_joint=False),
+        _preset("spine", 3, (0, 100, 0), (0, 145, 0), "y", "z", (0, 0, -1)),
+        _preset("neck", 1, (0, 145, 0), (0, 160, 0), "y", "z", (0, 0, -1)),
+        _preset("head", 0, (0, 160, 0), (0, 180, 0), "y", "z", (0, 0, 1)),
+        _preset("l_shoulder", 0, (3, 145, 0), (17, 147, 0), "x", "y", (0, 1, 0)),
+        _preset("l_arm", 1, (17, 147, 0), (70, 147, 0), "x", "y", (0, 1, 0)),
+        _preset("l_hand", 0, (70, 147, 0), (78, 147, 0), "x", "y", (0, 1, 0)),
+        _preset("l_finger", 2, (78, 147, 0), (88, 147, 0), "x", "y", (0, 1, 0)),
+        _preset("l_leg", 1, (10, 95, 0), (10, 10, 0), "x", "y", (0, 0, 1)),
+        _preset("l_foot", 1, (10, 10, 0), (10, 0, 20), "x", "y", (0, 1, 0)),
+        # A hind leg: hip, stifle, hock, fetlock and the toe tip, behind the leg.
+        _preset("l_quad_leg", 3, (10, 95, -15), (10, 0, -15), "x", "y", (0, 0, 1)),
+        _preset("forward_spine", 3, (0, 100, -10), (0, 100, 50), "x", "y", (0, 1, 0)),
+        _preset("tail", 4, (0, 100, -10), (0, 100, -70), "x", "y", (0, 1, 0)),
+    )
+}
+
+
 # -- helpers ------------------------------------------------------------------
 
 
@@ -470,7 +508,7 @@ def _names(name, count, end_joint=True):
     return names + [f"{name}_{i:02d}_{kind}" for i in range(1, count + 3) for kind in ("preview", "disc")]
 
 
-def _create_guides(name, count, start, end, axes):
+def _create_guides(name, count, start, end, axes, up_side=None):
     """Make the guide group, guides and preview for a chain named ``name``:
     start and end guides at ``start`` and ``end``, ``count`` middle guides
     evenly between them, and an up guide off to the side."""
@@ -498,7 +536,10 @@ def _create_guides(name, count, start, end, axes):
         _link(guide, group, f"{_CHAIN}[{i}]")
         chain.append(guide)
 
-    side = orient.row(orient.aim_matrix(span, (0, 1), (1, 1), om.MVector(0, 1, 0)), 1)
+    if up_side is not None:
+        side = om.MVector(up_side).normalize()
+    else:
+        side = orient.row(orient.aim_matrix(span, (0, 1), (1, 1), om.MVector(0, 1, 0)), 1)
     up = _guide(f"{name}_up_guide", group, start + span * 0.5 + side * (span.length() * 0.5), size)
     cmds.setAttr(f"{up}.overrideEnabled", True)
     cmds.setAttr(f"{up}.overrideColor", _UP_COLOR)
@@ -674,13 +715,16 @@ def _remove(group):
 
 
 @undoable
-def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None, mirror=False, end_joint=True):
+def build_guides(
+    name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None, mirror=False, end_joint=True, up_side=None
+):
     """Build guides for a chain named ``name`` with ``count`` middle guides,
     and a joint chain that follows them live (``aim`` points at the next
     joint and ``up`` towards the up guide's side, ``"x"``, ``"-y"``...).
 
-    New guides go from ``start`` to ``end`` with the up guide to the side,
-    aiming +X with up +Y unless given. If guides named ``name`` exist, their
+    New guides go from ``start`` to ``end`` with the up guide to the side
+    (towards ``up_side``, a direction, if given), aiming +X with up +Y
+    unless given. :data:`PRESETS` holds ready-made settings. If guides named ``name`` exist, their
     start, end and up guides stay where they are and the middle guides are
     replaced by ``count`` new ones, evenly between start and end; the axes
     stay unless given. Their joints stay too, unless the number of joints
@@ -736,7 +780,7 @@ def build_guides(name, count, start=(0, 0, 0), end=(10, 0, 0), aim=None, up=None
         for uuid in doomed:
             if cmds.ls(uuid):
                 cmds.delete(cmds.ls(uuid, long=True))
-    group = _create_guides(name, count, start, end, axes)
+    group = _create_guides(name, count, start, end, axes, up_side)
     if old:
         cmds.xform(guides(group)["up"], worldSpace=True, translation=(up_position.x, up_position.y, up_position.z))
     _live_joints(group, name, keep, end_joint)
